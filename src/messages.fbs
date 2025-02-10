@@ -1,0 +1,170 @@
+// ========================================================
+// Nplex flatbuffers schema file.
+// @see https://github.com/google/flatbuffers
+// > flatc --cpp --filename-suffix "" --filename-ext hpp --cpp-std c++17 --scoped-enums --gen-object-api messages.fbs
+// ========================================================
+
+namespace nplex.msgs;
+
+// ========================================================
+// Enums
+
+enum LoginCode: byte {
+    UNKNOW,
+    AUTHORIZED,
+    INVALID_CREDENTIALS,
+    COMPAT_MISMATCH,
+    ALREADY_LOGGED,
+    NOT_LEADER,
+    DBID_MISMATCH
+}
+
+enum SubmitCode : byte {
+    UNKNOW,
+    ACCEPTED,
+    REJECTED,
+    ERRORS
+}
+
+enum LoadMode: byte
+{
+    UNKNOW,
+    SNAPSHOT_AT_FIXED_REV,
+    SNAPSHOT_AT_LAST_REV,
+    ONLY_UPDATES_FROM_REV
+}
+
+// ========================================================
+// Structures
+
+table KeyValue
+{
+    key: string;                    // Key
+    value: [ubyte];                 // Value
+}
+
+table Update
+{
+    rev: uint64;                    // Commit revision
+    user: string;                   // Creator
+    timestamp: uint64;              // Timestamp
+    type: uint32;                   // Transaction type (user-defined value)
+    upserts: [KeyValue];            // List of creates and updates
+    deletes: [string];              // List of deletes
+}
+
+table Snapshot
+{
+    rev: uint64;                    // Snapshot revision
+    updates: [Update];              // List of updates sorted by commit revision (oldest to newest)
+}
+
+table Acl
+{
+    pattern: string;                // Pattern (glob)
+    mode: ubyte;                    // Mode (1=CREATE, 2=READ, 4=UPDATE, 8=DELETE)
+}
+
+// ========================================================
+// Messages
+
+table LoginRequest
+{
+    cid: uint64;                    // Correlation id (used to match responses to requests)
+    user: string;                   // User name
+    password: string;               // User password
+}
+
+table LoginResponse
+{
+    cid: uint64;                    // Correlation id (loginRequest cid)
+    code: LoginCode = UNKNOW;       // Response code
+    session: string;                // Session assigned
+    rev0: uint64;                   // Oldest revision available
+    crev: uint64;                   // Current database revision
+    can_force: bool;                // Can force transactions
+    keepalive: uint32;              // Keepalive timeout (in milliseconds)
+    // TODO: add permissions
+}
+
+table PingRequest
+{
+    cid: uint64;                    // Correlation id (used to match responses to requests)
+    payload: string;                // Payload
+}
+
+table PingResponse
+{
+    cid: uint64;                    // Correlation id (pingRequest cid)
+    crev: uint64;                   // Current database revision
+    payload: string;                // Payload (same as request)
+}
+
+table LoadRequest
+{
+    cid: uint64;                    // Correlation id (used to match responses to requests)
+    mode: LoadMode = UNKNOW;        // Load mode
+    rev: uint64;                    // Requested revision
+}
+
+table LoadResponse
+{
+    cid: uint64;                    // Correlation id (loadRequest cid)
+    crev: uint64;                   // Current revision
+    accepted: bool;                 // Request accepted
+    snapshot: Snapshot;             // Snapshot (if requested)
+}
+
+table UpdatePush
+{
+    cid: uint64;                    // Correlation id (loadRequest cid)
+    crev: uint64;                   // Current database revision
+    update: Update;                 // Database update (if commit.rev = crev -> client synced)
+}
+
+table SubmitRequest
+{
+    cid: uint64;                    // Correlation id (used to match responses to requests)
+    crev: uint64;                   // Client current revision (used to grant serialization)
+    type: uint32 = 0;               // Transaction type (user-defined value)
+    upserts: [KeyValue];            // List of updates and inserts
+    deletes: [string];              // List of deletes
+    ensures: [Acl];                 // List of ensures
+    force: bool = false;            // Force transaction
+}
+
+table SubmitResponse
+{
+    cid: uint64;                    // Correlation id (submitRequest cid)
+    crev: uint64;                   // Current database revision
+    code: SubmitCode = UNKNOW;      // Response code
+    erev: uint64;                   // Expected commit revision (0 means only ensures)
+    error: string;                  // Error message (if any)
+}
+
+table KeepAlivePush
+{
+    crev: uint64;                   // Current database revision
+}
+
+// ========================================================
+// Generic message
+
+union MsgContent {
+    PING_REQUEST: PingRequest,
+    PING_RESPONSE: PingResponse,
+    LOGIN_REQUEST: LoginRequest,
+    LOGIN_RESPONSE: LoginResponse,
+    LOAD_REQUEST: LoadRequest,
+    LOAD_RESPONSE: LoadResponse,
+    SUBMIT_REQUEST: SubmitRequest,
+    SUBMIT_RESPONSE: SubmitResponse,
+    UPDATE_PUSH: UpdatePush,
+    KEEPALIVE_PUSH: KeepAlivePush
+}
+
+table Message {
+    content: MsgContent;            // Message content
+}
+
+root_type Message;

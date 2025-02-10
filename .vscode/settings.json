@@ -1,0 +1,134 @@
+{
+  "files.associations": {
+    "memory": "cpp",
+    "cctype": "cpp",
+    "clocale": "cpp",
+    "cmath": "cpp",
+    "cstdarg": "cpp",
+    "cstddef": "cpp",
+    "cstdio": "cpp",
+    "cstring": "cpp",
+    "ctime": "cpp",
+    "cwchar": "cpp",
+    "cwctype": "cpp",
+    "atomic": "cpp",
+    "strstream": "cpp",
+    "bit": "cpp",
+    "*.tcc": "cpp",
+    "compare": "cpp",
+    "complex": "cpp",
+    "concepts": "cpp",
+    "condition_variable": "cpp",
+    "deque": "cpp",
+    "list": "cpp",
+    "map": "cpp",
+    "set": "cpp",
+    "unordered_map": "cpp",
+    "unordered_set": "cpp",
+    "vector": "cpp",
+    "exception": "cpp",
+    "algorithm": "cpp",
+    "iterator": "cpp",
+    "memory_resource": "cpp",
+    "numeric": "cpp",
+    "source_location": "cpp",
+    "fstream": "cpp",
+    "initializer_list": "cpp",
+    "iomanip": "cpp",
+    "iosfwd": "cpp",
+    "iostream": "cpp",
+    "istream": "cpp",
+    "limits": "cpp",
+    "mutex": "cpp",
+    "new": "cpp",
+    "numbers": "cpp",
+    "ostream": "cpp",
+    "semaphore": "cpp",
+    "shared_mutex": "cpp",
+    "stdexcept": "cpp",
+    "stop_token": "cpp",
+    "streambuf": "cpp",
+    "text_encoding": "cpp",
+    "thread": "cpp",
+    "cinttypes": "cpp",
+    "typeinfo": "cpp",
+    "variant": "cpp",
+    "forward_list": "cpp",
+    "sstream": "cpp",
+    "array": "cpp",
+    "string_view": "cpp",
+    "span": "cpp",
+    "csignal": "cpp",
+    "cstdlib": "cpp",
+    "charconv": "cpp",
+    "chrono": "cpp",
+    "cstdint": "cpp",
+    "string": "cpp",
+    "functional": "cpp",
+    "optional": "cpp",
+    "random": "cpp",
+    "ratio": "cpp",
+    "system_error": "cpp",
+    "tuple": "cpp",
+    "type_traits": "cpp",
+    "utility": "cpp",
+    "format": "cpp",
+    "typeindex": "cpp",
+    "cfenv": "cpp",
+    "codecvt": "cpp",
+    "stdfloat": "cpp",
+    "bitset": "cpp",
+    "regex": "cpp",
+    "any": "cpp",
+    "future": "cpp",
+    "*.ipp": "cpp",
+    "csetjmp": "cpp"
+  },
+  "C_Cpp.default.cStandard": "c17",
+  "C_Cpp.default.includePath": [
+    "${workspaceFolder}/deps",
+    "${workspaceFolder}/include"
+  ],
+  "c-cpp-flylint.language": "c++",
+  "c-cpp-flylint.standard": [
+    "c++20"
+  ],
+  "c-cpp-flylint.includePaths": [
+    "${workspaceFolder}/deps",
+    "${workspaceFolder}/include"
+  ],
+  "c-cpp-flylint.clang.includePaths": [
+    "${workspaceFolder}/deps"
+  ],
+  "c-cpp-flylint.clang.standard": [
+    "c++20"
+  ],
+  "c-cpp-flylint.excludeFromWorkspacePaths": [
+    "${workspaceFolder}/deps"
+  ],
+  "C_Cpp.default.cppStandard": "c++20",
+  "C_Cpp.default.intelliSenseMode": "linux-gcc-x64",
+  "C_Cpp.default.configurationProvider": "ms-vscode.cpptools",
+  "C_Cpp.default.compilerPath": "/usr/bin/g++",
+  "C_Cpp.default.compilerArgs": [
+    "-std=c++20",
+    "-I${workspaceFolder}/deps",
+    "-I${workspaceFolder}/include"
+  ],
+  "[c]": {
+      "editor.tabSize": 4,
+      "editor.insertSpaces": true
+  },
+  "[cpp]": {
+      "editor.tabSize": 4,
+      "editor.insertSpaces": true
+  },
+  "[h]": {
+      "editor.tabSize": 4,
+      "editor.insertSpaces": true
+  },
+  "[hpp]": {
+      "editor.tabSize": 4,
+      "editor.insertSpaces": true
+  }
+}
