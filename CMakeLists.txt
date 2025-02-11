@@ -111,8 +111,11 @@ add_executable(
 target_sources(
     nplex
     PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/deps/ini.c
     ${CMAKE_CURRENT_LIST_DIR}/deps/match.c
+    ${CMAKE_CURRENT_LIST_DIR}/src/addr.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/messages.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/params.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/main.cpp
 )
 

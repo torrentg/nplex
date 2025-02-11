@@ -1,0 +1,4 @@
+
+* Supports signal indicating log-rotate
+* Implement lock file to avoid multiple nplex instances working on the same directory
+* Implement log framework (spdlog)

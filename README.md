@@ -23,14 +23,15 @@ cmake -DENABLE_COVERAGE=ON ..
 
 * [cppcrc](https://github.com/DarrenLevine/cppcrc). A very small, fast, header-only, C++ library for generating CRCs. MIT license.
 * [cstring](https://github.com/torrentg/cstring). A C++ immutable C-string with reference counting. LGPL-3.0 license.
-* [cqueue](https://github.com/torrentg/cqueue). A C++20 header-only circular queue container. LGPL-3.0 license.
+* [journal](https://github.com/torrentg/journal). A simple log-structured database. MIT license.
 * [doctest](https://github.com/doctest/doctest). The fastest feature-rich C++11/14/17/20/23 single-header testing framework. MIT license.
 * [FastGlobbing](https://github.com/Robert-van-Engelen/FastGlobbing). Wildcard string matching and globbing library. CPOL license.
+* [inih](https://github.com/benhoyt/inih). Simple .INI file parser in C. BSD-3-clause license.
 
 ### Shared
 
 * [{fmt}](https://github.com/fmtlib/fmt). A string formatting library. MIT license.
-* [lz4](https://github.com/lz4/lz4). Extremely fast compression. BSD-2-Clause license.
+* [lz4](https://github.com/lz4/lz4). Extremely fast compression. BSD-2-clause license.
 * [libuv](https://github.com/libuv/libuv). Cross-platform asynchronous I/O. MIT license.
 * [flatbuffers](https://github.com/google/flatbuffers). Memory efficient serialization library. Apache-2.0 license .
 
