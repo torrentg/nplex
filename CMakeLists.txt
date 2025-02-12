@@ -33,6 +33,10 @@ find_package(
     flatbuffers REQUIRED
 )
 
+find_package(
+    spdlog 1.8 REQUIRED
+)
+
 # Create messages_generated.hpp from schema (src/messages.fbs)
 flatbuffers_generate_headers(
     TARGET flatbuffers_generated

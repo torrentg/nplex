@@ -34,6 +34,7 @@ cmake -DENABLE_COVERAGE=ON ..
 * [lz4](https://github.com/lz4/lz4). Extremely fast compression. BSD-2-clause license.
 * [libuv](https://github.com/libuv/libuv). Cross-platform asynchronous I/O. MIT license.
 * [flatbuffers](https://github.com/google/flatbuffers). Memory efficient serialization library. Apache-2.0 license .
+* [spdlog](https://github.com/gabime/spdlog). Fast C++ logging library. MIT license.
 
 ## Maintainers
 

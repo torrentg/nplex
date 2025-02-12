@@ -2,7 +2,6 @@
 
 #include <string>
 #include <vector>
-#include <cstddef>
 #include <filesystem>
 #include "cstring.hpp"
 #include "nplex.hpp"
@@ -35,10 +34,11 @@ struct server_params_t
     bool daemonize = false;                             // Run as daemon.
 
     server_params_t() = default;
-    server_params_t(const fs::path &path) { load(path); }
+    server_params_t(const fs::path &path);
 
     /**
      * Load the configuration from an INI file.
+     * Does not reset previous values.
      * @param path Filepath to load the configuration.
      * @exception std::exception Any error (file-not-exist, invalid-format, etc).
      */

@@ -8,6 +8,12 @@
 #define PROJECT_VERSION "0.1.0"
 #define PROJECT_URL "https://github.com/torrentg/nplex"
 
+#define CONFIG_FILENAME "nplex.ini"
+#define LOCK_FILENAME "nplex.lock"
+#define LOG_FILENAME "nplex.log"
+#define DATA_FILENAME "nplex.dat"
+#define INDEX_FILENAME "nplex.idx"
+
 #define MAX_CONNECTIONS 256
 
 #define NPLEX_CREATE 1

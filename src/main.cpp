@@ -1,11 +1,14 @@
+#include <getopt.h>
 #include <cstdlib>
 #include <cstdint>
 #include <cctype>
-#include <getopt.h>
 #include <iostream>
 #include <filesystem>
 #include <limits>
 #include <string>
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/basic_file_sink.h>
+#include "file_lock.hpp"
 #include "params.hpp"
 #include "addr.hpp"
 #include "nplex.hpp"
@@ -14,6 +17,20 @@ using namespace std;
 using namespace nplex;
 
 namespace fs = std::filesystem;
+
+static nplex::file_lock_t file_lock;
+
+static spdlog::level::level_enum to_spdlog(log_level_e level)
+{
+    switch (level)
+    {
+        case log_level_e::DEBUG: return spdlog::level::debug;
+        case log_level_e::INFO:  return spdlog::level::info;
+        case log_level_e::WARN:  return spdlog::level::warn;
+        case log_level_e::ERROR: return spdlog::level::err;
+        default: return spdlog::level::info;
+    }
+}
 
 static void help()
 {
@@ -46,7 +63,7 @@ static void version()
     std::cout <<
     PROJECT_NAME << " " << PROJECT_VERSION << "\n"
     "Copyright (c) 2025 Gerard Torrent.\n"
-    "License MIT: MIT License <https://opensource.org/licenses/MIT>.\n"
+    "License MIT: MIT License <https://opensource.org/licenses/MIT>."
     << std::endl;
 }
 
@@ -55,13 +72,13 @@ int main(int argc, char *argv[])
     server_params_t params;
 
     // short options
-    const char* const options1 = "D:l:a:N:dVhF";
+    const char* const options1 = "dVhFD:l:a:N:";
 
     // long options (name + has_arg + flag + val)
     const struct option options2[] = {
-        { "help",         0,  nullptr,  'h' },
-        { "version",      0,  nullptr,  'V' },
-        { nullptr,        0,  nullptr,   0  }
+        { "help",    0, nullptr, 'h' },
+        { "version", 0, nullptr, 'V' },
+        { nullptr,   0, nullptr,  0  }
     };
 
     if (argc <= 1) {
@@ -141,8 +158,8 @@ int main(int argc, char *argv[])
         }
     }
 
-    if (argc - optind > 1) {
-        std::cerr << "Error: Unexpected argument." << std::endl;
+    if (argc != optind) {
+        std::cerr << "Error: Unexpected argument (" << argv[optind] << ")." << std::endl;
         std::cerr << "Use the --help option for more information." << std::endl;
         return EXIT_FAILURE;
     }
@@ -167,16 +184,64 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    // TODO: check and set lock file (containing PID)
+    try {
+        auto lock_file = params.datadir / LOCK_FILENAME;
+        file_lock = file_lock_t(lock_file);
+    }
+    catch (const std::exception &e) {
+        std::cerr << e.what() << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    auto config_file = params.datadir / CONFIG_FILENAME;
+
+    if (!fs::exists(config_file))
+        params.save();
+
+    try {
+        server_params_t aux;
+        aux.load(config_file);
+        aux.datadir = params.datadir;
+        aux.addr = params.addr;
+        aux.log_level = params.log_level;
+        aux.max_connections = params.max_connections;
+        aux.disable_fsync = params.disable_fsync;
+        aux.daemonize = params.daemonize;
+        params = aux;
+    }
+    catch(const std::exception &e) {
+        std::cerr << "Error reading " << fs::absolute(config_file) << ": " << e.what() << std::endl;
+        return EXIT_FAILURE;
+    }
+
     // TODO: install signal catcher
-    // TODO: set_terminate(exception_handler)
-    // TODO: create nplex.conf if does not exist
-    // TODO: read configuration file (nplex.conf) overwriting command line options
-    // TODO: setup the log system (nplex.log)
     // TODO: open database files (nplex.dat, nplex.idx)
     // TODO: create the event-loop
     // TODO: daemonize if required
     // TODO: run the event-loop
+
+    if (params.daemonize)
+    {
+        spdlog::filename_t log_file = params.datadir / LOG_FILENAME;
+
+        try {
+            auto logger = spdlog::basic_logger_mt("basic_logger", log_file);
+            spdlog::set_default_logger(logger);
+        }
+        catch (const spdlog::spdlog_ex &e) {
+            std::cerr << e.what() << std::endl;
+            return EXIT_FAILURE;
+        }
+    }
+
+    spdlog::set_level(to_spdlog(params.log_level));
+
+    spdlog::error("Welcome to nplex!");
+    spdlog::warn("Welcome to nplex!");
+    spdlog::info("Welcome to nplex!");
+    spdlog::debug("Welcome to nplex!");
+
+    std::this_thread::sleep_for(std::chrono::seconds(10));
 
     return EXIT_SUCCESS;
 }
