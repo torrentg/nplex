@@ -41,7 +41,10 @@ class addr_t
      * 
      * @exception nplex_exception Invalid address.
      */
-    addr_t(const std::string &str);
+    addr_t(const std::string_view &str);
+    addr_t(const char *str) : addr_t{} { 
+        if (str) *this = addr_t{std::string_view(str)};
+    }
 
     // getters
     const std::string & host() const { return m_host; };

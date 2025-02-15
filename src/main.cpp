@@ -182,31 +182,46 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    auto config_file = params.datadir / CONFIG_FILENAME;
-
-    if (!fs::exists(config_file))
-        params.save();
-
     try {
-        server_params_t aux;
-        aux.load(config_file);
-        aux.datadir = params.datadir;
-        aux.addr = params.addr;
-        aux.log_level = params.log_level;
-        aux.max_connections = params.max_connections;
-        aux.disable_fsync = params.disable_fsync;
-        aux.daemonize = params.daemonize;
-        params = aux;
+        std::filesystem::current_path(params.datadir);
+        params.datadir = fs::current_path();
+    }
+    catch (const std::exception &) {
+        std::cerr << "Error: Unable to change to directory " << params.datadir << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    fs::path config_file = CONFIG_FILENAME;
+
+    try
+    {
+        if (!fs::exists(config_file))
+        {
+            params.save(config_file);
+        }
+        else
+        {
+            server_params_t aux(config_file);
+
+            aux.datadir = params.datadir;
+            aux.addr = params.addr;
+            aux.log_level = params.log_level;
+            aux.max_connections = params.max_connections;
+            aux.disable_fsync = params.disable_fsync;
+            aux.daemonize = params.daemonize;
+
+            params = aux;
+        }
     }
     catch(const std::exception &e) {
-        std::cerr << "Error reading " << fs::absolute(config_file) << ": " << e.what() << std::endl;
+        std::cerr << "Error accessing " << fs::absolute(config_file) << ": " << e.what() << std::endl;
         return EXIT_FAILURE;
     }
 
     journal_t journal;
 
     try {
-        journal = journal_t(params.datadir);
+        journal = journal_t(fs::current_path());
         journal.set_fsync(!params.disable_fsync);
     }
     catch (const std::exception &e) {
@@ -214,22 +229,22 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    // TODO: install signal catcher
-    // TODO: open database files (nplex.dat, nplex.idx)
-    // TODO: create the event-loop
-    // TODO: daemonize if required
-    // TODO: run the event-loop
-
     if (params.daemonize)
     {
-        spdlog::filename_t log_file = params.datadir / LOG_FILENAME;
+        spdlog::filename_t log_file = LOG_FILENAME;
 
         try {
             auto logger = spdlog::basic_logger_mt("basic_logger", log_file);
+            logger->flush_on(spdlog::level::info);
             spdlog::set_default_logger(logger);
         }
         catch (const spdlog::spdlog_ex &e) {
             std::cerr << e.what() << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        if (daemon(1, 0) == -1) {
+            std::cerr << "Error: Failed to daemonize the process." << std::endl;
             return EXIT_FAILURE;
         }
     }
@@ -242,6 +257,10 @@ int main(int argc, char *argv[])
     spdlog::debug("Welcome to nplex!");
 
     std::this_thread::sleep_for(std::chrono::seconds(10));
+
+    // TODO: create the event-loop
+    // TODO: install signal catcher
+    // TODO: run the event-loop
 
     return EXIT_SUCCESS;
 }

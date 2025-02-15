@@ -179,7 +179,7 @@ static int cb_inih(void *obj, const char *section, const char *name, const char 
 
 nplex::server_params_t::server_params_t(const fs::path &path)
 {
-    load(path / CONFIG_FILENAME);
+    load(path);
 }
 
 void nplex::server_params_t::load(const fs::path &path)
@@ -201,20 +201,9 @@ void nplex::server_params_t::load(const fs::path &path)
         throw std::runtime_error("No valid users");
 }
 
-void nplex::server_params_t::save() const
+void nplex::server_params_t::save(const fs::path &path) const
 {
-    if (datadir.empty())
-        throw std::runtime_error("datadir not set");
-
-    if (!fs::exists(datadir))
-        throw std::runtime_error(datadir.string() + " not exists");
-
-    if (!fs::is_directory(datadir))
-        throw std::runtime_error(datadir.string() + " is not a directory");
-
-    auto filepath = datadir / CONFIG_FILENAME;
-
-    std::ofstream ofs(filepath, std::ios::trunc);
+    std::ofstream ofs(path, std::ios::trunc);
 
     ofs << "# " << PROJECT_NAME << " configuration file." << std::endl;
     ofs << "# see " PROJECT_URL << std::endl;
@@ -267,6 +256,9 @@ void nplex::server_params_t::save() const
         ofs << USER_ACL << " = crud:**" << std::endl;
         ofs << std::endl;
     }
+
+    if (!ofs)
+        throw std::runtime_error("Error writing file");
 
     ofs.close();
 }

@@ -24,7 +24,7 @@ struct user_params_t
 
 struct server_params_t
 {
-    addr_t addr;                                        // IP address to listen on.
+    addr_t addr = DEFAULT_ADDR;                         // IP address to listen on.
     fs::path datadir;                                   // Database directory.
     std::uint32_t max_connections = MAX_CONNECTIONS;    // Maximum number of allowed connections.
     log_level_e log_level = log_level_e::INFO;          // Log level.
@@ -39,7 +39,7 @@ struct server_params_t
     /**
      * Load the configuration from an INI file.
      * Does not reset previous values.
-     * @param path Filepath to load the configuration.
+     * @param[in] path Filepath to load the configuration.
      * @exception std::exception Any error (file-not-exist, invalid-format, etc).
      */
     void load(const fs::path &path);
@@ -47,10 +47,10 @@ struct server_params_t
     /**
      * Save the configuration to an INI file.
      * Overwrite existing file or create a new one if not exists.
-     * Uses the datadir member as directory to place the file.
-     * @exception std::exception Any error (directory not writeable, no space left, etc).
+     * @param[in] path Filepath to write the configuration.
+     * @exception std::exception Any error (not-writeable, no-space-left, etc).
      */
-    void save() const;
+    void save(const fs::path &path) const;
 };
 
 } // namespace nplex

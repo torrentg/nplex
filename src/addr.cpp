@@ -1,4 +1,5 @@
 #include <regex>
+#include <charconv>
 #include <exception>
 #include <fmt/core.h>
 #include "addr.hpp"
@@ -16,7 +17,7 @@ namespace {
     const std::regex hostname_regex{HOSTNAME_PATTERN, std::regex::extended | std::regex::nosubs};
 }
 
-nplex::addr_t::addr_t(const std::string &str)
+nplex::addr_t::addr_t(const std::string_view &str)
 {
     auto pos = str.find_last_of(':');
     if (pos == str.npos)
@@ -30,8 +31,9 @@ nplex::addr_t::addr_t(const std::string &str)
             throw std::invalid_argument(fmt::format("'{}' is an invalid address (invalid port)", str));
     }
 
-    int num = std::atoi(str.c_str() + pos + 1);
-    if (num <= 0 || num > 65535)
+    int num = 0;
+    auto [ptr, ec] = std::from_chars(str.begin() + pos + 1, str.end(), num);
+    if (ec != std::errc() || ptr != str.end() || num <= 0 || num > 65535)
         throw std::invalid_argument(fmt::format("'{}' is an invalid address (invalid port)", str));
 
     m_port = static_cast<std::uint16_t>(num);
