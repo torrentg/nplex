@@ -8,8 +8,8 @@
 #include <string>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
-#include "file_lock.hpp"
 #include "params.hpp"
+#include "journal.hpp"
 #include "addr.hpp"
 #include "nplex.hpp"
 
@@ -17,8 +17,6 @@ using namespace std;
 using namespace nplex;
 
 namespace fs = std::filesystem;
-
-static nplex::file_lock_t file_lock;
 
 static spdlog::level::level_enum to_spdlog(log_level_e level)
 {
@@ -184,15 +182,6 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    try {
-        auto lock_file = params.datadir / LOCK_FILENAME;
-        file_lock = file_lock_t(lock_file);
-    }
-    catch (const std::exception &e) {
-        std::cerr << e.what() << std::endl;
-        return EXIT_FAILURE;
-    }
-
     auto config_file = params.datadir / CONFIG_FILENAME;
 
     if (!fs::exists(config_file))
@@ -211,6 +200,17 @@ int main(int argc, char *argv[])
     }
     catch(const std::exception &e) {
         std::cerr << "Error reading " << fs::absolute(config_file) << ": " << e.what() << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    journal_t journal;
+
+    try {
+        journal = journal_t(params.datadir);
+        journal.set_fsync(!params.disable_fsync);
+    }
+    catch (const std::exception &e) {
+        std::cerr << "Error: " << e.what() << std::endl;
         return EXIT_FAILURE;
     }
 

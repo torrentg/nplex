@@ -83,7 +83,8 @@
     "future": "cpp",
     "*.ipp": "cpp",
     "csetjmp": "cpp",
-    "ini.h": "c"
+    "ini.h": "c",
+    "filesystem": "cpp"
   },
   "C_Cpp.default.cStandard": "c17",
   "C_Cpp.default.includePath": [
