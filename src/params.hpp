@@ -19,7 +19,11 @@ struct user_params_t
     std::uint32_t keepalive_millis = 0;                 // Delay between keepalive messages (0=disabled).
     std::vector<acl_t> permissions;                     // List of permissions.
     bool can_force = false;                             // Can force to accept dirty transactions.
-    bool active = true;                                 // Active user.
+    bool active = true;                                 // User is active or disabled.
+
+    bool is_valid() const {
+        return (active && !password.empty() && max_connections > 0 && !permissions.empty());
+    }
 };
 
 struct server_params_t

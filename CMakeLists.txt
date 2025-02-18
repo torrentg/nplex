@@ -122,6 +122,7 @@ target_sources(
     ${CMAKE_CURRENT_LIST_DIR}/src/journal.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/messages.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/params.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/server.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/main.cpp
 )
 

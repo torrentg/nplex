@@ -194,7 +194,7 @@ void nplex::server_params_t::load(const fs::path &path)
     int num_valid_users = 0;
 
     for (const auto &user : users)
-        if (user.active && !user.password.empty() && user.max_connections > 0 && !user.permissions.empty())
+        if (user.is_valid())
             num_valid_users++;
 
     if (num_valid_users == 0)

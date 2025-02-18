@@ -11,6 +11,7 @@
 #include "params.hpp"
 #include "journal.hpp"
 #include "addr.hpp"
+#include "server.hpp"
 #include "nplex.hpp"
 
 using namespace std;
@@ -40,7 +41,7 @@ static void help()
     "\n"
     "Options:\n"
     "  -D DATADIR       Database directory.\n"
-    "  -a HOST:PORT     Address to listen on (ex: localhost:8444).\n"
+    "  -a HOST:PORT     Address to listen on (ex: localhost:14022).\n"
     "  -N MAX-CONNECT   Maximum number of allowed connections.\n"
     "  -l LOGLEVEL      Log level (debug, info, warning, error).\n"
     "  -d               Run the program as a daemon.\n"
@@ -256,11 +257,15 @@ int main(int argc, char *argv[])
     spdlog::info("Welcome to nplex!");
     spdlog::debug("Welcome to nplex!");
 
-    std::this_thread::sleep_for(std::chrono::seconds(10));
-
-    // TODO: create the event-loop
     // TODO: install signal catcher
-    // TODO: run the event-loop
 
-    return EXIT_SUCCESS;
+    try {
+        server_t server{params};
+        server.run();
+        return EXIT_SUCCESS;
+    }
+    catch (const std::exception &e) {
+        spdlog::error("Error: {}", e.what());
+        return EXIT_FAILURE;
+    }
 }

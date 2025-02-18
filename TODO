@@ -1,2 +1,3 @@
 
 * Supports signal indicating log-rotate
+* Trap and manage SIGKILL(9)
