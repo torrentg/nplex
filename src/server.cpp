@@ -1,5 +1,6 @@
 #include <cstdlib>
 #include <cstring>
+#include <cassert>
 #include <stdexcept>
 #include <fmt/core.h>
 #include <sys/socket.h>
@@ -37,15 +38,15 @@ static struct sockaddr_storage get_sockaddr(uv_loop_t *loop, const nplex::addr_t
     switch(addr.family())
     {
         case AF_INET:
-            if ((rc = uv_ip4_addr(addr.host().c_str(), addr.port(), (struct sockaddr_in*) &ret)) != 0) {
+            if ((rc = uv_ip4_addr(addr.host().c_str(), addr.port(), (struct sockaddr_in*) &ret)) != 0)
                 throw std::runtime_error(uv_strerror(rc));
-            }
             break;
+
         case AF_INET6:
-            if ((rc = uv_ip6_addr(addr.host().c_str(), addr.port(), (struct sockaddr_in6*) &ret)) != 0) {
+            if ((rc = uv_ip6_addr(addr.host().c_str(), addr.port(), (struct sockaddr_in6*) &ret)) != 0)
                 throw std::runtime_error(uv_strerror(rc));
-            }
             break;
+
         case AF_UNSPEC:
         {
             uv_getaddrinfo_t req;
@@ -58,9 +59,8 @@ static struct sockaddr_storage get_sockaddr(uv_loop_t *loop, const nplex::addr_t
             hints.ai_protocol = IPPROTO_TCP;
 
             // request address info made synchronously (at this point no other tasks are done)
-            if ((rc = uv_getaddrinfo(loop, &req, NULL, addr.host().c_str(), NULL, &hints)) != 0) {
+            if ((rc = uv_getaddrinfo(loop, &req, NULL, addr.host().c_str(), NULL, &hints)) != 0)
                 throw std::runtime_error(uv_strerror(rc));
-            }
 
             if (req.addrinfo->ai_family != AF_INET && req.addrinfo->ai_family != AF_INET6) {
                 uv_freeaddrinfo(req.addrinfo);
@@ -71,38 +71,12 @@ static struct sockaddr_storage get_sockaddr(uv_loop_t *loop, const nplex::addr_t
             uv_freeaddrinfo(req.addrinfo);
             break;
         }
+
         default:
             throw std::runtime_error(fmt::format("Unrecognized address family: {}", addr.str()));
     }
 
     return ret;
-}
-
-static bool get_peer_name(const uv_tcp_t *con, char *str, size_t len)
-{
-    if (!con || !str || len == 0)
-        return false;
-
-    struct sockaddr_storage sa;
-    int sa_len = sizeof(sa);
-    struct sockaddr_in *addr_in = (struct sockaddr_in *) &sa;
-    uint16_t port = 0;
-    char ip[128] = {0};
-
-    if (uv_tcp_getpeername(con, (struct sockaddr *) &sa, &sa_len) != 0)
-        return false;
-
-    port = ntohs(addr_in->sin_port);
-
-    if (uv_ip_name((struct sockaddr *) &addr_in, ip, sizeof(ip)) != 0)
-        return false;
-
-    if (addr_in->sin_family == AF_INET6)
-        snprintf(str, len, "[%s]:%hu", ip, port);
-    else
-        snprintf(str, len, "%s:%hu", ip, port);
-
-    return true;
 }
 
 static void cb_signal_handler(uv_signal_t *handle, int signum)
@@ -120,6 +94,17 @@ static void cb_process_async(uv_async_t *handle)
     // impl->process_commands();
 }
 
+static void cb_close_connection(uv_handle_t *handle)
+{
+    if (uv_is_closing(handle))
+        return;
+
+    using namespace nplex;
+    auto *server = (server_t *) handle->loop->data;
+    assert(server);
+    server->release_client((client_t *) handle);
+}
+
 static void cb_close_handle(uv_handle_t *handle, void *arg)
 {
     UNUSED(arg);
@@ -131,8 +116,10 @@ static void cb_close_handle(uv_handle_t *handle, void *arg)
     {
         case UV_SIGNAL:
         case UV_ASYNC:
-        case UV_TCP:
             uv_close(handle, NULL);
+            break;
+        case UV_TCP:
+            cb_close_connection(handle);
             break;
         default:
             uv_close(handle, (uv_close_cb) free);
@@ -141,39 +128,15 @@ static void cb_close_handle(uv_handle_t *handle, void *arg)
 
 static void cb_tcp_connection(uv_stream_t *stream, int status)
 {
-    UNUSED(stream);
-    UNUSED(status);
-#if 0
-    int rc = 0;
-    rft_connection_t *con = NULL;
-
     if (status < 0) {
-        LOG(RAFT_LOG_DEBUG, uv_strerror(status));
+        spdlog::warn(uv_strerror(status));
         return;
     }
 
-    if ((con = (rft_connection_t *) calloc(1, sizeof(rft_connection_t))) == NULL) {
-        LOG(RAFT_LOG_ERROR, "Out of memory");
-        return;
-    }
-
-    con->type = RFT_INCOMING;
-
-    if ((rc = uv_tcp_init(stream->loop, (uv_tcp_t *) con)) != 0) {
-        LOG(RAFT_LOG_ERROR, uv_strerror(rc));
-        return;
-    }
-
-    if (uv_accept(stream, (uv_stream_t*) con) != 0) {
-        LOG(RAFT_LOG_ERROR, uv_strerror(rc));
-        rft_close_connection(con);
-        return;
-    }
-
-    uv_read_start((uv_stream_t*) con, on_tcp_alloc, on_tcp_read);
-
-    con->state = RFT_CON_STABLISHED;
-#endif
+    using namespace nplex;
+    auto *server = (server_t *) stream->loop->data;
+    assert(server);
+    server->append_client(stream);
 }
 
 // ==========================================================
@@ -247,4 +210,25 @@ void nplex::server_t::run()
     while (uv_run(m_loop.get(), UV_RUN_NOWAIT));
     uv_loop_close(m_loop.get());
     spdlog::debug("Event loop terminated");
+}
+
+void nplex::server_t::append_client(uv_stream_t *stream)
+{
+    m_clients.emplace_back(std::make_unique<client_t>(stream));
+}
+
+void nplex::server_t::release_client(client_t *con)
+{
+    if (!con)
+        return;
+
+    auto it = std::find_if(m_clients.begin(), m_clients.end(),
+                           [con](const std::unique_ptr<client_t> &con_) {
+                               return con_.get() == con;
+                           });
+
+    if (it != m_clients.end()) {
+        spdlog::info("Releasing connection: {}", con->m_addr.str());
+        m_clients.erase(it);
+    }
 }

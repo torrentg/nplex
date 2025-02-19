@@ -121,8 +121,10 @@ target_sources(
     ${CMAKE_CURRENT_LIST_DIR}/src/addr.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/journal.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/messages.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/messaging.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/params.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/server.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/client.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/main.cpp
 )
 

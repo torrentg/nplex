@@ -2,17 +2,18 @@
 
 #include <uv.h>
 #include "addr.hpp"
+#include "user.hpp"
 #include "params.hpp"
 #include "flatbuffers/flatbuffers.h"
 
 namespace nplex {
 
 /**
- * Internal class representing a connection to a server.
+ * Internal class representing a client.
  * 
  * server_t is accessed via tcp.loop->data.
  */
-struct connection_t
+struct client_t
 {
     enum class state_e : std::uint8_t {
         CONNECTED,
@@ -22,12 +23,14 @@ struct connection_t
         CLOSED
     };
 
-    uv_tcp_t tcp;
-    addr_t addr;
-    state_e state;
+    uv_tcp_t m_tcp;
+    addr_t m_addr;
+    state_e m_state;
+    int m_error = 0;
+    user_ptr m_user;
+
     char input_buffer[UINT16_MAX] = {0};
     std::string input_msg;
-    int error = 0;
 
     struct {
         std::uint32_t max_unack_msgs = 0;
@@ -44,12 +47,11 @@ struct connection_t
         std::size_t sent_bytes = 0;
     } stats;
 
-    connection_t(const addr_t &addr_, uv_loop_t *loop_, const user_params_t &params_);
-    ~connection_t();
+    client_t(uv_stream_t *stream);
+    ~client_t();
 
-    void connect();
-    void disconnect(int rc = 0);
     void send(flatbuffers::DetachedBuffer &&buf);
+    void disconnect(int rc = 0);
 };
 
 } // namespace nplex
