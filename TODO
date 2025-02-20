@@ -1,3 +1,5 @@
 
-* Supports signal indicating log-rotate
+* Supports signal indicating log-rotate (only if daemonize)
 * Trap and manage SIGKILL(9)
+* Close client connection elapsed some time without data
+* Add check data (-c) command-line option

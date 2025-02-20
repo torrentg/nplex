@@ -59,7 +59,8 @@ static struct sockaddr_storage get_sockaddr(uv_loop_t *loop, const nplex::addr_t
             hints.ai_protocol = IPPROTO_TCP;
 
             // request address info made synchronously (at this point no other tasks are done)
-            if ((rc = uv_getaddrinfo(loop, &req, NULL, addr.host().c_str(), NULL, &hints)) != 0)
+            std::string port = std::to_string(addr.port());
+            if ((rc = uv_getaddrinfo(loop, &req, NULL, addr.host().c_str(), port.c_str(), &hints)) != 0)
                 throw std::runtime_error(uv_strerror(rc));
 
             if (req.addrinfo->ai_family != AF_INET && req.addrinfo->ai_family != AF_INET6) {
@@ -81,10 +82,10 @@ static struct sockaddr_storage get_sockaddr(uv_loop_t *loop, const nplex::addr_t
 
 static void cb_signal_handler(uv_signal_t *handle, int signum)
 {
-    spdlog::warn("Signal received: {}({})", ::strsignal(signum), signum);
-    uv_stop(handle->loop);
+    SPDLOG_WARN("Signal received: {}({})", ::strsignal(signum), signum);
     uv_signal_stop(handle);
-    uv_close((uv_handle_t*) handle, nullptr);
+    uv_stop(handle->loop);
+    //uv_close((uv_handle_t*) handle, nullptr);
 }
 
 static void cb_process_async(uv_async_t *handle)
@@ -103,6 +104,7 @@ static void cb_close_connection(uv_handle_t *handle)
     auto *server = (server_t *) handle->loop->data;
     assert(server);
     server->release_client((client_t *) handle);
+    uv_close(handle, NULL);
 }
 
 static void cb_close_handle(uv_handle_t *handle, void *arg)
@@ -115,13 +117,18 @@ static void cb_close_handle(uv_handle_t *handle, void *arg)
     switch(handle->type)
     {
         case UV_SIGNAL:
+            SPDLOG_DEBUG("Closing UV_SIGNAL");
+            break;
         case UV_ASYNC:
+            SPDLOG_DEBUG("Closing UV_ASYNC");
             uv_close(handle, NULL);
             break;
         case UV_TCP:
+            SPDLOG_DEBUG("Closing UV_TCP");
             cb_close_connection(handle);
             break;
         default:
+            SPDLOG_DEBUG("Closing OTHER");
             uv_close(handle, (uv_close_cb) free);
     }
 }
@@ -129,7 +136,7 @@ static void cb_close_handle(uv_handle_t *handle, void *arg)
 static void cb_tcp_connection(uv_stream_t *stream, int status)
 {
     if (status < 0) {
-        spdlog::warn(uv_strerror(status));
+        SPDLOG_WARN(uv_strerror(status));
         return;
     }
 
@@ -137,6 +144,11 @@ static void cb_tcp_connection(uv_stream_t *stream, int status)
     auto *server = (server_t *) stream->loop->data;
     assert(server);
     server->append_client(stream);
+}
+
+static bool is_valid_user(const nplex::user_params_t &user)
+{
+    return (user.active && !user.password.empty() && user.max_connections > 0 && !user.permissions.empty());
 }
 
 // ==========================================================
@@ -149,7 +161,7 @@ nplex::server_t::server_t(const server_params_t &params) : m_params(params)
 
     for (const auto &user_params : params.users)
     {
-        if (!user_params.is_valid())
+        if (!is_valid_user(user_params))
             continue;
 
         if (m_users.contains(user_params.name))
@@ -157,6 +169,9 @@ nplex::server_t::server_t(const server_params_t &params) : m_params(params)
 
         m_users[user_params.name] = std::make_shared<user_t>(user_params);
     }
+
+    if (m_users.empty())
+        throw nplex_exception("No valid users found");
 
     m_loop = std::make_unique<uv_loop_t>();
 
@@ -178,7 +193,7 @@ nplex::server_t::server_t(const server_params_t &params) : m_params(params)
     if ((rc = uv_listen((uv_stream_t*) m_tcp.get(), MAX_QUEUED_CONNECTIONS, ::cb_tcp_connection)) != 0)
         throw nplex_exception(uv_strerror(rc));
 
-    spdlog::info("Nplex listening on {}", params.addr.str());
+    SPDLOG_INFO("Nplex listening on {}", params.addr.str());
 
     m_async = std::make_unique<uv_async_t>();
 
@@ -199,22 +214,29 @@ nplex::server_t::server_t(const server_params_t &params) : m_params(params)
 void nplex::server_t::run()
 {
     try {
-        spdlog::debug("Event loop started");
+        SPDLOG_DEBUG("Event loop started");
         uv_run(m_loop.get(), UV_RUN_DEFAULT);
     }
     catch (const std::exception &e) {
-        spdlog::error("{}", e.what());
+        SPDLOG_ERROR("{}", e.what());
     }
 
     uv_walk(m_loop.get(), ::cb_close_handle, NULL);
     while (uv_run(m_loop.get(), UV_RUN_NOWAIT));
     uv_loop_close(m_loop.get());
-    spdlog::debug("Event loop terminated");
+    SPDLOG_DEBUG("Event loop terminated");
 }
 
 void nplex::server_t::append_client(uv_stream_t *stream)
 {
+    if (m_clients.size() >= m_params.max_connections) {
+        SPDLOG_WARN("Max clients reached: {}", m_params.max_connections);
+        return;
+    }
+
     m_clients.emplace_back(std::make_unique<client_t>(stream));
+
+    SPDLOG_DEBUG("New connection: {}", m_clients.back()->m_addr.str());
 }
 
 void nplex::server_t::release_client(client_t *con)
@@ -227,8 +249,13 @@ void nplex::server_t::release_client(client_t *con)
                                return con_.get() == con;
                            });
 
-    if (it != m_clients.end()) {
-        spdlog::info("Releasing connection: {}", con->m_addr.str());
+    if (it != m_clients.end())
+    {
+        SPDLOG_INFO("Releasing connection {} - {}", 
+            con->m_addr.str(),
+            con->m_error ? uv_strerror(con->m_error) : "closed by peer"
+        );
+
         m_clients.erase(it);
     }
 }

@@ -198,21 +198,23 @@ int main(int argc, char *argv[])
     {
         if (!fs::exists(config_file))
         {
+            params.default_user.keepalive_millis = 3000;
+            params.default_user.max_msg_bytes = 50 * 1024 * 1024;
+            params.default_user.max_unack_bytes = 100 * 1024 * 1024;
+            params.default_user.max_unack_msgs = 100;
             params.save(config_file);
         }
-        else
-        {
-            server_params_t aux(config_file);
 
-            aux.datadir = params.datadir;
-            aux.addr = params.addr;
-            aux.log_level = params.log_level;
-            aux.max_connections = params.max_connections;
-            aux.disable_fsync = params.disable_fsync;
-            aux.daemonize = params.daemonize;
+        server_params_t aux(config_file);
 
-            params = aux;
-        }
+        aux.datadir = params.datadir;
+        aux.addr = params.addr;
+        aux.log_level = params.log_level;
+        aux.max_connections = params.max_connections;
+        aux.disable_fsync = params.disable_fsync;
+        aux.daemonize = params.daemonize;
+
+        params = aux;
     }
     catch(const std::exception &e) {
         std::cerr << "Error accessing " << fs::absolute(config_file) << ": " << e.what() << std::endl;
@@ -251,11 +253,12 @@ int main(int argc, char *argv[])
     }
 
     spdlog::set_level(to_spdlog(params.log_level));
+    spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%s:%#] [%l] %v");
 
-    spdlog::error("Welcome to nplex!");
-    spdlog::warn("Welcome to nplex!");
-    spdlog::info("Welcome to nplex!");
-    spdlog::debug("Welcome to nplex!");
+    SPDLOG_ERROR("Welcome to nplex!");
+    SPDLOG_WARN("Welcome to nplex!");
+    SPDLOG_INFO("Welcome to nplex!");
+    SPDLOG_DEBUG("Welcome to nplex!");
 
     // TODO: install signal catcher
 
@@ -265,7 +268,7 @@ int main(int argc, char *argv[])
         return EXIT_SUCCESS;
     }
     catch (const std::exception &e) {
-        spdlog::error("Error: {}", e.what());
+        SPDLOG_ERROR("Error: {}", e.what());
         return EXIT_FAILURE;
     }
 }

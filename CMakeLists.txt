@@ -128,6 +128,11 @@ target_sources(
     ${CMAKE_CURRENT_LIST_DIR}/src/main.cpp
 )
 
+add_compile_definitions(
+    SPDLOG_ACTIVE_LEVEL=0
+    SPDLOG_FMT_EXTERNAL
+)
+
 target_include_directories(
     nplex
     PRIVATE

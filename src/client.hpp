@@ -35,7 +35,7 @@ struct client_t
     struct {
         std::uint32_t max_unack_msgs = 0;
         std::uint32_t max_unack_bytes = 0;
-        std::uint32_t max_msg_bytes = 0;
+        std::uint32_t max_msg_bytes = 1024;   // enough to receive login message
     } params;
 
     struct {

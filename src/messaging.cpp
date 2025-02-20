@@ -99,7 +99,8 @@ const nplex::msgs::Message * nplex::parse_network_msg(const char *ptr, size_t le
     len -= 3 * sizeof(std::uint32_t);
 
     auto verifier = flatbuffers::Verifier((const std::uint8_t *) ptr, len);
-    verifier.VerifyBuffer<nplex::msgs::Message>(nullptr);
+    if (!verifier.VerifyBuffer<nplex::msgs::Message>(nullptr))
+        return nullptr;
 
     return flatbuffers::GetRoot<nplex::msgs::Message>(ptr);
 }

@@ -3,7 +3,6 @@
 #include <string>
 #include <vector>
 #include <filesystem>
-#include "cstring.hpp"
 #include "nplex.hpp"
 #include "addr.hpp" 
 
@@ -13,17 +12,20 @@ namespace nplex {
 
 struct user_params_t
 {
-    gto::cstring name;                                  // User name.
+    std::string name;                                   // User name.
+
+    // user values
     std::string password;                               // User password.
     std::uint32_t max_connections = MAX_CONNECTIONS;    // Maximum number of simultaneous connections.
-    std::uint32_t keepalive_millis = 0;                 // Delay between keepalive messages (0=disabled).
     std::vector<acl_t> permissions;                     // List of permissions.
     bool can_force = false;                             // Can force to accept dirty transactions.
     bool active = true;                                 // User is active or disabled.
 
-    bool is_valid() const {
-        return (active && !password.empty() && max_connections > 0 && !permissions.empty());
-    }
+    // session values
+    std::uint32_t keepalive_millis = 0;                 // Delay between keepalive messages (0 = disabled).
+    std::uint32_t max_unack_msgs = 0;                   // Maximum number of unacknowledged messages (0 = unlimited).
+    std::uint32_t max_unack_bytes = 0;                  // Maximum number of unacknowledged bytes (0 = unlimited).
+    std::uint32_t max_msg_bytes = 0;                    // Maximum incomming message size (0 = unlimited).
 };
 
 struct server_params_t

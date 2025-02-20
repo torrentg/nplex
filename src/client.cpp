@@ -32,10 +32,10 @@ static int get_peeraddr(const uv_tcp_t *con, char *str, size_t len)
     if ((rc = uv_tcp_getpeername((const uv_tcp_t *) con, (struct sockaddr *) &sa, &sa_len)) != 0)
         return rc;
 
-    port = ntohs(addr_in->sin_port);
-
-    if ((rc = uv_ip_name((struct sockaddr *) &addr_in, ip, sizeof(ip))) != 0)
+    if ((rc = uv_ip_name((struct sockaddr *) &sa, ip, sizeof(ip))) != 0)
         return rc;
+
+    port = ntohs(addr_in->sin_port);
 
     if (addr_in->sin_family == AF_INET6)
         snprintf(str, len, "[%s]:%hu", ip, port);
@@ -47,13 +47,12 @@ static int get_peeraddr(const uv_tcp_t *con, char *str, size_t len)
 
 static void cb_close_client(uv_handle_t *handle)
 {
-    if (uv_is_closing(handle))
-        return;
-
     using namespace nplex;
+    auto *client = (client_t *) handle;
     auto *server = (server_t *) handle->loop->data;
     assert(server);
-    server->release_client((client_t *) handle);
+    client->m_state = client_t::state_e::CLOSED;
+    server->release_client(client);
 }
 
 static void cb_tcp_alloc(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf)
@@ -83,7 +82,7 @@ static void cb_tcp_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
         return;
     }
 
-    obj->input_msg.append(buf->base, buf->len);
+    obj->input_msg.append(buf->base, static_cast<std::size_t>(nread));
 
     while (obj->input_msg.size() >= sizeof(output_msg_t::len))
     {
@@ -105,11 +104,38 @@ static void cb_tcp_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
             return;
         }
 
-        // TODO: notify server received new message
-        //con->client()->on_msg_received(con, msg);
+        // TODO: notify server received message
+        //obj->client()->on_msg_received(obj, msg);
 
         obj->input_msg.erase(0, len);
     }
+}
+
+static void cb_tcp_write(uv_write_t *req, int status)
+{
+    using namespace nplex;
+
+    auto msg = std::unique_ptr<output_msg_t>((output_msg_t *) req);
+    auto *obj = (client_t *) req->handle;
+
+    assert(obj->stats.unack_msgs > 0);
+    assert(obj->stats.unack_bytes >= msg->length());
+
+    obj->stats.unack_msgs--;
+    obj->stats.unack_bytes -= msg->length();
+    obj->stats.sent_msgs++;
+    obj->stats.sent_bytes += msg->length();
+
+    if (status < 0) {
+        obj->disconnect(status);
+        return;
+    }
+
+    auto *ptr = flatbuffers::GetRoot<nplex::msgs::Message>(msg->content.data());
+    assert(ptr);
+
+    // TODO: notify server delivered message
+    //obj->client()->on_msg_delivered(obj, ptr);
 }
 
 // ==========================================================
@@ -147,7 +173,7 @@ nplex::client_t::client_t(uv_stream_t *stream) : m_state{state_e::CLOSED}
 CLIENT_ERR:
     m_error = rc;
     uv_close((uv_handle_t*) this, ::cb_close_client);
-    spdlog::warn(uv_strerror(rc));
+    SPDLOG_WARN(uv_strerror(rc));
 }
 
 nplex::client_t::~client_t()
@@ -164,4 +190,27 @@ void nplex::client_t::disconnect(int rc)
         m_error = rc;
 
     uv_close((uv_handle_t *) &m_tcp, ::cb_close_client);
+}
+
+void nplex::client_t::send(flatbuffers::DetachedBuffer &&buf)
+{
+    auto len = get_msg_length(buf);
+
+    if (stats.unack_msgs >= params.max_unack_msgs)
+        throw nplex_exception("Output message queue is full");
+
+    if (len > params.max_msg_bytes)
+        throw nplex_exception("Message too large");
+
+    if (stats.unack_bytes + len >= params.max_unack_msgs)
+        throw nplex_exception("Too many output unacked bytes");
+
+    auto *msg = new output_msg_t(std::move(buf));
+
+    assert(len == msg->length());
+
+    uv_write(&msg->req, (uv_stream_t *) &m_tcp, msg->buf.data(), (unsigned int) msg->buf.size(), ::cb_tcp_write);
+
+    stats.unack_msgs++;
+    stats.unack_bytes += static_cast<std::uint32_t>(len);
 }

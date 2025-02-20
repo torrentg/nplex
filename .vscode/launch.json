@@ -5,7 +5,7 @@
           "type": "cppdbg",
           "request": "launch",
           "program": "${workspaceFolder}/build/nplex",
-          "args": [ "-D", "temp" ],
+          "args": [ "-D", "test" ],
           "stopAtEntry": false,
           "cwd": "${workspaceFolder}/build",
           "environment": [],

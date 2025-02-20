@@ -1,4 +1,6 @@
+#include <limits>
 #include <fstream>
+#include <charconv>
 #include <algorithm>
 #include <fmt/core.h>
 #include "ini.h"
@@ -9,15 +11,14 @@
 #define GENERAL_MAX_CLIENTS "max-clients"
 #define GENERAL_DISABLE_FSYNC "disable-fsync"
 #define SECTION_DEFAULTS "defaults"
-#define DEFAULTS_ACTIVE "active"
-#define DEFAULTS_CAN_FORCE "can-force"
-#define DEFAULTS_MAX_CONNECTIONS "max-connections"
-#define DEFAULTS_KEEPALIVE_MILLIS "keepalive-millis"
 #define USER_PASSWORD "password"
 #define USER_ACTIVE "active"
 #define USER_CAN_FORCE "can-force"
 #define USER_MAX_CONNECTIONS "max-connections"
 #define USER_KEEPALIVE_MILLIS "keepalive-millis"
+#define USER_MAX_MSG_BYTES "max-msg-bytes"
+#define USER_MAX_UNACK_MSGS "max-unack-msgs"
+#define USER_MAX_UNACK_BYTES "max-unack-bytes"
 #define USER_ACL "acl"
 
 static std::string mode_to_string(std::uint8_t mode)
@@ -88,6 +89,34 @@ static std::uint32_t parse_uint32(const std::string_view &str)
     return static_cast<std::uint32_t>(num);
 }
 
+static std::uint32_t parse_bytes(const std::string_view &str)
+{
+    if (str.empty() || !isdigit(str[0]))
+        throw std::invalid_argument(fmt::format("Invalid bytes ({})", str));
+
+    float num = 0;
+
+    auto [ptr, ec] = std::from_chars(str.begin(), str.end(), num);
+    if (ec != std::errc())
+        throw std::invalid_argument(fmt::format("Invalid bytes ({})", str));
+
+    if (isspace(*ptr)) ptr++;
+    std::string_view unit{ptr};
+
+    if (unit.empty() || unit == "B")
+        num *= 1;
+    else if (unit == "KB")
+        num *= 1024;
+    else if (unit == "MB")
+        num *= 1024 * 1024;
+    else if (unit == "GB")
+        num *= 1024 * 1024 * 1024;
+    else
+        throw std::invalid_argument(fmt::format("Invalid bytes ({})", str));
+
+    return static_cast<uint32_t>(num);
+}
+
 static nplex::acl_t parse_acl(const std::string_view &str)
 {
     if (str.size() < 6 || str[4] != ':')
@@ -97,6 +126,31 @@ static nplex::acl_t parse_acl(const std::string_view &str)
     std::string pattern{str.substr(5)};
 
     return nplex::acl_t{mode, pattern};
+}
+
+static std::string format_double(double value)
+{
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(2) << value;
+    std::string str = oss.str();
+    
+    str.erase(str.find_last_not_of('0') + 1, std::string::npos);
+    if (str.back() == '.')
+        str.pop_back();
+    
+    return str;
+}
+
+static std::string bytes_to_string(std::uint32_t bytes)
+{
+    if (bytes < 1024)
+        return format_double(bytes);
+    else if (bytes < 1024 * 1024)
+        return fmt::format("{}KB", format_double(bytes / 1024.0));
+    else if (bytes < 1024 * 1024 * 1024)
+        return fmt::format("{}MB", format_double(bytes / (1024.0 * 1024)));
+    else
+        return fmt::format("{}GB", format_double(bytes / (1024.0 * 1024 * 1024)));
 }
 
 static int cb_inih_inner(void *obj, const char *section, const char *name, const char *value)
@@ -124,14 +178,20 @@ static int cb_inih_inner(void *obj, const char *section, const char *name, const
 
     if (strcmp(section, SECTION_DEFAULTS) == 0)
     {
-        if (strcmp(name, DEFAULTS_ACTIVE) == 0) {
+        if (strcmp(name, USER_ACTIVE) == 0) {
             params->default_user.active = parse_bool(value);
-        } else if (strcmp(name, DEFAULTS_CAN_FORCE) == 0) {
+        } else if (strcmp(name, USER_CAN_FORCE) == 0) {
             params->default_user.can_force = parse_bool(value);
-        } else if (strcmp(name, DEFAULTS_MAX_CONNECTIONS) == 0) {
+        } else if (strcmp(name, USER_MAX_CONNECTIONS) == 0) {
             params->default_user.max_connections = parse_uint32(value);
-        } else if (strcmp(name, DEFAULTS_KEEPALIVE_MILLIS) == 0) {
+        } else if (strcmp(name, USER_KEEPALIVE_MILLIS) == 0) {
             params->default_user.keepalive_millis = parse_uint32(value);
+        } else if (strcmp(name, USER_MAX_MSG_BYTES) == 0) {
+            params->default_user.max_msg_bytes = parse_bytes(value);
+        } else if (strcmp(name, USER_MAX_UNACK_MSGS) == 0) {
+            params->default_user.max_unack_msgs = parse_uint32(value);
+        } else if (strcmp(name, USER_MAX_UNACK_BYTES) == 0) {
+            params->default_user.max_unack_bytes = parse_bytes(value);
         } else {
             throw std::invalid_argument(fmt::format("Unrecognized entry ({})", name));
         }
@@ -159,6 +219,12 @@ static int cb_inih_inner(void *obj, const char *section, const char *name, const
         it->max_connections = parse_uint32(value);
     } else if (strcmp(name, USER_KEEPALIVE_MILLIS) == 0) {
         it->keepalive_millis = parse_uint32(value);
+    } else if (strcmp(name, USER_MAX_MSG_BYTES) == 0) {
+        it->max_msg_bytes = parse_bytes(value);
+    } else if (strcmp(name, USER_MAX_UNACK_MSGS) == 0) {
+        it->max_unack_msgs = parse_uint32(value);
+    } else if (strcmp(name, USER_MAX_UNACK_BYTES) == 0) {
+        it->max_unack_bytes = parse_bytes(value);
     } else if (strcmp(name, USER_ACL) == 0) {
         it->permissions.push_back(parse_acl(value));
     } else
@@ -190,15 +256,6 @@ void nplex::server_params_t::load(const fs::path &path)
         throw std::runtime_error("Unable to read file");
     else if (rc > 0)
         throw std::runtime_error("Syntax error at line " + std::to_string(rc));
-
-    int num_valid_users = 0;
-
-    for (const auto &user : users)
-        if (user.is_valid())
-            num_valid_users++;
-
-    if (num_valid_users == 0)
-        throw std::runtime_error("No valid users");
 }
 
 void nplex::server_params_t::save(const fs::path &path) const
@@ -216,10 +273,13 @@ void nplex::server_params_t::save(const fs::path &path) const
     ofs << std::endl;
 
     ofs << "[" << SECTION_DEFAULTS << "]" << std::endl;
-    ofs << DEFAULTS_ACTIVE << " = " << (default_user.active ? "true" : "false") << std::endl;
-    ofs << DEFAULTS_MAX_CONNECTIONS << " = " << default_user.max_connections << std::endl;
-    ofs << DEFAULTS_CAN_FORCE << " = " << (default_user.can_force ? "true" : "false") << std::endl;
-    ofs << DEFAULTS_KEEPALIVE_MILLIS << " = " << default_user.keepalive_millis << std::endl;
+    ofs << USER_ACTIVE << " = " << (default_user.active ? "true" : "false") << std::endl;
+    ofs << USER_MAX_CONNECTIONS << " = " << default_user.max_connections << std::endl;
+    ofs << USER_CAN_FORCE << " = " << (default_user.can_force ? "true" : "false") << std::endl;
+    ofs << USER_KEEPALIVE_MILLIS << " = " << default_user.keepalive_millis << std::endl;
+    ofs << USER_MAX_MSG_BYTES << " = " << ::bytes_to_string(default_user.max_msg_bytes) << std::endl;
+    ofs << USER_MAX_UNACK_MSGS << " = " << default_user.max_unack_msgs << std::endl;
+    ofs << USER_MAX_UNACK_BYTES << " = " << ::bytes_to_string(default_user.max_unack_bytes) << std::endl;
     ofs << std::endl;
 
     for (const auto &user : users)
@@ -237,6 +297,12 @@ void nplex::server_params_t::save(const fs::path &path) const
             ofs << USER_KEEPALIVE_MILLIS << " = " << user.keepalive_millis << std::endl;
         if (user.can_force != default_user.can_force)
             ofs << USER_CAN_FORCE << " = " << (user.can_force ? "true" : "false") << std::endl;
+        if (user.max_msg_bytes != default_user.max_msg_bytes)
+            ofs << USER_MAX_MSG_BYTES << " = " << ::bytes_to_string(user.max_msg_bytes) << std::endl;
+        if (user.max_unack_msgs != default_user.max_unack_msgs)
+            ofs << USER_MAX_UNACK_MSGS << " = " << user.max_unack_msgs << std::endl;
+        if (user.max_unack_bytes != default_user.max_unack_bytes)
+            ofs << USER_MAX_UNACK_BYTES << " = " << ::bytes_to_string(user.max_unack_bytes) << std::endl;  
 
         for (const auto &acl : user.permissions)
             if (!acl.pattern.empty())
