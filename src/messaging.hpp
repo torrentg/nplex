@@ -27,7 +27,7 @@ inline std::size_t get_msg_length(const flatbuffers::DetachedBuffer &buf) noexce
     return buf.size() + 3 * sizeof(std::uint32_t);
 }
 
-flatbuffers::DetachedBuffer create_login_msg(std::size_t cid, const std::string &user, const std::string &password);
+flatbuffers::DetachedBuffer create_login_msg(std::size_t cid, msgs::LoginCode code, rev_t rev0 = 0, rev_t crev = 0, bool can_force = false, std::uint32_t keepalive_millis = 0);
 flatbuffers::DetachedBuffer create_load_msg(std::size_t cid, msgs::LoadMode mode, rev_t rev);
 
 const nplex::msgs::Message * parse_network_msg(const char *ptr, size_t len);

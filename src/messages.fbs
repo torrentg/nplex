@@ -79,7 +79,6 @@ table LoginResponse
 {
     cid: uint64;                    // Correlation id (loginRequest cid)
     code: LoginCode = UNKNOW;       // Response code
-    session: string;                // Session assigned
     rev0: uint64;                   // Oldest revision available
     crev: uint64;                   // Current database revision
     can_force: bool;                // Can force transactions

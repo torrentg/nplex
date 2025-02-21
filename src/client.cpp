@@ -71,6 +71,7 @@ static void cb_tcp_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
     using namespace nplex;
 
     auto *obj = (client_t *) stream;
+    auto *server = (server_t *) stream->loop->data;
 
     if (nread < 0 || buf->base == NULL) {
         obj->disconnect((int) nread);
@@ -104,8 +105,7 @@ static void cb_tcp_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
             return;
         }
 
-        // TODO: notify server received message
-        //obj->client()->on_msg_received(obj, msg);
+        server->on_msg_received(obj, msg);
 
         obj->input_msg.erase(0, len);
     }

@@ -5,6 +5,7 @@
 #include <fmt/core.h>
 #include <sys/socket.h>
 #include <spdlog/spdlog.h>
+#include "messaging.hpp"
 #include "exception.hpp"
 #include "server.hpp"
 
@@ -239,23 +240,137 @@ void nplex::server_t::append_client(uv_stream_t *stream)
     SPDLOG_DEBUG("New connection: {}", m_clients.back()->m_addr.str());
 }
 
-void nplex::server_t::release_client(client_t *con)
+void nplex::server_t::release_client(client_t *client)
 {
-    if (!con)
+    if (!client)
         return;
 
     auto it = std::find_if(m_clients.begin(), m_clients.end(),
-                           [con](const std::unique_ptr<client_t> &con_) {
-                               return con_.get() == con;
+                           [client](const std::unique_ptr<client_t> &con_) {
+                               return con_.get() == client;
                            });
 
-    if (it != m_clients.end())
-    {
-        SPDLOG_INFO("Releasing connection {} - {}", 
-            con->m_addr.str(),
-            con->m_error ? uv_strerror(con->m_error) : "closed by peer"
-        );
+    if (it == m_clients.end())
+        return;
 
-        m_clients.erase(it);
+    if (client->m_user)
+    client->m_user->num_connections--;
+
+    SPDLOG_INFO("Releasing connection {} - {}", 
+        client->m_addr.str(),
+        client->m_error ? uv_strerror(client->m_error) : "closed by peer"
+    );
+
+    m_clients.erase(it);
+}
+
+void nplex::server_t::on_msg_delivered(client_t *client, const msgs::Message *msg)
+{
+    UNUSED(client);
+    UNUSED(msg);
+    // TODO: report client activity
+}
+
+void nplex::server_t::on_msg_received(client_t *client, const msgs::Message *msg)
+{
+    if (!msg || !msg->content()) {
+        client->disconnect(UV_EPROTO);
+        return;
     }
+
+    // TODO: report client activity
+
+    switch (msg->content_type())
+    {
+        case msgs::MsgContent::LOGIN_REQUEST:
+            process_login_request(client, msg->content_as_LOGIN_REQUEST());
+            break;
+
+        case msgs::MsgContent::LOAD_REQUEST:
+            process_load_request(client, msg->content_as_LOAD_REQUEST());
+            break;
+
+        case msgs::MsgContent::SUBMIT_REQUEST:
+            process_submit_request(client, msg->content_as_SUBMIT_REQUEST());
+            break;
+
+        case msgs::MsgContent::PING_REQUEST:
+            process_ping_request(client, msg->content_as_PING_REQUEST());
+            break;
+
+        default:
+            client->disconnect(UV_EPROTO);
+    }
+}
+
+void nplex::server_t::process_login_request(client_t *client, const nplex::msgs::LoginRequest *req)
+{
+    if (client->m_state != client_t::state_e::CONNECTED) {
+        client->disconnect(UV_EPROTO);
+        return;
+    }
+
+    if (!req || !req->user() || !req->password()) {
+        client->disconnect(UV_EPROTO);
+        return;
+    }
+
+    auto it = m_users.find(req->user()->str());
+    if (it == m_users.end()) {
+        client->disconnect(UV_EACCES);
+        return;
+    }
+
+    auto &user = it->second;
+
+    if (user->params.password != req->password()->str()) {
+        client->disconnect(UV_EACCES);
+        return;
+    }
+
+    if (user->num_connections + 1 >= user->params.max_connections) {
+        client->disconnect(UV_ECONNREFUSED);
+        return;
+    }
+
+    
+    client->m_user = user;
+    client->params.max_msg_bytes = user->params.max_msg_bytes;
+    client->params.max_unack_bytes = user->params.max_unack_bytes;
+    client->params.max_unack_msgs = user->params.max_unack_msgs;
+    user->num_connections++;
+
+    SPDLOG_INFO("User {} logged from {}", user->params.name, client->m_addr.str());
+
+    client->send(
+        create_login_msg(
+            req->cid(), 
+            msgs::LoginCode::AUTHORIZED,
+            0, //rev0,
+            0, //crev,
+            user->params.can_force,
+            user->params.keepalive_millis
+        ) 
+    );
+}
+
+void nplex::server_t::process_load_request(client_t *client, const nplex::msgs::LoadRequest *req)
+{
+    UNUSED(client);
+    UNUSED(req);
+    // TODO: implement
+}
+
+void nplex::server_t::process_submit_request(client_t *client, const nplex::msgs::SubmitRequest *req)
+{
+    UNUSED(client);
+    UNUSED(req);
+    // TODO: implement
+}
+
+void nplex::server_t::process_ping_request(client_t *client, const nplex::msgs::PingRequest *req)
+{
+    UNUSED(client);
+    UNUSED(req);
+    // TODO: implement
 }

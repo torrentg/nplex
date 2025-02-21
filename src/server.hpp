@@ -22,6 +22,8 @@ class server_t
     // methods called from libuv
     void append_client(uv_stream_t *stream);
     void release_client(client_t *con);
+    void on_msg_received(client_t *client, const msgs::Message *msg);
+    void on_msg_delivered(client_t *client, const msgs::Message *msg);
 
   private:
     server_params_t m_params;
@@ -32,6 +34,13 @@ class server_t
     std::map<std::string, user_ptr> m_users;
     std::list<client_ptr> m_clients;
     //cache_t m_cache;
+
+
+    void process_login_request(client_t *client, const nplex::msgs::LoginRequest *req);
+    void process_load_request(client_t *client, const nplex::msgs::LoadRequest *req);
+    void process_submit_request(client_t *client, const nplex::msgs::SubmitRequest *req);
+    void process_ping_request(client_t *client, const nplex::msgs::PingRequest *req);
+
 };
 
 } // namespace nplex

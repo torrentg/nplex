@@ -946,7 +946,6 @@ struct LoginResponseT : public ::flatbuffers::NativeTable {
   typedef LoginResponse TableType;
   uint64_t cid = 0;
   nplex::msgs::LoginCode code = nplex::msgs::LoginCode::UNKNOW;
-  std::string session{};
   uint64_t rev0 = 0;
   uint64_t crev = 0;
   bool can_force = false;
@@ -960,20 +959,16 @@ struct LoginResponse FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_CID = 4,
     VT_CODE = 6,
-    VT_SESSION = 8,
-    VT_REV0 = 10,
-    VT_CREV = 12,
-    VT_CAN_FORCE = 14,
-    VT_KEEPALIVE = 16
+    VT_REV0 = 8,
+    VT_CREV = 10,
+    VT_CAN_FORCE = 12,
+    VT_KEEPALIVE = 14
   };
   uint64_t cid() const {
     return GetField<uint64_t>(VT_CID, 0);
   }
   nplex::msgs::LoginCode code() const {
     return static_cast<nplex::msgs::LoginCode>(GetField<int8_t>(VT_CODE, 0));
-  }
-  const ::flatbuffers::String *session() const {
-    return GetPointer<const ::flatbuffers::String *>(VT_SESSION);
   }
   uint64_t rev0() const {
     return GetField<uint64_t>(VT_REV0, 0);
@@ -991,8 +986,6 @@ struct LoginResponse FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     return VerifyTableStart(verifier) &&
            VerifyField<uint64_t>(verifier, VT_CID, 8) &&
            VerifyField<int8_t>(verifier, VT_CODE, 1) &&
-           VerifyOffset(verifier, VT_SESSION) &&
-           verifier.VerifyString(session()) &&
            VerifyField<uint64_t>(verifier, VT_REV0, 8) &&
            VerifyField<uint64_t>(verifier, VT_CREV, 8) &&
            VerifyField<uint8_t>(verifier, VT_CAN_FORCE, 1) &&
@@ -1013,9 +1006,6 @@ struct LoginResponseBuilder {
   }
   void add_code(nplex::msgs::LoginCode code) {
     fbb_.AddElement<int8_t>(LoginResponse::VT_CODE, static_cast<int8_t>(code), 0);
-  }
-  void add_session(::flatbuffers::Offset<::flatbuffers::String> session) {
-    fbb_.AddOffset(LoginResponse::VT_SESSION, session);
   }
   void add_rev0(uint64_t rev0) {
     fbb_.AddElement<uint64_t>(LoginResponse::VT_REV0, rev0, 0);
@@ -1044,7 +1034,6 @@ inline ::flatbuffers::Offset<LoginResponse> CreateLoginResponse(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     uint64_t cid = 0,
     nplex::msgs::LoginCode code = nplex::msgs::LoginCode::UNKNOW,
-    ::flatbuffers::Offset<::flatbuffers::String> session = 0,
     uint64_t rev0 = 0,
     uint64_t crev = 0,
     bool can_force = false,
@@ -1054,7 +1043,6 @@ inline ::flatbuffers::Offset<LoginResponse> CreateLoginResponse(
   builder_.add_rev0(rev0);
   builder_.add_cid(cid);
   builder_.add_keepalive(keepalive);
-  builder_.add_session(session);
   builder_.add_can_force(can_force);
   builder_.add_code(code);
   return builder_.Finish();
@@ -1064,27 +1052,6 @@ struct LoginResponse::Traits {
   using type = LoginResponse;
   static auto constexpr Create = CreateLoginResponse;
 };
-
-inline ::flatbuffers::Offset<LoginResponse> CreateLoginResponseDirect(
-    ::flatbuffers::FlatBufferBuilder &_fbb,
-    uint64_t cid = 0,
-    nplex::msgs::LoginCode code = nplex::msgs::LoginCode::UNKNOW,
-    const char *session = nullptr,
-    uint64_t rev0 = 0,
-    uint64_t crev = 0,
-    bool can_force = false,
-    uint32_t keepalive = 0) {
-  auto session__ = session ? _fbb.CreateString(session) : 0;
-  return nplex::msgs::CreateLoginResponse(
-      _fbb,
-      cid,
-      code,
-      session__,
-      rev0,
-      crev,
-      can_force,
-      keepalive);
-}
 
 ::flatbuffers::Offset<LoginResponse> CreateLoginResponse(::flatbuffers::FlatBufferBuilder &_fbb, const LoginResponseT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
@@ -2202,7 +2169,6 @@ inline void LoginResponse::UnPackTo(LoginResponseT *_o, const ::flatbuffers::res
   (void)_resolver;
   { auto _e = cid(); _o->cid = _e; }
   { auto _e = code(); _o->code = _e; }
-  { auto _e = session(); if (_e) _o->session = _e->str(); }
   { auto _e = rev0(); _o->rev0 = _e; }
   { auto _e = crev(); _o->crev = _e; }
   { auto _e = can_force(); _o->can_force = _e; }
@@ -2219,7 +2185,6 @@ inline ::flatbuffers::Offset<LoginResponse> CreateLoginResponse(::flatbuffers::F
   struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const LoginResponseT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _cid = _o->cid;
   auto _code = _o->code;
-  auto _session = _o->session.empty() ? 0 : _fbb.CreateString(_o->session);
   auto _rev0 = _o->rev0;
   auto _crev = _o->crev;
   auto _can_force = _o->can_force;
@@ -2228,7 +2193,6 @@ inline ::flatbuffers::Offset<LoginResponse> CreateLoginResponse(::flatbuffers::F
       _fbb,
       _cid,
       _code,
-      _session,
       _rev0,
       _crev,
       _can_force,
