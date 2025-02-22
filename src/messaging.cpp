@@ -77,6 +77,24 @@ flatbuffers::DetachedBuffer nplex::create_load_msg(std::size_t cid, msgs::LoadMo
     return builder.Release();
 }
 
+flatbuffers::DetachedBuffer nplex::create_keepalive_msg(rev_t crev)
+{
+    using namespace msgs;
+    using namespace flatbuffers;
+
+    FlatBufferBuilder builder;
+
+    auto msg = CreateMessage(builder, 
+        MsgContent::LOAD_REQUEST,
+        CreateKeepAlivePush(builder, 
+            crev
+        ).Union()
+    );
+
+    builder.Finish(msg);
+    return builder.Release();
+}
+
 const nplex::msgs::Message * nplex::parse_network_msg(const char *ptr, size_t len)
 {
     using namespace nplex;

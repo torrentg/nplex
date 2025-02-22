@@ -24,7 +24,7 @@ struct client_t
     };
 
     uv_tcp_t m_tcp;
-    uv_timer_t m_timer;
+    uv_timer_t *m_timer = nullptr;
     addr_t m_addr;
     state_e m_state;
     int m_error = 0;
@@ -51,8 +51,10 @@ struct client_t
     client_t(uv_stream_t *stream);
     ~client_t();
 
-    void send(flatbuffers::DetachedBuffer &&buf);
     void disconnect(int rc = 0);
+    void send(flatbuffers::DetachedBuffer &&buf);
+    void send_keepalive();
+    void do_login(const user_ptr &user);
     std::string strerror() const;
 };
 

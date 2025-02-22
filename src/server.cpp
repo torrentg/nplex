@@ -130,6 +130,10 @@ static void cb_close_handle(uv_handle_t *handle, void *arg)
             else                // listener
                 uv_close(handle, nullptr);
             break;
+        case UV_TIMER:
+            SPDLOG_DEBUG("Closing UV_TIMER");
+            uv_close(handle, (uv_close_cb) free);
+            break;
         default:
             SPDLOG_DEBUG("Closing OTHER");
             uv_close(handle, (uv_close_cb) free);
@@ -355,11 +359,7 @@ void nplex::server_t::process_login_request(client_t *client, const nplex::msgs:
         return;
     }
 
-    client->m_user = user;
-    client->m_state = client_t::state_e::LOGGED;
-    client->params.max_msg_bytes = user->params.max_msg_bytes;
-    client->params.max_unack_bytes = user->params.max_unack_bytes;
-    client->params.max_unack_msgs = user->params.max_unack_msgs;
+    client->do_login(user);
     user->num_connections++;
 
     SPDLOG_INFO("User {} logged from {}", user->params.name, client->m_addr.str());
@@ -371,7 +371,7 @@ void nplex::server_t::process_login_request(client_t *client, const nplex::msgs:
             0, //rev0,
             0, //crev,
             user->params.can_force,
-            user->params.keepalive_millis
+            0 //user->params.keepalive_millis // TODO: set keepalive
         ) 
     );
 }

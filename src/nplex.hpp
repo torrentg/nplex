@@ -37,6 +37,8 @@
 #define ERR_USR_MAX_CONN 1007
 #define ERR_MAX_CONN 1008
 #define ERR_API_VERSION 1009
+#define ERR_TIMEOUT_STEP_1 1010
+#define ERR_TIMEOUT_STEP_2 1011
 
 
 #define UNUSED(x) (void)(x)

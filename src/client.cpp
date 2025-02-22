@@ -16,6 +16,11 @@
  *   - C-style pointer casting.
  */
 
+// maximum time between connection established and the login message received
+#define TIMEOUT_STEP_1 5000
+// maximum time between login and load messages reception
+#define TIMEOUT_STEP_2 5000
+
 // ==========================================================
 // Internal (static) functions
 // ==========================================================
@@ -128,6 +133,31 @@ static void cb_tcp_write(uv_write_t *req, int status)
     //obj->client()->on_msg_delivered(obj, ptr);
 }
 
+static void cb_timer_client(uv_timer_t *timer)
+{
+    auto *client = (nplex::client_t *) timer->data;
+    assert(client);
+
+    switch (client->m_state)
+    {
+        case nplex::client_t::state_e::CONNECTED:
+            client->disconnect(ERR_TIMEOUT_STEP_1);
+            break;
+        case nplex::client_t::state_e::LOGGED:
+            client->disconnect(ERR_TIMEOUT_STEP_2);
+            break;
+        case nplex::client_t::state_e::SYNCING:
+        case nplex::client_t::state_e::SYNCED:
+            client->send_keepalive();
+            break;
+        case nplex::client_t::state_e::CLOSED:
+            uv_timer_stop(timer);
+            uv_close((uv_handle_t *) timer, (uv_close_cb) free);
+            assert(false);
+            break;
+    }
+}
+
 // ==========================================================
 // nplex functions
 // ==========================================================
@@ -135,12 +165,21 @@ static void cb_tcp_write(uv_write_t *req, int status)
 void nplex::cb_close_client(uv_handle_t *handle)
 {
     using namespace nplex;
+
     auto *client = (client_t *) handle->data;
     assert(client);
+
     auto *server = (server_t *) handle->loop->data;
     assert(server);
+
+    // On Ctrl-C, all objects are destroyed with no order.
+    // m_timer is ignored because there are no guarantees about its state
+
     client->m_state = client_t::state_e::CLOSED;
+    client->m_timer = nullptr;
+
     server->release_client(client);
+
     delete client;
 }
 
@@ -172,6 +211,22 @@ nplex::client_t::client_t(uv_stream_t *stream) : m_state{state_e::CLOSED}
     if ((rc = get_peeraddr(&m_tcp, addr_str, sizeof(addr_str))) != 0)
         goto CLIENT_ERR;
 
+    if ((m_timer = (uv_timer_t *) malloc(sizeof(uv_timer_t))) == nullptr) {
+        rc = ENOMEM;
+        goto CLIENT_ERR;
+    }
+
+    if ((rc = uv_timer_init(stream->loop, m_timer)) != 0) {
+        free(m_timer);
+        m_timer = nullptr;
+        goto CLIENT_ERR;
+    }
+
+    m_timer->data = this;
+
+    if ((rc = uv_timer_start(m_timer, ::cb_timer_client, TIMEOUT_STEP_1, 0)) != 0)
+        goto CLIENT_ERR;
+
     m_tcp.data = this;
     m_addr = addr_t(addr_str);
     m_state = client_t::state_e::CONNECTED;
@@ -186,7 +241,8 @@ CLIENT_ERR:
 
 nplex::client_t::~client_t()
 {
-    //assert(m_state == state_e::CLOSED);
+    assert(m_state == state_e::CLOSED);
+    assert(m_timer == nullptr);
 }
 
 void nplex::client_t::disconnect(int rc)
@@ -196,6 +252,12 @@ void nplex::client_t::disconnect(int rc)
 
     if (!m_error)
         m_error = rc;
+
+    if (m_timer && !uv_is_closing((uv_handle_t *) m_timer)) {
+        uv_timer_stop(m_timer);
+        uv_close((uv_handle_t *) m_timer, (uv_close_cb) free);
+        m_timer = nullptr;
+    }
 
     uv_close((uv_handle_t *) &m_tcp, cb_close_client);
 }
@@ -223,6 +285,28 @@ void nplex::client_t::send(flatbuffers::DetachedBuffer &&buf)
     stats.unack_bytes += static_cast<std::uint32_t>(len);
 }
 
+void nplex::client_t::send_keepalive()
+{
+    // TODO: set current rev in keepalive message
+    send(create_keepalive_msg(23));
+
+    if (m_timer && uv_is_active((uv_handle_t *) m_timer))
+        uv_timer_again(m_timer);
+}
+
+void nplex::client_t::do_login(const user_ptr &user)
+{
+    m_user = user;
+    m_state = client_t::state_e::LOGGED;
+    params.max_msg_bytes = user->params.max_msg_bytes;
+    params.max_unack_bytes = user->params.max_unack_bytes;
+    params.max_unack_msgs = user->params.max_unack_msgs;
+
+    assert(m_timer);
+    uv_timer_stop(m_timer);
+    uv_timer_start(m_timer, ::cb_timer_client, TIMEOUT_STEP_2, 0);
+}
+
 std::string nplex::client_t::strerror() const
 {
     if (m_error < 0)
@@ -240,6 +324,8 @@ std::string nplex::client_t::strerror() const
         case ERR_USR_MAX_CONN: return "maximum usr connections reached";
         case ERR_MAX_CONN: return "maximum total connections reached";
         case ERR_API_VERSION: return "unsupported API version";
+        case ERR_TIMEOUT_STEP_1: return "login timeout";
+        case ERR_TIMEOUT_STEP_2: return "load timeout";
         default: return fmt::format("unknow error -{}-", m_error);
     }
 }
