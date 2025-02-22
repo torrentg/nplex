@@ -279,6 +279,7 @@ void nplex::server_t::on_msg_received(client_t *client, const msgs::Message *msg
         return;
     }
 
+    SPDLOG_DEBUG("Received {} from {}", msgs::EnumNameMsgContent(msg->content_type()), client->m_addr.str());
     // TODO: report client activity
 
     switch (msg->content_type())

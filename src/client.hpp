@@ -24,7 +24,8 @@ struct client_t
     };
 
     uv_tcp_t m_tcp;
-    uv_timer_t *m_timer = nullptr;
+    uv_timer_t *m_timer_disconnect = nullptr;
+    uv_timer_t *m_timer_keepalive = nullptr;
     addr_t m_addr;
     state_e m_state;
     int m_error = 0;

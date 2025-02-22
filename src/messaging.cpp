@@ -85,7 +85,7 @@ flatbuffers::DetachedBuffer nplex::create_keepalive_msg(rev_t crev)
     FlatBufferBuilder builder;
 
     auto msg = CreateMessage(builder, 
-        MsgContent::LOAD_REQUEST,
+        MsgContent::KEEPALIVE_PUSH,
         CreateKeepAlivePush(builder, 
             crev
         ).Union()

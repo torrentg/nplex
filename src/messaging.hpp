@@ -29,7 +29,7 @@ inline std::size_t get_msg_length(const flatbuffers::DetachedBuffer &buf) noexce
 
 flatbuffers::DetachedBuffer create_login_msg(std::size_t cid, msgs::LoginCode code, rev_t rev0 = 0, rev_t crev = 0, bool can_force = false, std::uint32_t keepalive_millis = 0);
 flatbuffers::DetachedBuffer create_load_msg(std::size_t cid, msgs::LoadMode mode, rev_t rev);
-flatbuffers::DetachedBuffer create_keepalive_msg(rev_t rev);
+flatbuffers::DetachedBuffer create_keepalive_msg(rev_t crev);
 
 const nplex::msgs::Message * parse_network_msg(const char *ptr, size_t len);
 

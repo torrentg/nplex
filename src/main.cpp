@@ -111,7 +111,7 @@ int main(int argc, char *argv[])
                 try {
                     params.log_level = parse_log_level(optarg);
                 }
-                catch (std::invalid_argument &e) {
+                catch (const std::invalid_argument &e) {
                     std::cerr << "Error: Invalid log level (" << optarg << ")." << std::endl;
                     return EXIT_FAILURE;
                 }

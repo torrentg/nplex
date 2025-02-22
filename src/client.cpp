@@ -133,7 +133,7 @@ static void cb_tcp_write(uv_write_t *req, int status)
     //obj->client()->on_msg_delivered(obj, ptr);
 }
 
-static void cb_timer_client(uv_timer_t *timer)
+static void cb_timer_disconnect(uv_timer_t *timer)
 {
     auto *client = (nplex::client_t *) timer->data;
     assert(client);
@@ -146,13 +146,27 @@ static void cb_timer_client(uv_timer_t *timer)
         case nplex::client_t::state_e::LOGGED:
             client->disconnect(ERR_TIMEOUT_STEP_2);
             break;
+        default:
+            uv_timer_stop(timer);
+            assert(false);
+            break;
+    }
+}
+
+static void cb_timer_keepalive(uv_timer_t *timer)
+{
+    auto *client = (nplex::client_t *) timer->data;
+    assert(client);
+
+    switch (client->m_state)
+    {
+        case nplex::client_t::state_e::LOGGED:
         case nplex::client_t::state_e::SYNCING:
         case nplex::client_t::state_e::SYNCED:
             client->send_keepalive();
             break;
-        case nplex::client_t::state_e::CLOSED:
+        default:
             uv_timer_stop(timer);
-            uv_close((uv_handle_t *) timer, (uv_close_cb) free);
             assert(false);
             break;
     }
@@ -173,10 +187,11 @@ void nplex::cb_close_client(uv_handle_t *handle)
     assert(server);
 
     // On Ctrl-C, all objects are destroyed with no order.
-    // m_timer is ignored because there are no guarantees about its state
+    // timers are ignored because there are no guarantees about its state
 
     client->m_state = client_t::state_e::CLOSED;
-    client->m_timer = nullptr;
+    client->m_timer_disconnect = nullptr;
+    client->m_timer_keepalive = nullptr;
 
     server->release_client(client);
 
@@ -211,20 +226,20 @@ nplex::client_t::client_t(uv_stream_t *stream) : m_state{state_e::CLOSED}
     if ((rc = get_peeraddr(&m_tcp, addr_str, sizeof(addr_str))) != 0)
         goto CLIENT_ERR;
 
-    if ((m_timer = (uv_timer_t *) malloc(sizeof(uv_timer_t))) == nullptr) {
+    if ((m_timer_disconnect = (uv_timer_t *) malloc(sizeof(uv_timer_t))) == nullptr) {
         rc = ENOMEM;
         goto CLIENT_ERR;
     }
 
-    if ((rc = uv_timer_init(stream->loop, m_timer)) != 0) {
-        free(m_timer);
-        m_timer = nullptr;
+    if ((rc = uv_timer_init(stream->loop, m_timer_disconnect)) != 0) {
+        free(m_timer_disconnect);
+        m_timer_disconnect = nullptr;
         goto CLIENT_ERR;
     }
 
-    m_timer->data = this;
+    m_timer_disconnect->data = this;
 
-    if ((rc = uv_timer_start(m_timer, ::cb_timer_client, TIMEOUT_STEP_1, 0)) != 0)
+    if ((rc = uv_timer_start(m_timer_disconnect, ::cb_timer_disconnect, TIMEOUT_STEP_1, 0)) != 0)
         goto CLIENT_ERR;
 
     m_tcp.data = this;
@@ -242,7 +257,8 @@ CLIENT_ERR:
 nplex::client_t::~client_t()
 {
     assert(m_state == state_e::CLOSED);
-    assert(m_timer == nullptr);
+    assert(m_timer_keepalive == nullptr);
+    assert(m_timer_disconnect == nullptr);
 }
 
 void nplex::client_t::disconnect(int rc)
@@ -253,10 +269,16 @@ void nplex::client_t::disconnect(int rc)
     if (!m_error)
         m_error = rc;
 
-    if (m_timer && !uv_is_closing((uv_handle_t *) m_timer)) {
-        uv_timer_stop(m_timer);
-        uv_close((uv_handle_t *) m_timer, (uv_close_cb) free);
-        m_timer = nullptr;
+    if (m_timer_disconnect && !uv_is_closing((uv_handle_t *) m_timer_disconnect)) {
+        uv_timer_stop(m_timer_disconnect);
+        uv_close((uv_handle_t *) m_timer_disconnect, (uv_close_cb) free);
+        m_timer_disconnect = nullptr;
+    }
+
+    if (m_timer_keepalive && !uv_is_closing((uv_handle_t *) m_timer_keepalive)) {
+        uv_timer_stop(m_timer_keepalive);
+        uv_close((uv_handle_t *) m_timer_keepalive, (uv_close_cb) free);
+        m_timer_keepalive = nullptr;
     }
 
     uv_close((uv_handle_t *) &m_tcp, cb_close_client);
@@ -283,6 +305,9 @@ void nplex::client_t::send(flatbuffers::DetachedBuffer &&buf)
 
     stats.unack_msgs++;
     stats.unack_bytes += static_cast<std::uint32_t>(len);
+
+    auto aux = flatbuffers::GetRoot<nplex::msgs::Message>(msg->content.data());
+    SPDLOG_DEBUG("Sent {} to {}", msgs::EnumNameMsgContent(aux->content_type()), m_addr.str());
 }
 
 void nplex::client_t::send_keepalive()
@@ -290,21 +315,46 @@ void nplex::client_t::send_keepalive()
     // TODO: set current rev in keepalive message
     send(create_keepalive_msg(23));
 
-    if (m_timer && uv_is_active((uv_handle_t *) m_timer))
-        uv_timer_again(m_timer);
+    if (m_timer_keepalive && uv_is_active((uv_handle_t *) m_timer_keepalive))
+        uv_timer_again(m_timer_keepalive);
 }
 
 void nplex::client_t::do_login(const user_ptr &user)
 {
+    int rc = 0;
+
     m_user = user;
     m_state = client_t::state_e::LOGGED;
     params.max_msg_bytes = user->params.max_msg_bytes;
     params.max_unack_bytes = user->params.max_unack_bytes;
     params.max_unack_msgs = user->params.max_unack_msgs;
 
-    assert(m_timer);
-    uv_timer_stop(m_timer);
-    uv_timer_start(m_timer, ::cb_timer_client, TIMEOUT_STEP_2, 0);
+    assert(m_timer_disconnect);
+    uv_timer_stop(m_timer_disconnect);
+    uv_timer_start(m_timer_disconnect, ::cb_timer_disconnect, TIMEOUT_STEP_2, 0);
+
+    auto keepalive_millis = user->params.keepalive_millis;
+    if (keepalive_millis == 0)
+        return;
+
+    assert(!m_timer_keepalive);
+
+    if ((m_timer_keepalive = (uv_timer_t *) malloc(sizeof(uv_timer_t))) == nullptr) {
+        disconnect(ENOMEM);
+        return;
+    }
+
+    if ((rc = uv_timer_init(m_tcp.loop, m_timer_keepalive)) != 0) {
+        free(m_timer_keepalive);
+        m_timer_keepalive = nullptr;
+        disconnect(rc);
+        return;
+    }
+
+    m_timer_keepalive->data = this;
+
+    if ((rc = uv_timer_start(m_timer_keepalive, ::cb_timer_keepalive, keepalive_millis, keepalive_millis)) != 0)
+        disconnect(rc);
 }
 
 std::string nplex::client_t::strerror() const
