@@ -1,7 +1,7 @@
 #pragma once
 
 #include <map>
-#include <list>
+#include <set>
 #include <uv.h>
 #include "params.hpp"
 #include "messages.hpp"
@@ -20,8 +20,8 @@ class server_t
     void run();
 
     // methods called from libuv
-    void append_client(uv_stream_t *stream);
-    void release_client(client_t *con);
+    void append_client(client_t *client);
+    void release_client(client_t *client);
     void on_msg_received(client_t *client, const msgs::Message *msg);
     void on_msg_delivered(client_t *client, const msgs::Message *msg);
 
@@ -32,9 +32,8 @@ class server_t
     std::unique_ptr<uv_async_t> m_async;
     std::unique_ptr<uv_signal_t> m_signal;
     std::map<std::string, user_ptr> m_users;
-    std::list<client_ptr> m_clients;
+    std::set<client_t *> m_clients;
     //cache_t m_cache;
-
 
     void process_login_request(client_t *client, const nplex::msgs::LoginRequest *req);
     void process_load_request(client_t *client, const nplex::msgs::LoadRequest *req);

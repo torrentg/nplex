@@ -24,6 +24,7 @@ struct client_t
     };
 
     uv_tcp_t m_tcp;
+    uv_timer_t m_timer;
     addr_t m_addr;
     state_e m_state;
     int m_error = 0;
@@ -33,9 +34,9 @@ struct client_t
     std::string input_msg;
 
     struct {
-        std::uint32_t max_unack_msgs = 0;
-        std::uint32_t max_unack_bytes = 0;
-        std::uint32_t max_msg_bytes = 1024;   // enough to receive login message
+        std::uint32_t max_unack_msgs = 1;       // enough to send login response
+        std::uint32_t max_unack_bytes = 1024;   // enough to send login response
+        std::uint32_t max_msg_bytes = 1024;     // enough to receive login message
     } params;
 
     struct {
@@ -52,6 +53,9 @@ struct client_t
 
     void send(flatbuffers::DetachedBuffer &&buf);
     void disconnect(int rc = 0);
+    std::string strerror() const;
 };
+
+void cb_close_client(uv_handle_t *handle);
 
 } // namespace nplex

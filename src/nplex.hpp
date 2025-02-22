@@ -11,6 +11,8 @@
 #define PROJECT_VERSION "0.1.0"
 #define PROJECT_URL "https://github.com/torrentg/nplex"
 
+#define API_VERSION 10
+
 #define CONFIG_FILENAME "nplex.ini"
 #define LOG_FILENAME "nplex.log"
 #define DATA_FILENAME "nplex.dat"
@@ -23,6 +25,19 @@
 #define NPLEX_READ   2
 #define NPLEX_UPDATE 4
 #define NPLEX_DELETE 8
+
+// Error codes
+#define ERR_CLOSED_BY_LOCAL 1000
+#define ERR_CLOSED_BY_PEER 1001
+#define ERR_MSG_ERROR 1002
+#define ERR_MSG_UNEXPECTED 1003
+#define ERR_MSG_SIZE 1004
+#define ERR_USR_NOT_FOUND 1005
+#define ERR_USR_INVL_PWD 1006
+#define ERR_USR_MAX_CONN 1007
+#define ERR_MAX_CONN 1008
+#define ERR_API_VERSION 1009
+
 
 #define UNUSED(x) (void)(x)
 

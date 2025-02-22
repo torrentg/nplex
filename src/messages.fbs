@@ -12,11 +12,10 @@ namespace nplex.msgs;
 enum LoginCode: byte {
     UNKNOW,
     AUTHORIZED,
-    INVALID_CREDENTIALS,
     COMPAT_MISMATCH,
-    ALREADY_LOGGED,
-    NOT_LEADER,
-    DBID_MISMATCH
+    INVALID_CREDENTIALS,
+    TOO_MANY_CONNECTIONS,
+    UNSUPPORTED_API_VERSION
 }
 
 enum SubmitCode : byte {
@@ -71,6 +70,7 @@ table Acl
 table LoginRequest
 {
     cid: uint64;                    // Correlation id (used to match responses to requests)
+    api_version: uint32;            // API version
     user: string;                   // User name
     password: string;               // User password
 }

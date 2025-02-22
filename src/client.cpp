@@ -45,16 +45,6 @@ static int get_peeraddr(const uv_tcp_t *con, char *str, size_t len)
     return 0;
 }
 
-static void cb_close_client(uv_handle_t *handle)
-{
-    using namespace nplex;
-    auto *client = (client_t *) handle;
-    auto *server = (server_t *) handle->loop->data;
-    assert(server);
-    client->m_state = client_t::state_e::CLOSED;
-    server->release_client(client);
-}
-
 static void cb_tcp_alloc(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf)
 {
     using namespace nplex;
@@ -73,13 +63,13 @@ static void cb_tcp_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
     auto *obj = (client_t *) stream;
     auto *server = (server_t *) stream->loop->data;
 
-    if (nread < 0 || buf->base == NULL) {
-        obj->disconnect((int) nread);
+    if (nread == UV_EOF || buf->base == NULL) {
+        obj->disconnect(ERR_CLOSED_BY_PEER);
         return;
     }
 
-    if (nread == UV_EOF) {
-        obj->disconnect(0);
+    if (nread < 0) {
+        obj->disconnect((int) nread);
         return;
     }
 
@@ -91,7 +81,7 @@ static void cb_tcp_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
         std::uint32_t len = ntohl(*((const std::uint32_t *) ptr));
 
         if (len > obj->params.max_msg_bytes) {
-            obj->disconnect(UV_EMSGSIZE);
+            obj->disconnect(ERR_MSG_SIZE);
             return;
         }
 
@@ -101,7 +91,7 @@ static void cb_tcp_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
         auto msg = parse_network_msg(ptr, len);
 
         if (!msg) {
-            obj->disconnect(UV_EREMOTEIO);
+            obj->disconnect(ERR_MSG_ERROR);
             return;
         }
 
@@ -139,6 +129,22 @@ static void cb_tcp_write(uv_write_t *req, int status)
 }
 
 // ==========================================================
+// nplex functions
+// ==========================================================
+
+void nplex::cb_close_client(uv_handle_t *handle)
+{
+    using namespace nplex;
+    auto *client = (client_t *) handle->data;
+    assert(client);
+    auto *server = (server_t *) handle->loop->data;
+    assert(server);
+    client->m_state = client_t::state_e::CLOSED;
+    server->release_client(client);
+    delete client;
+}
+
+// ==========================================================
 // server_t methods
 // ==========================================================
 
@@ -166,19 +172,21 @@ nplex::client_t::client_t(uv_stream_t *stream) : m_state{state_e::CLOSED}
     if ((rc = get_peeraddr(&m_tcp, addr_str, sizeof(addr_str))) != 0)
         goto CLIENT_ERR;
 
+    m_tcp.data = this;
     m_addr = addr_t(addr_str);
     m_state = client_t::state_e::CONNECTED;
     return;
 
 CLIENT_ERR:
     m_error = rc;
-    uv_close((uv_handle_t*) this, ::cb_close_client);
+    m_tcp.data = this;
+    uv_close((uv_handle_t*) this, cb_close_client);
     SPDLOG_WARN(uv_strerror(rc));
 }
 
 nplex::client_t::~client_t()
 {
-    assert(m_state == state_e::CLOSED);
+    //assert(m_state == state_e::CLOSED);
 }
 
 void nplex::client_t::disconnect(int rc)
@@ -189,7 +197,7 @@ void nplex::client_t::disconnect(int rc)
     if (!m_error)
         m_error = rc;
 
-    uv_close((uv_handle_t *) &m_tcp, ::cb_close_client);
+    uv_close((uv_handle_t *) &m_tcp, cb_close_client);
 }
 
 void nplex::client_t::send(flatbuffers::DetachedBuffer &&buf)
@@ -202,7 +210,7 @@ void nplex::client_t::send(flatbuffers::DetachedBuffer &&buf)
     if (len > params.max_msg_bytes)
         throw nplex_exception("Message too large");
 
-    if (stats.unack_bytes + len >= params.max_unack_msgs)
+    if (stats.unack_bytes + len >= params.max_unack_bytes)
         throw nplex_exception("Too many output unacked bytes");
 
     auto *msg = new output_msg_t(std::move(buf));
@@ -213,4 +221,25 @@ void nplex::client_t::send(flatbuffers::DetachedBuffer &&buf)
 
     stats.unack_msgs++;
     stats.unack_bytes += static_cast<std::uint32_t>(len);
+}
+
+std::string nplex::client_t::strerror() const
+{
+    if (m_error < 0)
+        return uv_strerror(m_error);
+
+    switch (m_error)
+    {
+        case ERR_CLOSED_BY_LOCAL: return "closed by server";
+        case ERR_CLOSED_BY_PEER: return "closed by peer";
+        case ERR_MSG_ERROR: return "invalid message";
+        case ERR_MSG_UNEXPECTED: return "unexpected message";
+        case ERR_MSG_SIZE: return "message too large";
+        case ERR_USR_NOT_FOUND: return "user not found";
+        case ERR_USR_INVL_PWD: return "invalid password";
+        case ERR_USR_MAX_CONN: return "maximum usr connections reached";
+        case ERR_MAX_CONN: return "maximum total connections reached";
+        case ERR_API_VERSION: return "unsupported API version";
+        default: return fmt::format("unknow error -{}-", m_error);
+    }
 }

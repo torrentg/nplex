@@ -79,44 +79,41 @@ struct MessageT;
 enum class LoginCode : int8_t {
   UNKNOW = 0,
   AUTHORIZED = 1,
-  INVALID_CREDENTIALS = 2,
-  COMPAT_MISMATCH = 3,
-  ALREADY_LOGGED = 4,
-  NOT_LEADER = 5,
-  DBID_MISMATCH = 6,
+  COMPAT_MISMATCH = 2,
+  INVALID_CREDENTIALS = 3,
+  TOO_MANY_CONNECTIONS = 4,
+  UNSUPPORTED_API_VERSION = 5,
   MIN = UNKNOW,
-  MAX = DBID_MISMATCH
+  MAX = UNSUPPORTED_API_VERSION
 };
 
-inline const LoginCode (&EnumValuesLoginCode())[7] {
+inline const LoginCode (&EnumValuesLoginCode())[6] {
   static const LoginCode values[] = {
     LoginCode::UNKNOW,
     LoginCode::AUTHORIZED,
-    LoginCode::INVALID_CREDENTIALS,
     LoginCode::COMPAT_MISMATCH,
-    LoginCode::ALREADY_LOGGED,
-    LoginCode::NOT_LEADER,
-    LoginCode::DBID_MISMATCH
+    LoginCode::INVALID_CREDENTIALS,
+    LoginCode::TOO_MANY_CONNECTIONS,
+    LoginCode::UNSUPPORTED_API_VERSION
   };
   return values;
 }
 
 inline const char * const *EnumNamesLoginCode() {
-  static const char * const names[8] = {
+  static const char * const names[7] = {
     "UNKNOW",
     "AUTHORIZED",
-    "INVALID_CREDENTIALS",
     "COMPAT_MISMATCH",
-    "ALREADY_LOGGED",
-    "NOT_LEADER",
-    "DBID_MISMATCH",
+    "INVALID_CREDENTIALS",
+    "TOO_MANY_CONNECTIONS",
+    "UNSUPPORTED_API_VERSION",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameLoginCode(LoginCode e) {
-  if (::flatbuffers::IsOutRange(e, LoginCode::UNKNOW, LoginCode::DBID_MISMATCH)) return "";
+  if (::flatbuffers::IsOutRange(e, LoginCode::UNKNOW, LoginCode::UNSUPPORTED_API_VERSION)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesLoginCode()[index];
 }
@@ -849,6 +846,7 @@ inline ::flatbuffers::Offset<Acl> CreateAclDirect(
 struct LoginRequestT : public ::flatbuffers::NativeTable {
   typedef LoginRequest TableType;
   uint64_t cid = 0;
+  uint32_t api_version = 0;
   std::string user{};
   std::string password{};
 };
@@ -859,11 +857,15 @@ struct LoginRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   struct Traits;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_CID = 4,
-    VT_USER = 6,
-    VT_PASSWORD = 8
+    VT_API_VERSION = 6,
+    VT_USER = 8,
+    VT_PASSWORD = 10
   };
   uint64_t cid() const {
     return GetField<uint64_t>(VT_CID, 0);
+  }
+  uint32_t api_version() const {
+    return GetField<uint32_t>(VT_API_VERSION, 0);
   }
   const ::flatbuffers::String *user() const {
     return GetPointer<const ::flatbuffers::String *>(VT_USER);
@@ -874,6 +876,7 @@ struct LoginRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint64_t>(verifier, VT_CID, 8) &&
+           VerifyField<uint32_t>(verifier, VT_API_VERSION, 4) &&
            VerifyOffset(verifier, VT_USER) &&
            verifier.VerifyString(user()) &&
            VerifyOffset(verifier, VT_PASSWORD) &&
@@ -891,6 +894,9 @@ struct LoginRequestBuilder {
   ::flatbuffers::uoffset_t start_;
   void add_cid(uint64_t cid) {
     fbb_.AddElement<uint64_t>(LoginRequest::VT_CID, cid, 0);
+  }
+  void add_api_version(uint32_t api_version) {
+    fbb_.AddElement<uint32_t>(LoginRequest::VT_API_VERSION, api_version, 0);
   }
   void add_user(::flatbuffers::Offset<::flatbuffers::String> user) {
     fbb_.AddOffset(LoginRequest::VT_USER, user);
@@ -912,12 +918,14 @@ struct LoginRequestBuilder {
 inline ::flatbuffers::Offset<LoginRequest> CreateLoginRequest(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     uint64_t cid = 0,
+    uint32_t api_version = 0,
     ::flatbuffers::Offset<::flatbuffers::String> user = 0,
     ::flatbuffers::Offset<::flatbuffers::String> password = 0) {
   LoginRequestBuilder builder_(_fbb);
   builder_.add_cid(cid);
   builder_.add_password(password);
   builder_.add_user(user);
+  builder_.add_api_version(api_version);
   return builder_.Finish();
 }
 
@@ -929,6 +937,7 @@ struct LoginRequest::Traits {
 inline ::flatbuffers::Offset<LoginRequest> CreateLoginRequestDirect(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     uint64_t cid = 0,
+    uint32_t api_version = 0,
     const char *user = nullptr,
     const char *password = nullptr) {
   auto user__ = user ? _fbb.CreateString(user) : 0;
@@ -936,6 +945,7 @@ inline ::flatbuffers::Offset<LoginRequest> CreateLoginRequestDirect(
   return nplex::msgs::CreateLoginRequest(
       _fbb,
       cid,
+      api_version,
       user__,
       password__);
 }
@@ -2136,6 +2146,7 @@ inline void LoginRequest::UnPackTo(LoginRequestT *_o, const ::flatbuffers::resol
   (void)_o;
   (void)_resolver;
   { auto _e = cid(); _o->cid = _e; }
+  { auto _e = api_version(); _o->api_version = _e; }
   { auto _e = user(); if (_e) _o->user = _e->str(); }
   { auto _e = password(); if (_e) _o->password = _e->str(); }
 }
@@ -2149,11 +2160,13 @@ inline ::flatbuffers::Offset<LoginRequest> CreateLoginRequest(::flatbuffers::Fla
   (void)_o;
   struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const LoginRequestT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _cid = _o->cid;
+  auto _api_version = _o->api_version;
   auto _user = _o->user.empty() ? 0 : _fbb.CreateString(_o->user);
   auto _password = _o->password.empty() ? 0 : _fbb.CreateString(_o->password);
   return nplex::msgs::CreateLoginRequest(
       _fbb,
       _cid,
+      _api_version,
       _user,
       _password);
 }

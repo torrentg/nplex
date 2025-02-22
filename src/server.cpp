@@ -9,6 +9,16 @@
 #include "exception.hpp"
 #include "server.hpp"
 
+/**
+ * Notes on this compilation unit:
+ * 
+ * When we use the libuv library we apply C conventions (instead of C++ ones):
+ *   - When in Rome, do as the Romans do.
+ *   - calloc/free are used instead of new/delete.
+ *   - pointers to static functions.
+ *   - C-style pointer casting.
+ */
+
 #define MAX_QUEUED_CONNECTIONS 128
 
 // ==========================================================
@@ -84,9 +94,9 @@ static struct sockaddr_storage get_sockaddr(uv_loop_t *loop, const nplex::addr_t
 static void cb_signal_handler(uv_signal_t *handle, int signum)
 {
     SPDLOG_WARN("Signal received: {}({})", ::strsignal(signum), signum);
-    uv_signal_stop(handle);
     uv_stop(handle->loop);
-    //uv_close((uv_handle_t*) handle, nullptr);
+    uv_signal_stop(handle);
+    uv_close((uv_handle_t*) handle, nullptr);
 }
 
 static void cb_process_async(uv_async_t *handle)
@@ -94,18 +104,6 @@ static void cb_process_async(uv_async_t *handle)
     UNUSED(handle);
     // auto *impl = (nplex::client_t::impl_t *) handle->loop->data;
     // impl->process_commands();
-}
-
-static void cb_close_connection(uv_handle_t *handle)
-{
-    if (uv_is_closing(handle))
-        return;
-
-    using namespace nplex;
-    auto *server = (server_t *) handle->loop->data;
-    assert(server);
-    server->release_client((client_t *) handle);
-    uv_close(handle, NULL);
 }
 
 static void cb_close_handle(uv_handle_t *handle, void *arg)
@@ -119,14 +117,18 @@ static void cb_close_handle(uv_handle_t *handle, void *arg)
     {
         case UV_SIGNAL:
             SPDLOG_DEBUG("Closing UV_SIGNAL");
+            uv_close(handle, nullptr);
             break;
         case UV_ASYNC:
             SPDLOG_DEBUG("Closing UV_ASYNC");
-            uv_close(handle, NULL);
+            uv_close(handle, nullptr);
             break;
         case UV_TCP:
             SPDLOG_DEBUG("Closing UV_TCP");
-            cb_close_connection(handle);
+            if (handle->data)   // connection
+                uv_close(handle, nplex::cb_close_client);
+            else                // listener
+                uv_close(handle, nullptr);
             break;
         default:
             SPDLOG_DEBUG("Closing OTHER");
@@ -144,7 +146,9 @@ static void cb_tcp_connection(uv_stream_t *stream, int status)
     using namespace nplex;
     auto *server = (server_t *) stream->loop->data;
     assert(server);
-    server->append_client(stream);
+
+    auto *client = new client_t(stream);
+    server->append_client(client);
 }
 
 static bool is_valid_user(const nplex::user_params_t &user)
@@ -221,23 +225,27 @@ void nplex::server_t::run()
     catch (const std::exception &e) {
         SPDLOG_ERROR("{}", e.what());
     }
-
+SPDLOG_ERROR("Event loop terminated (PRE)");
     uv_walk(m_loop.get(), ::cb_close_handle, NULL);
     while (uv_run(m_loop.get(), UV_RUN_NOWAIT));
     uv_loop_close(m_loop.get());
     SPDLOG_DEBUG("Event loop terminated");
 }
 
-void nplex::server_t::append_client(uv_stream_t *stream)
+void nplex::server_t::append_client(client_t *client)
 {
+    assert(client);
+
+    SPDLOG_DEBUG("New connection: {}", client->m_addr.str());
+
     if (m_clients.size() >= m_params.max_connections) {
         SPDLOG_WARN("Max clients reached: {}", m_params.max_connections);
+        client->disconnect(ERR_MAX_CONN);
         return;
     }
 
-    m_clients.emplace_back(std::make_unique<client_t>(stream));
+    m_clients.insert(client);
 
-    SPDLOG_DEBUG("New connection: {}", m_clients.back()->m_addr.str());
 }
 
 void nplex::server_t::release_client(client_t *client)
@@ -245,23 +253,12 @@ void nplex::server_t::release_client(client_t *client)
     if (!client)
         return;
 
-    auto it = std::find_if(m_clients.begin(), m_clients.end(),
-                           [client](const std::unique_ptr<client_t> &con_) {
-                               return con_.get() == client;
-                           });
+    m_clients.erase(client);
 
-    if (it == m_clients.end())
-        return;
+    if (client->m_user && client->m_user->num_connections > 0)
+        client->m_user->num_connections--;
 
-    if (client->m_user)
-    client->m_user->num_connections--;
-
-    SPDLOG_INFO("Releasing connection {} - {}", 
-        client->m_addr.str(),
-        client->m_error ? uv_strerror(client->m_error) : "closed by peer"
-    );
-
-    m_clients.erase(it);
+    SPDLOG_INFO("Connection {} closed ({})", client->m_addr.str(), client->strerror());
 }
 
 void nplex::server_t::on_msg_delivered(client_t *client, const msgs::Message *msg)
@@ -274,7 +271,7 @@ void nplex::server_t::on_msg_delivered(client_t *client, const msgs::Message *ms
 void nplex::server_t::on_msg_received(client_t *client, const msgs::Message *msg)
 {
     if (!msg || !msg->content()) {
-        client->disconnect(UV_EPROTO);
+        client->disconnect(ERR_MSG_ERROR);
         return;
     }
 
@@ -299,42 +296,67 @@ void nplex::server_t::on_msg_received(client_t *client, const msgs::Message *msg
             break;
 
         default:
-            client->disconnect(UV_EPROTO);
+            client->disconnect(ERR_MSG_ERROR);
     }
 }
 
 void nplex::server_t::process_login_request(client_t *client, const nplex::msgs::LoginRequest *req)
 {
     if (client->m_state != client_t::state_e::CONNECTED) {
-        client->disconnect(UV_EPROTO);
+        client->disconnect(ERR_MSG_UNEXPECTED);
         return;
     }
 
     if (!req || !req->user() || !req->password()) {
-        client->disconnect(UV_EPROTO);
+        client->disconnect(ERR_MSG_ERROR);
+        return;
+    }
+
+    if (req->api_version() != API_VERSION) {
+        client->send(
+            create_login_msg(
+                req->cid(), 
+                msgs::LoginCode::UNSUPPORTED_API_VERSION) 
+        );
+        client->disconnect(ERR_API_VERSION);
         return;
     }
 
     auto it = m_users.find(req->user()->str());
     if (it == m_users.end()) {
-        client->disconnect(UV_EACCES);
+        client->send(
+            create_login_msg(
+                req->cid(), 
+                msgs::LoginCode::INVALID_CREDENTIALS) 
+        );
+        client->disconnect(ERR_USR_NOT_FOUND);
         return;
     }
 
     auto &user = it->second;
 
     if (user->params.password != req->password()->str()) {
-        client->disconnect(UV_EACCES);
+        client->send(
+            create_login_msg(
+                req->cid(), 
+                msgs::LoginCode::INVALID_CREDENTIALS) 
+        );
+        client->disconnect(ERR_USR_INVL_PWD);
         return;
     }
 
     if (user->num_connections + 1 >= user->params.max_connections) {
-        client->disconnect(UV_ECONNREFUSED);
+        client->send(
+            create_login_msg(
+                req->cid(), 
+                msgs::LoginCode::TOO_MANY_CONNECTIONS) 
+        );
+        client->disconnect(ERR_USR_MAX_CONN);
         return;
     }
 
-    
     client->m_user = user;
+    client->m_state = client_t::state_e::LOGGED;
     client->params.max_msg_bytes = user->params.max_msg_bytes;
     client->params.max_unack_bytes = user->params.max_unack_bytes;
     client->params.max_unack_msgs = user->params.max_unack_msgs;
