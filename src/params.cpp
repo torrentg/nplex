@@ -157,7 +157,7 @@ static int cb_inih_inner(void *obj, const char *section, const char *name, const
 {
     using namespace nplex;
 
-    auto params = (server_params_t *) obj;
+    auto params = (params_t *) obj;
 
     if (strcmp(section, "") == 0)
     {
@@ -199,8 +199,8 @@ static int cb_inih_inner(void *obj, const char *section, const char *name, const
         return true;
     }
 
-    auto it = std::find_if(params->users.begin(), params->users.end(), [section](const user_params_t &x) { 
-        return (x.name == section); 
+    auto it = std::find_if(params->users.begin(), params->users.end(), [section](const user_t &usr) { 
+        return (usr.name == section); 
     });
 
     if (it == params->users.end()) {
@@ -243,12 +243,12 @@ static int cb_inih(void *obj, const char *section, const char *name, const char 
     }
 }
 
-nplex::server_params_t::server_params_t(const fs::path &path)
+nplex::params_t::params_t(const fs::path &path)
 {
     load(path);
 }
 
-void nplex::server_params_t::load(const fs::path &path)
+void nplex::params_t::load(const fs::path &path)
 {
     int rc = ini_parse(path.c_str(), cb_inih, this);
 
@@ -258,7 +258,7 @@ void nplex::server_params_t::load(const fs::path &path)
         throw std::runtime_error("Syntax error at line " + std::to_string(rc));
 }
 
-void nplex::server_params_t::save(const fs::path &path) const
+void nplex::params_t::save(const fs::path &path) const
 {
     std::ofstream ofs(path, std::ios::trunc);
 

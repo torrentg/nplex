@@ -68,7 +68,7 @@ static void version()
 
 int main(int argc, char *argv[])
 {
-    server_params_t params;
+    params_t params;
 
     // short options
     const char* const options1 = "dVhFD:l:a:N:";
@@ -205,7 +205,7 @@ int main(int argc, char *argv[])
             params.save(config_file);
         }
 
-        server_params_t aux(config_file);
+        params_t aux(config_file);
 
         aux.datadir = params.datadir;
         aux.addr = params.addr;
@@ -221,11 +221,11 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    journal_t journal;
+    std::shared_ptr<journal_t> journal;
 
     try {
-        journal = journal_t(fs::current_path());
-        journal.set_fsync(!params.disable_fsync);
+        journal = std::make_shared<journal_t>(fs::current_path());
+        journal->set_fsync(!params.disable_fsync);
     }
     catch (const std::exception &e) {
         std::cerr << "Error: " << e.what() << std::endl;
@@ -253,7 +253,8 @@ int main(int argc, char *argv[])
     }
 
     spdlog::set_level(to_spdlog(params.log_level));
-    spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%s:%#] [%l] %v");
+    // @see https://github.com/gabime/spdlog/wiki/3.-Custom-formatting#pattern-flags
+    spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%s:%#] [%-5l] %v");
 
     SPDLOG_ERROR("Welcome to nplex!");
     SPDLOG_WARN("Welcome to nplex!");

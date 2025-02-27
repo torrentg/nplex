@@ -121,35 +121,53 @@ inline const char *EnumNameLoginCode(LoginCode e) {
 enum class SubmitCode : int8_t {
   UNKNOW = 0,
   ACCEPTED = 1,
-  REJECTED = 2,
-  ERRORS = 3,
+  NO_MODIFICATIONS = 2,
+  ERROR_INVALID_REVISION = 3,
+  ERROR_INVALID_KEY = 4,
+  ERROR_DUPLICATE_KEY = 5,
+  ERROR_MESSAGE = 6,
+  REJECTED_PERMISSION = 7,
+  REJECTED_INTEGRITY = 8,
+  REJECTED_ENSURE = 9,
   MIN = UNKNOW,
-  MAX = ERRORS
+  MAX = REJECTED_ENSURE
 };
 
-inline const SubmitCode (&EnumValuesSubmitCode())[4] {
+inline const SubmitCode (&EnumValuesSubmitCode())[10] {
   static const SubmitCode values[] = {
     SubmitCode::UNKNOW,
     SubmitCode::ACCEPTED,
-    SubmitCode::REJECTED,
-    SubmitCode::ERRORS
+    SubmitCode::NO_MODIFICATIONS,
+    SubmitCode::ERROR_INVALID_REVISION,
+    SubmitCode::ERROR_INVALID_KEY,
+    SubmitCode::ERROR_DUPLICATE_KEY,
+    SubmitCode::ERROR_MESSAGE,
+    SubmitCode::REJECTED_PERMISSION,
+    SubmitCode::REJECTED_INTEGRITY,
+    SubmitCode::REJECTED_ENSURE
   };
   return values;
 }
 
 inline const char * const *EnumNamesSubmitCode() {
-  static const char * const names[5] = {
+  static const char * const names[11] = {
     "UNKNOW",
     "ACCEPTED",
-    "REJECTED",
-    "ERRORS",
+    "NO_MODIFICATIONS",
+    "ERROR_INVALID_REVISION",
+    "ERROR_INVALID_KEY",
+    "ERROR_DUPLICATE_KEY",
+    "ERROR_MESSAGE",
+    "REJECTED_PERMISSION",
+    "REJECTED_INTEGRITY",
+    "REJECTED_ENSURE",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameSubmitCode(SubmitCode e) {
-  if (::flatbuffers::IsOutRange(e, SubmitCode::UNKNOW, SubmitCode::ERRORS)) return "";
+  if (::flatbuffers::IsOutRange(e, SubmitCode::UNKNOW, SubmitCode::REJECTED_ENSURE)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesSubmitCode()[index];
 }
@@ -960,6 +978,11 @@ struct LoginResponseT : public ::flatbuffers::NativeTable {
   uint64_t crev = 0;
   bool can_force = false;
   uint32_t keepalive = 0;
+  std::vector<std::unique_ptr<nplex::msgs::AclT>> permissions{};
+  LoginResponseT() = default;
+  LoginResponseT(const LoginResponseT &o);
+  LoginResponseT(LoginResponseT&&) FLATBUFFERS_NOEXCEPT = default;
+  LoginResponseT &operator=(LoginResponseT o) FLATBUFFERS_NOEXCEPT;
 };
 
 struct LoginResponse FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
@@ -972,7 +995,8 @@ struct LoginResponse FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_REV0 = 8,
     VT_CREV = 10,
     VT_CAN_FORCE = 12,
-    VT_KEEPALIVE = 14
+    VT_KEEPALIVE = 14,
+    VT_PERMISSIONS = 16
   };
   uint64_t cid() const {
     return GetField<uint64_t>(VT_CID, 0);
@@ -992,6 +1016,9 @@ struct LoginResponse FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   uint32_t keepalive() const {
     return GetField<uint32_t>(VT_KEEPALIVE, 0);
   }
+  const ::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::Acl>> *permissions() const {
+    return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::Acl>> *>(VT_PERMISSIONS);
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint64_t>(verifier, VT_CID, 8) &&
@@ -1000,6 +1027,9 @@ struct LoginResponse FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            VerifyField<uint64_t>(verifier, VT_CREV, 8) &&
            VerifyField<uint8_t>(verifier, VT_CAN_FORCE, 1) &&
            VerifyField<uint32_t>(verifier, VT_KEEPALIVE, 4) &&
+           VerifyOffset(verifier, VT_PERMISSIONS) &&
+           verifier.VerifyVector(permissions()) &&
+           verifier.VerifyVectorOfTables(permissions()) &&
            verifier.EndTable();
   }
   LoginResponseT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -1029,6 +1059,9 @@ struct LoginResponseBuilder {
   void add_keepalive(uint32_t keepalive) {
     fbb_.AddElement<uint32_t>(LoginResponse::VT_KEEPALIVE, keepalive, 0);
   }
+  void add_permissions(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::Acl>>> permissions) {
+    fbb_.AddOffset(LoginResponse::VT_PERMISSIONS, permissions);
+  }
   explicit LoginResponseBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -1047,11 +1080,13 @@ inline ::flatbuffers::Offset<LoginResponse> CreateLoginResponse(
     uint64_t rev0 = 0,
     uint64_t crev = 0,
     bool can_force = false,
-    uint32_t keepalive = 0) {
+    uint32_t keepalive = 0,
+    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::Acl>>> permissions = 0) {
   LoginResponseBuilder builder_(_fbb);
   builder_.add_crev(crev);
   builder_.add_rev0(rev0);
   builder_.add_cid(cid);
+  builder_.add_permissions(permissions);
   builder_.add_keepalive(keepalive);
   builder_.add_can_force(can_force);
   builder_.add_code(code);
@@ -1062,6 +1097,27 @@ struct LoginResponse::Traits {
   using type = LoginResponse;
   static auto constexpr Create = CreateLoginResponse;
 };
+
+inline ::flatbuffers::Offset<LoginResponse> CreateLoginResponseDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    uint64_t cid = 0,
+    nplex::msgs::LoginCode code = nplex::msgs::LoginCode::UNKNOW,
+    uint64_t rev0 = 0,
+    uint64_t crev = 0,
+    bool can_force = false,
+    uint32_t keepalive = 0,
+    const std::vector<::flatbuffers::Offset<nplex::msgs::Acl>> *permissions = nullptr) {
+  auto permissions__ = permissions ? _fbb.CreateVector<::flatbuffers::Offset<nplex::msgs::Acl>>(*permissions) : 0;
+  return nplex::msgs::CreateLoginResponse(
+      _fbb,
+      cid,
+      code,
+      rev0,
+      crev,
+      can_force,
+      keepalive,
+      permissions__);
+}
 
 ::flatbuffers::Offset<LoginResponse> CreateLoginResponse(::flatbuffers::FlatBufferBuilder &_fbb, const LoginResponseT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
@@ -2171,6 +2227,28 @@ inline ::flatbuffers::Offset<LoginRequest> CreateLoginRequest(::flatbuffers::Fla
       _password);
 }
 
+inline LoginResponseT::LoginResponseT(const LoginResponseT &o)
+      : cid(o.cid),
+        code(o.code),
+        rev0(o.rev0),
+        crev(o.crev),
+        can_force(o.can_force),
+        keepalive(o.keepalive) {
+  permissions.reserve(o.permissions.size());
+  for (const auto &permissions_ : o.permissions) { permissions.emplace_back((permissions_) ? new nplex::msgs::AclT(*permissions_) : nullptr); }
+}
+
+inline LoginResponseT &LoginResponseT::operator=(LoginResponseT o) FLATBUFFERS_NOEXCEPT {
+  std::swap(cid, o.cid);
+  std::swap(code, o.code);
+  std::swap(rev0, o.rev0);
+  std::swap(crev, o.crev);
+  std::swap(can_force, o.can_force);
+  std::swap(keepalive, o.keepalive);
+  std::swap(permissions, o.permissions);
+  return *this;
+}
+
 inline LoginResponseT *LoginResponse::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
   auto _o = std::make_unique<LoginResponseT>();
   UnPackTo(_o.get(), _resolver);
@@ -2186,6 +2264,7 @@ inline void LoginResponse::UnPackTo(LoginResponseT *_o, const ::flatbuffers::res
   { auto _e = crev(); _o->crev = _e; }
   { auto _e = can_force(); _o->can_force = _e; }
   { auto _e = keepalive(); _o->keepalive = _e; }
+  { auto _e = permissions(); if (_e) { _o->permissions.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { if(_o->permissions[_i]) { _e->Get(_i)->UnPackTo(_o->permissions[_i].get(), _resolver); } else { _o->permissions[_i] = std::unique_ptr<nplex::msgs::AclT>(_e->Get(_i)->UnPack(_resolver)); }; } } else { _o->permissions.resize(0); } }
 }
 
 inline ::flatbuffers::Offset<LoginResponse> LoginResponse::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const LoginResponseT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
@@ -2202,6 +2281,7 @@ inline ::flatbuffers::Offset<LoginResponse> CreateLoginResponse(::flatbuffers::F
   auto _crev = _o->crev;
   auto _can_force = _o->can_force;
   auto _keepalive = _o->keepalive;
+  auto _permissions = _o->permissions.size() ? _fbb.CreateVector<::flatbuffers::Offset<nplex::msgs::Acl>> (_o->permissions.size(), [](size_t i, _VectorArgs *__va) { return CreateAcl(*__va->__fbb, __va->__o->permissions[i].get(), __va->__rehasher); }, &_va ) : 0;
   return nplex::msgs::CreateLoginResponse(
       _fbb,
       _cid,
@@ -2209,7 +2289,8 @@ inline ::flatbuffers::Offset<LoginResponse> CreateLoginResponse(::flatbuffers::F
       _rev0,
       _crev,
       _can_force,
-      _keepalive);
+      _keepalive,
+      _permissions);
 }
 
 inline PingRequestT *PingRequest::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {

@@ -84,7 +84,8 @@
     "*.ipp": "cpp",
     "csetjmp": "cpp",
     "ini.h": "c",
-    "filesystem": "cpp"
+    "filesystem": "cpp",
+    "cassert": "cpp"
   },
   "C_Cpp.default.cStandard": "c17",
   "C_Cpp.default.includePath": [

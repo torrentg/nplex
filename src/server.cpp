@@ -102,7 +102,7 @@ static void cb_signal_handler(uv_signal_t *handle, int signum)
 static void cb_process_async(uv_async_t *handle)
 {
     UNUSED(handle);
-    // auto *impl = (nplex::client_t::impl_t *) handle->loop->data;
+    // auto *impl = (nplex::session_t::impl_t *) handle->loop->data;
     // impl->process_commands();
 }
 
@@ -126,7 +126,7 @@ static void cb_close_handle(uv_handle_t *handle, void *arg)
         case UV_TCP:
             SPDLOG_DEBUG("Closing UV_TCP");
             if (handle->data)   // connection
-                uv_close(handle, nplex::cb_close_client);
+                uv_close(handle, nplex::cb_close_session);
             else                // listener
                 uv_close(handle, nullptr);
             break;
@@ -151,11 +151,11 @@ static void cb_tcp_connection(uv_stream_t *stream, int status)
     auto *server = (server_t *) stream->loop->data;
     assert(server);
 
-    auto *client = new client_t(stream);
-    server->append_client(client);
+    auto *session = new session_t(stream);
+    server->append_session(session);
 }
 
-static bool is_valid_user(const nplex::user_params_t &user)
+static bool is_valid_user(const nplex::user_t &user)
 {
     return (user.active && !user.password.empty() && user.max_connections > 0 && !user.permissions.empty());
 }
@@ -164,19 +164,19 @@ static bool is_valid_user(const nplex::user_params_t &user)
 // server_t methods
 // ==========================================================
 
-nplex::server_t::server_t(const server_params_t &params) : m_params(params)
+nplex::server_t::server_t(const params_t &params) : m_params(params)
 {
     int rc = 0;
 
-    for (const auto &user_params : params.users)
+    for (const auto &user : params.users)
     {
-        if (!is_valid_user(user_params))
+        if (!is_valid_user(user))
             continue;
 
-        if (m_users.contains(user_params.name))
-            throw nplex_exception(fmt::format("Duplicated user ({})", user_params.name));
+        if (m_users.contains(user.name))
+            throw nplex_exception(fmt::format("Duplicated user ({})", user.name));
 
-        m_users[user_params.name] = std::make_shared<user_t>(user_params);
+        m_users[user.name] = std::make_shared<user_t>(user);
     }
 
     if (m_users.empty())
@@ -236,164 +236,163 @@ SPDLOG_ERROR("Event loop terminated (PRE)");
     SPDLOG_DEBUG("Event loop terminated");
 }
 
-void nplex::server_t::append_client(client_t *client)
+void nplex::server_t::append_session(session_t *session)
 {
-    assert(client);
+    assert(session);
 
-    SPDLOG_DEBUG("New connection: {}", client->m_addr.str());
+    SPDLOG_DEBUG("New connection: {}", session->m_addr.str());
 
-    if (m_clients.size() >= m_params.max_connections) {
+    if (m_sessions.size() >= m_params.max_connections) {
         SPDLOG_WARN("Max clients reached: {}", m_params.max_connections);
-        client->disconnect(ERR_MAX_CONN);
+        session->disconnect(ERR_MAX_CONN);
         return;
     }
 
-    m_clients.insert(client);
+    m_sessions.insert(session);
 
 }
 
-void nplex::server_t::release_client(client_t *client)
+void nplex::server_t::release_session(session_t *session)
 {
-    if (!client)
+    if (!session)
         return;
 
-    m_clients.erase(client);
+    m_sessions.erase(session);
 
-    if (client->m_user && client->m_user->num_connections > 0)
-        client->m_user->num_connections--;
+    if (session->m_user && session->m_user->num_connections > 0)
+    session->m_user->num_connections--;
 
-    SPDLOG_INFO("Connection {} closed ({})", client->m_addr.str(), client->strerror());
+    SPDLOG_INFO("Connection {} closed ({})", session->m_addr.str(), session->strerror());
 }
 
-void nplex::server_t::on_msg_delivered(client_t *client, const msgs::Message *msg)
+void nplex::server_t::on_msg_delivered(session_t *session, const msgs::Message *msg)
 {
-    UNUSED(client);
+    UNUSED(session);
     UNUSED(msg);
     // TODO: report client activity
 }
 
-void nplex::server_t::on_msg_received(client_t *client, const msgs::Message *msg)
+void nplex::server_t::on_msg_received(session_t *session, const msgs::Message *msg)
 {
     if (!msg || !msg->content()) {
-        client->disconnect(ERR_MSG_ERROR);
+        session->disconnect(ERR_MSG_ERROR);
         return;
     }
 
-    SPDLOG_DEBUG("Received {} from {}", msgs::EnumNameMsgContent(msg->content_type()), client->m_addr.str());
+    SPDLOG_DEBUG("Received {} from {}", msgs::EnumNameMsgContent(msg->content_type()), session->m_addr.str());
     // TODO: report client activity
 
     switch (msg->content_type())
     {
         case msgs::MsgContent::LOGIN_REQUEST:
-            process_login_request(client, msg->content_as_LOGIN_REQUEST());
+            process_login_request(session, msg->content_as_LOGIN_REQUEST());
             break;
 
         case msgs::MsgContent::LOAD_REQUEST:
-            process_load_request(client, msg->content_as_LOAD_REQUEST());
+            process_load_request(session, msg->content_as_LOAD_REQUEST());
             break;
 
         case msgs::MsgContent::SUBMIT_REQUEST:
-            process_submit_request(client, msg->content_as_SUBMIT_REQUEST());
+            process_submit_request(session, msg->content_as_SUBMIT_REQUEST());
             break;
 
         case msgs::MsgContent::PING_REQUEST:
-            process_ping_request(client, msg->content_as_PING_REQUEST());
+            process_ping_request(session, msg->content_as_PING_REQUEST());
             break;
 
         default:
-            client->disconnect(ERR_MSG_ERROR);
+            session->disconnect(ERR_MSG_ERROR);
     }
 }
 
-void nplex::server_t::process_login_request(client_t *client, const nplex::msgs::LoginRequest *req)
+void nplex::server_t::process_login_request(session_t *session, const nplex::msgs::LoginRequest *req)
 {
-    if (client->m_state != client_t::state_e::CONNECTED) {
-        client->disconnect(ERR_MSG_UNEXPECTED);
+    if (session->m_state != session_t::state_e::CONNECTED) {
+        session->disconnect(ERR_MSG_UNEXPECTED);
         return;
     }
 
     if (!req || !req->user() || !req->password()) {
-        client->disconnect(ERR_MSG_ERROR);
+        session->disconnect(ERR_MSG_ERROR);
         return;
     }
 
     if (req->api_version() != API_VERSION) {
-        client->send(
+        session->send(
             create_login_msg(
                 req->cid(), 
                 msgs::LoginCode::UNSUPPORTED_API_VERSION) 
         );
-        client->disconnect(ERR_API_VERSION);
+        session->disconnect(ERR_API_VERSION);
         return;
     }
 
     auto it = m_users.find(req->user()->str());
     if (it == m_users.end()) {
-        client->send(
+        session->send(
             create_login_msg(
                 req->cid(), 
                 msgs::LoginCode::INVALID_CREDENTIALS) 
         );
-        client->disconnect(ERR_USR_NOT_FOUND);
+        session->disconnect(ERR_USR_NOT_FOUND);
         return;
     }
 
     auto &user = it->second;
 
-    if (user->params.password != req->password()->str()) {
-        client->send(
+    if (user->password != req->password()->str()) {
+        session->send(
             create_login_msg(
                 req->cid(), 
                 msgs::LoginCode::INVALID_CREDENTIALS) 
         );
-        client->disconnect(ERR_USR_INVL_PWD);
+        session->disconnect(ERR_USR_INVL_PWD);
         return;
     }
 
-    if (user->num_connections + 1 >= user->params.max_connections) {
-        client->send(
+    if (user->num_connections + 1 >= user->max_connections) {
+        session->send(
             create_login_msg(
                 req->cid(), 
                 msgs::LoginCode::TOO_MANY_CONNECTIONS) 
         );
-        client->disconnect(ERR_USR_MAX_CONN);
+        session->disconnect(ERR_USR_MAX_CONN);
         return;
     }
 
-    client->do_login(user);
+    session->do_login(user);
     user->num_connections++;
 
-    SPDLOG_INFO("User {} logged from {}", user->params.name, client->m_addr.str());
+    SPDLOG_INFO("User {} logged from {}", user->name, session->m_addr.str());
 
-    client->send(
+    session->send(
         create_login_msg(
             req->cid(), 
             msgs::LoginCode::AUTHORIZED,
             0, //rev0,
             0, //crev,
-            user->params.can_force,
-            0 //user->params.keepalive_millis // TODO: set keepalive
+            *user
         ) 
     );
 }
 
-void nplex::server_t::process_load_request(client_t *client, const nplex::msgs::LoadRequest *req)
+void nplex::server_t::process_load_request(session_t *session, const nplex::msgs::LoadRequest *req)
 {
-    UNUSED(client);
+    UNUSED(session);
     UNUSED(req);
     // TODO: implement
 }
 
-void nplex::server_t::process_submit_request(client_t *client, const nplex::msgs::SubmitRequest *req)
+void nplex::server_t::process_submit_request(session_t *session, const nplex::msgs::SubmitRequest *req)
 {
-    UNUSED(client);
+    UNUSED(session);
     UNUSED(req);
     // TODO: implement
 }
 
-void nplex::server_t::process_ping_request(client_t *client, const nplex::msgs::PingRequest *req)
+void nplex::server_t::process_ping_request(session_t *session, const nplex::msgs::PingRequest *req)
 {
-    UNUSED(client);
+    UNUSED(session);
     UNUSED(req);
     // TODO: implement
 }

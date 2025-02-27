@@ -48,7 +48,7 @@ namespace nplex {
 //! Database revision number.
 using rev_t = std::size_t;
 
-//! Database key type (formatted like a path, ex: /path/to/file).
+//! Database key type.
 using key_t = gto::cstring;
 
 //! Database timestamps (milliseconds from epoch time).
@@ -70,6 +70,7 @@ using meta_ptr = std::shared_ptr<meta_t>;
 class value_t
 {
     static const gto::cstring EMPTY;
+    friend struct cache_t;
 
   private:
     gto::cstring m_data;
@@ -141,5 +142,10 @@ inline std::string to_string(log_level_e level)
         default: return "unknown";
     }
 }
+
+// Key support functions.
+inline bool is_valid_key(const std::string_view &key) { return !key.empty(); }
+inline bool is_valid_key(const char *key) { return (key && is_valid_key(std::string_view{key})); }
+inline bool is_valid_key(const key_t &key) { return is_valid_key(key.view()); }
 
 } // namespace nplex

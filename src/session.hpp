@@ -1,19 +1,19 @@
 #pragma once
 
 #include <uv.h>
+#include <flatbuffers/flatbuffers.h>
 #include "addr.hpp"
 #include "user.hpp"
 #include "params.hpp"
-#include "flatbuffers/flatbuffers.h"
 
 namespace nplex {
 
 /**
- * Internal class representing a client.
+ * Internal class representing a client session.
  * 
  * server_t is accessed via tcp.loop->data.
  */
-struct client_t
+struct session_t
 {
     enum class state_e : std::uint8_t {
         CONNECTED,
@@ -49,8 +49,8 @@ struct client_t
         std::size_t sent_bytes = 0;
     } stats;
 
-    client_t(uv_stream_t *stream);
-    ~client_t();
+    session_t(uv_stream_t *stream);
+    ~session_t();
 
     void disconnect(int rc = 0);
     void send(flatbuffers::DetachedBuffer &&buf);
@@ -59,6 +59,6 @@ struct client_t
     std::string strerror() const;
 };
 
-void cb_close_client(uv_handle_t *handle);
+void cb_close_session(uv_handle_t *handle);
 
 } // namespace nplex

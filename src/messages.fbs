@@ -21,8 +21,14 @@ enum LoginCode: byte {
 enum SubmitCode : byte {
     UNKNOW,
     ACCEPTED,
-    REJECTED,
-    ERRORS
+    NO_MODIFICATIONS,
+    ERROR_INVALID_REVISION,
+    ERROR_INVALID_KEY,
+    ERROR_DUPLICATE_KEY,
+    ERROR_MESSAGE,
+    REJECTED_PERMISSION,
+    REJECTED_INTEGRITY,
+    REJECTED_ENSURE
 }
 
 enum LoadMode: byte
@@ -83,7 +89,7 @@ table LoginResponse
     crev: uint64;                   // Current database revision
     can_force: bool;                // Can force transactions
     keepalive: uint32;              // Keepalive timeout (in milliseconds)
-    // TODO: add permissions
+    permissions: [Acl];             // List of acls
 }
 
 table PingRequest

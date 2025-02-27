@@ -1,5 +1,13 @@
+# TODO
 
 * Supports signal indicating log-rotate (only if daemonized)
 * Trap and manage SIGKILL(9)
-* Close client connection elapsed some time without data
 * Add check data (-c) command-line option
+* Ensures needs to be an Acl? Can it be a simple string?
+* strerror() differentiates depending on error level (info, waning, etc)
+* Save also deletes into cache + add purge() method
+
+## Useful commands
+
+* cloc --exclude-content="automatically generated" include src test
+* cppcheck --enable=all --inconclusive --std=c++20 --force --suppress=missingIncludeSystem --suppress=unusedFunction --suppress=useInitializationList --suppress=noExplicitConstructor --suppress=cstyleCast -Ideps -Isrc -Iinclude src &> removeme.txt

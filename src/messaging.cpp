@@ -34,12 +34,18 @@ nplex::output_msg_t::output_msg_t(flatbuffers::DetachedBuffer &&content_)
     buf[3] = uv_buf_init((char *) &checksum, sizeof(checksum));
 }
 
-flatbuffers::DetachedBuffer nplex::create_login_msg(std::size_t cid, msgs::LoginCode code, rev_t rev0, rev_t crev, bool can_force, std::uint32_t keepalive_millis)
+flatbuffers::DetachedBuffer nplex::create_login_msg(std::size_t cid, msgs::LoginCode code, rev_t rev0, rev_t crev, const user_t &user)
 {
     using namespace msgs;
     using namespace flatbuffers;
 
     FlatBufferBuilder builder;
+    std::vector<flatbuffers::Offset<msgs::Acl>> permissions;
+
+    for (const auto &acl : user.permissions) {
+        auto pattern = builder.CreateString(acl.pattern);
+        permissions.push_back(CreateAcl(builder, pattern, acl.mode));
+    }
 
     auto msg = CreateMessage(builder, 
         MsgContent::LOGIN_RESPONSE, 
@@ -48,8 +54,9 @@ flatbuffers::DetachedBuffer nplex::create_login_msg(std::size_t cid, msgs::Login
             code,
             rev0,
             crev,
-            can_force,
-            keepalive_millis
+            user.can_force,
+            user.keepalive_millis,
+            builder.CreateVector(permissions)
         ).Union()
     );
 
