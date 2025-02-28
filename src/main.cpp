@@ -12,7 +12,7 @@
 #include "journal.hpp"
 #include "addr.hpp"
 #include "server.hpp"
-#include "nplex.hpp"
+#include "common.hpp"
 
 using namespace std;
 using namespace nplex;
@@ -89,16 +89,16 @@ int main(int argc, char *argv[])
     while (true)
     {
         int curropt = getopt_long(argc, argv, options1, options2, nullptr);
-    
+
         if (curropt == -1)
             break;
-  
+
         switch (curropt)
         {
             case 'h': // -h or --help (show help and exit)
                 help();
                 return EXIT_SUCCESS;
-    
+
             case 'V': // -V or --version (show version and exit)
                 version();
                 return EXIT_SUCCESS;
@@ -141,7 +141,7 @@ int main(int argc, char *argv[])
                     return EXIT_FAILURE;
                 }
                 break;
-    
+
             case 'd': // -d (run as daemon)
                 params.daemonize = true;
                 break;

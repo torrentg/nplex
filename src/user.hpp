@@ -1,8 +1,14 @@
 #pragma once
 
-#include "nplex.hpp"
+#include "common.hpp"
 
 namespace nplex {
+
+struct acl_t
+{
+    std::uint8_t mode;                                  // Attributes (1=CREATE, 2=READ, 4=UPDATE, 8=DELETE).
+    std::string pattern;                                // Pattern (glob).
+};
 
 struct user_t
 {

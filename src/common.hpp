@@ -69,14 +69,9 @@ using meta_ptr = std::shared_ptr<meta_t>;
 //! Database value.
 class value_t
 {
-    static const gto::cstring EMPTY;
-    friend struct cache_t;
-
-  private:
-    gto::cstring m_data;
-    meta_ptr m_meta;
-
   public:
+    static const gto::cstring REMOVED;
+
     value_t(const gto::cstring &data, std::shared_ptr<meta_t> meta) : m_data{data}, m_meta{meta} {}
 
     // Metadata accessors
@@ -98,15 +93,20 @@ class value_t
             throw std::invalid_argument("Invalid conversion to the requested type");
         return value;
     }
+
+    // Auxiliar methods
+    void set_removed() { m_data = REMOVED; }
+    bool is_removed() const { return (m_data.c_str() == REMOVED.c_str()); }
+
+  private:
+    friend struct cache_t;
+    static const gto::cstring EMPTY;
+
+    gto::cstring m_data;
+    meta_ptr m_meta;
 };
 
 using value_ptr = std::shared_ptr<value_t>;
-
-struct acl_t
-{
-    std::uint8_t mode;      // Attributes (1=CREATE, 2=READ, 4=UPDATE, 8=DELETE).
-    std::string pattern;    // Pattern (glob).
-};
 
 enum log_level_e : std::uint8_t {
     DEBUG,

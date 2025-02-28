@@ -134,7 +134,7 @@ table SubmitRequest
     type: uint32 = 0;               // Transaction type (user-defined value)
     upserts: [KeyValue];            // List of updates and inserts
     deletes: [string];              // List of deletes
-    ensures: [Acl];                 // List of ensures
+    ensures: [string];              // List of ensures
     force: bool = false;            // Force transaction
 }
 

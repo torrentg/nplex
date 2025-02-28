@@ -121,7 +121,7 @@ static nplex::acl_t parse_acl(const std::string_view &str)
 {
     if (str.size() < 6 || str[4] != ':')
         throw std::invalid_argument(fmt::format("Invalid acl ({})", str));
-    
+
     auto mode =  parse_mode(str.substr(0, 4));
     std::string pattern{str.substr(5)};
 
@@ -133,11 +133,11 @@ static std::string format_double(double value)
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(2) << value;
     std::string str = oss.str();
-    
+
     str.erase(str.find_last_not_of('0') + 1, std::string::npos);
     if (str.back() == '.')
         str.pop_back();
-    
+
     return str;
 }
 

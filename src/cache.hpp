@@ -3,7 +3,9 @@
 #include <map>
 #include <vector>
 #include <memory>
-#include "nplex.hpp"
+#include <limits>
+#include "cqueue.hpp"
+#include "common.hpp"
 #include "messages.hpp"
 #include "user.hpp"
 
@@ -26,6 +28,7 @@ struct cache_t
     std::map<rev_t, meta_ptr> m_metas;
     std::map<key_t, value_ptr, gto::cstring_compare> m_data;
     std::map<gto::cstring, std::uint32_t, gto::cstring_compare> m_users; // value=number of updates
+    gto::cqueue<key_t> m_removed_keys;   // can contain duplicates and reinserted keys
 
     /**
      * Load the database content from a snapshot.
@@ -69,6 +72,15 @@ struct cache_t
      */
     msgs::SubmitCode try_commit(const user_t &user, const msgs::SubmitRequest *msg, update_t &update);
 
+    /**
+     * Purge removed entries with timestamp less-than a fixed value.
+     * 
+     * @param[in] timestamp Timestamp (in milliseconds).
+     * 
+     * @return Number of entries purged.
+     */
+    std::uint32_t purge(millis_t timestamp = std::numeric_limits<millis_t>::max());
+
   private:
 
     /**
@@ -111,7 +123,8 @@ struct cache_t
      * @return true = entry delete, false = otherwise.
      */
     bool delete_entry(const char *key);
-    
+    bool mark_as_removed(const key_t &key, const meta_ptr &meta);
+
     /**
      * Internal function.
      * 

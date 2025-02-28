@@ -1,7 +1,7 @@
 #include <string>
 #include <stdexcept>
 #include "journal.h"
-#include "nplex.hpp"
+#include "common.hpp"
 #include "journal.hpp"
 
 nplex::journal_t::journal_t(const std::filesystem::path &path, bool check)

@@ -7,15 +7,13 @@
 #include "exception.hpp"
 #include "cache.hpp"
 
-namespace {
+// ==========================================================
+// Internal (static) functions
+// ==========================================================
 
-using namespace nplex;
-
-gto::cstring create_cstring(const flatbuffers::Vector<std::uint8_t> *value) {
+static gto::cstring create_cstring(const flatbuffers::Vector<std::uint8_t> *value) {
     return gto::cstring{reinterpret_cast<const char *>(value->data()), static_cast<std::size_t>(value->size())};
 }
-
-}; // unnamed namespace
 
 nplex::meta_ptr nplex::cache_t::create_meta(const rev_t rev, const char *username, std::uint32_t type)
 {
@@ -38,6 +36,10 @@ nplex::meta_ptr nplex::cache_t::create_meta(const rev_t rev, const char *usernam
 
     return std::make_shared<meta_t>(meta_t{rev, user, timestamp, type, 0});
 }
+
+// ==========================================================
+// cache_t methods
+// ==========================================================
 
 void nplex::cache_t::release_meta(const meta_ptr &meta)
 {
@@ -106,9 +108,6 @@ bool nplex::cache_t::upsert_entry(const key_t &key, const value_ptr &value)
 
 bool nplex::cache_t::delete_entry(const char *key)
 {
-    if (!is_valid_key(key))
-        throw nplex_exception("Trying to delete an invalid key: {}", key);
-
     auto it = m_data.find(key);
 
     if (it == m_data.end())
@@ -117,6 +116,25 @@ bool nplex::cache_t::delete_entry(const char *key)
     release_meta(it->second->m_meta);
 
     m_data.erase(it);
+
+    return true;
+}
+
+bool nplex::cache_t::mark_as_removed(const key_t &key, const meta_ptr &meta)
+{
+    auto it = m_data.find(key);
+
+    if (it == m_data.end())
+        return false;
+
+    if (it->second->m_meta != meta) {
+        release_meta(it->second->m_meta);
+        meta->nrefs++;
+    }
+
+    it->second->set_removed();
+    it->second->m_meta = meta;
+    m_removed_keys.push(key);
 
     return true;
 }
@@ -132,6 +150,7 @@ void nplex::cache_t::load(const msgs::Snapshot *snapshot)
         return;
 
     auto updates = snapshot->updates();
+    rev_t rev = snapshot->rev();
 
     if (updates)
     {
@@ -139,12 +158,12 @@ void nplex::cache_t::load(const msgs::Snapshot *snapshot)
         {
             update(updates->Get(i));
 
-            if (m_rev > snapshot->rev())
-                throw nplex_exception("Snapshot at r{} contains entries at r{}", snapshot->rev(), m_rev);
+            if (m_rev > rev)
+                throw nplex_exception("Invalid snapshot");
         }
     }
 
-    m_rev = snapshot->rev();
+    m_rev = rev;
 }
 
 bool nplex::cache_t::update(const msgs::Update *msg)
@@ -159,10 +178,10 @@ bool nplex::cache_t::update(const msgs::Update *msg)
     rev_t rev = msg->rev();
 
     if (rev <= m_rev)
-        throw nplex_exception("Received an update to r{} when cache is at r{}", rev, m_rev);
+        throw nplex_exception("Update out of order (r{})", rev);
 
     if (!msg->user() || msg->user()->size() == 0)
-        throw nplex_exception("Malformed update message at r{}", rev);
+        throw nplex_exception("Malformed update message (r{})", rev);
 
     auto meta = create_meta(rev, msg->user()->c_str(), msg->type());
 
@@ -175,10 +194,10 @@ bool nplex::cache_t::update(const msgs::Update *msg)
             auto keyval = upserts->Get(i);
 
             if (!keyval || !keyval->key() || !keyval->value())
-                throw nplex_exception("Malformed update message at r{}", rev);
+                throw nplex_exception("Malformed update message (r{})", rev);
 
             auto key = keyval->key()->c_str();
-            gto::cstring data = create_cstring(keyval->value());
+            gto::cstring data = ::create_cstring(keyval->value());
             auto value = std::make_shared<value_t>(data, meta);
 
             upsert_entry(key, value);
@@ -192,7 +211,7 @@ bool nplex::cache_t::update(const msgs::Update *msg)
             auto key = deletes->Get(i);
 
             if (!key || !key->c_str())
-                throw nplex_exception("Malformed update message at r{}", rev);
+                throw nplex_exception("Malformed update message (r{})", rev);
 
             delete_entry(key->c_str());
         }
@@ -269,6 +288,14 @@ nplex::msgs::SubmitCode nplex::cache_t::try_commit_inner(const user_t &user, con
                 if (!user.is_authorized(NPLEX_CREATE, keyval->key()->c_str()))
                     return msgs::SubmitCode::REJECTED_PERMISSION;
             }
+            else if (it->second->is_removed())
+            {
+                if (!user.is_authorized(NPLEX_CREATE, keyval->key()->c_str()))
+                    return msgs::SubmitCode::REJECTED_PERMISSION;
+
+                if (!forced && it->second->rev() > crev)
+                    return msgs::SubmitCode::REJECTED_INTEGRITY;
+            }
             else
             {
                 if (!user.is_authorized(NPLEX_UPDATE, keyval->key()->c_str()))
@@ -276,7 +303,7 @@ nplex::msgs::SubmitCode nplex::cache_t::try_commit_inner(const user_t &user, con
             }
 
             key_t key = (it != m_data.end() ? it->first : key_t{keyval->key()->c_str()});
-            auto value = std::make_shared<value_t>(create_cstring(keyval->value()), meta);
+            auto value = std::make_shared<value_t>(::create_cstring(keyval->value()), meta);
             update.upserts.emplace_back(key, value);
             keys.insert(key);
         }
@@ -301,10 +328,8 @@ nplex::msgs::SubmitCode nplex::cache_t::try_commit_inner(const user_t &user, con
 
             if (it == m_data.end())
             {
-                if (forced)
-                    continue;
-                else
-                    return msgs::SubmitCode::REJECTED_INTEGRITY;
+                // No drama if trying to delete a non-existing key
+                continue;
             }
             else if (!forced)
             {
@@ -324,12 +349,12 @@ nplex::msgs::SubmitCode nplex::cache_t::try_commit_inner(const user_t &user, con
     {
         for (flatbuffers::uoffset_t i = 0; i < ensures->size(); i++)
         {
-            auto acl = ensures->Get(i);
+            auto ensure = ensures->Get(i);
 
-            if (!acl || !acl->pattern() || acl->pattern()->size() == 0 || acl->mode() > 15)
+            if (!ensure || ensure->size() == 0)
                 return msgs::SubmitCode::ERROR_MESSAGE;
 
-            const char *pattern = acl->pattern()->c_str();
+            const char *pattern = ensure->c_str();
             std::string_view prefix = std::string_view{pattern, strcspn(pattern, "*?")};
 
             auto it = (prefix.empty() ? m_data.begin() : m_data.lower_bound(prefix));
@@ -367,7 +392,46 @@ nplex::msgs::SubmitCode nplex::cache_t::try_commit_inner(const user_t &user, con
         upsert_entry(key, value);
 
     for (const auto &key : update.deletes)
-        delete_entry(key.c_str());
+        mark_as_removed(key, meta);
 
     return msgs::SubmitCode::ACCEPTED;
+}
+
+std::uint32_t nplex::cache_t::purge(millis_t timestamp)
+{
+    std::uint32_t count = 0;
+
+    while (!m_removed_keys.empty())
+    {
+        auto &key = m_removed_keys.front();
+        auto it = m_data.find(key);
+
+        // Case: removed key not found
+        if (it == m_data.end()) {
+            m_removed_keys.pop();
+            count++;
+            continue;
+        }
+
+        // Case: reinserted after deletion
+        if (!it->second->is_removed()) {
+            m_removed_keys.pop();
+            count++;
+            continue;
+        }
+
+        // Case: deletion is older than the timestamp
+        if (it->second->timestamp() < timestamp) {
+            release_meta(it->second->m_meta);
+            m_data.erase(it);
+            m_removed_keys.pop();
+            count++;
+            continue;
+        }
+
+        // Case: deleted key is fresh
+        break;
+    }
+
+    return count;
 }

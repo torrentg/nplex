@@ -3,9 +3,7 @@
 * Supports signal indicating log-rotate (only if daemonized)
 * Trap and manage SIGKILL(9)
 * Add check data (-c) command-line option
-* Ensures needs to be an Acl? Can it be a simple string?
 * strerror() differentiates depending on error level (info, waning, etc)
-* Save also deletes into cache + add purge() method
 
 ## Useful commands
 
