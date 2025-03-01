@@ -15,8 +15,14 @@ static gto::cstring create_cstring(const flatbuffers::Vector<std::uint8_t> *valu
     return gto::cstring{reinterpret_cast<const char *>(value->data()), static_cast<std::size_t>(value->size())};
 }
 
+// ==========================================================
+// cache_t methods
+// ==========================================================
+
 nplex::meta_ptr nplex::cache_t::create_meta(const rev_t rev, const char *username, std::uint32_t type)
 {
+    assert(username);
+
     gto::cstring user;
     auto user_it = m_users.find(username);
 
@@ -34,55 +40,61 @@ nplex::meta_ptr nplex::cache_t::create_meta(const rev_t rev, const char *usernam
     auto now = std::chrono::system_clock::now();
     millis_t timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch());
 
-    return std::make_shared<meta_t>(meta_t{rev, user, timestamp, type, 0});
+    return std::make_shared<meta_t>(meta_t{rev, user, timestamp, type, {}});
 }
 
-// ==========================================================
-// cache_t methods
-// ==========================================================
-
-void nplex::cache_t::release_meta(const meta_ptr &meta)
+void nplex::cache_t::update_meta(const meta_ptr &meta, const key_t &key, meta_e mode)
 {
-    if (meta->nrefs > 0)
-        meta->nrefs--;
+    assert(meta);
 
-    if (meta->nrefs == 0)
-    {
-        auto it = m_users.find(meta->user);
-
-        if (it != m_users.end())
-        {
-            if (it->second > 1)
-                it->second--;
-            else
-                m_users.erase(it);
-        }
-
-        m_metas.erase(meta->rev);
+    if (mode == meta_e::APPEND) {
+        meta->refs.insert(key);
+        return;
     }
+
+    meta->refs.erase(key);
+
+    if (!meta->refs.empty())
+        return;
+
+    auto it = m_users.find(meta->user);
+
+    if (it != m_users.end())
+    {
+        if (it->second > 1)
+            it->second--;
+        else
+            m_users.erase(it);
+    }
+
+    m_metas.erase(meta->rev);
 }
 
 bool nplex::cache_t::upsert_entry(const char *key, const value_ptr &value)
 {
-    assert(value && value->m_meta);
+    assert(key);
+    assert(value);
+    assert(value->m_meta);
 
     if (!is_valid_key(key))
         throw nplex_exception("Trying to upsert an invalid key: {}", key);
 
+    key_t ckey{};
     auto it = m_data.find(key);
 
     if (it != m_data.end())
     {
-        release_meta(it->second->m_meta);
+        ckey = it->first;
+        update_meta(it->second->m_meta, ckey, meta_e::SUBTRACT);
         it->second = value;
     }
     else
     {
-        nplex::key_t ckey = key;
+        ckey = key;
         m_data[ckey] = value;
-    }
+    }                    
 
-    value->m_meta->nrefs++;
+    update_meta(value->m_meta, ckey, meta_e::APPEND);
 
     return true;
 }
@@ -93,7 +105,7 @@ bool nplex::cache_t::upsert_entry(const key_t &key, const value_ptr &value)
 
     if (it != m_data.end())
     {
-        release_meta(it->second->m_meta);
+        update_meta(it->second->m_meta, key, meta_e::SUBTRACT);
         it->second = value;
     }
     else
@@ -101,19 +113,21 @@ bool nplex::cache_t::upsert_entry(const key_t &key, const value_ptr &value)
         m_data[key] = value;
     }
 
-    value->m_meta->nrefs++;
+    update_meta(value->m_meta, key, meta_e::APPEND);
 
     return true;
 }
 
 bool nplex::cache_t::delete_entry(const char *key)
 {
+    assert(key);
+
     auto it = m_data.find(key);
 
     if (it == m_data.end())
         return false;
 
-    release_meta(it->second->m_meta);
+    update_meta(it->second->m_meta, it->first, meta_e::SUBTRACT);
 
     m_data.erase(it);
 
@@ -128,8 +142,8 @@ bool nplex::cache_t::mark_as_removed(const key_t &key, const meta_ptr &meta)
         return false;
 
     if (it->second->m_meta != meta) {
-        release_meta(it->second->m_meta);
-        meta->nrefs++;
+        update_meta(it->second->m_meta, key, meta_e::SUBTRACT);
+        update_meta(meta, key, meta_e::APPEND);
     }
 
     it->second->set_removed();
@@ -217,9 +231,12 @@ bool nplex::cache_t::update(const msgs::Update *msg)
         }
     }
 
-    if (meta->nrefs)
-        m_metas[rev] = meta;
+    if (meta->refs.empty()) {
+        update_meta(meta, key_t{}, meta_e::SUBTRACT);
+        return false;
+    }
 
+    m_metas[rev] = meta;
     return true;
 }
 
@@ -241,10 +258,8 @@ nplex::msgs::SubmitCode nplex::cache_t::try_commit(const user_t &user, const msg
 
     if (ret != msgs::SubmitCode::ACCEPTED)
     {
-        if (update.meta) {
-            update.meta->nrefs = 0;
-            release_meta(update.meta);
-        }
+        if (update.meta)
+            update_meta(update.meta, key_t{}, meta_e::SUBTRACT);
 
         update.meta = nullptr;
         update.upserts.clear();
@@ -422,7 +437,7 @@ std::uint32_t nplex::cache_t::purge(millis_t timestamp)
 
         // Case: deletion is older than the timestamp
         if (it->second->timestamp() < timestamp) {
-            release_meta(it->second->m_meta);
+            update_meta(it->second->m_meta, key_t{}, meta_e::SUBTRACT);
             m_data.erase(it);
             m_removed_keys.pop();
             count++;
@@ -434,4 +449,66 @@ std::uint32_t nplex::cache_t::purge(millis_t timestamp)
     }
 
     return count;
+}
+
+flatbuffers::Offset<nplex::msgs::Snapshot> nplex::cache_t::serialize(flatbuffers::FlatBufferBuilder &builder, const user_t &user) const
+{
+    std::vector<flatbuffers::Offset<msgs::Update>> updates;
+    std::vector<flatbuffers::Offset<msgs::KeyValue>> upserts;
+
+    for (const auto &[rev, meta] : m_metas)
+    {
+        assert(rev == meta->rev);
+
+        upserts.clear();
+
+        for (auto &key : meta->refs)
+        {
+            if (!user.is_authorized(NPLEX_READ, key))
+                continue;
+
+            auto it = m_data.find(key);
+
+            if (it == m_data.end()) {
+                assert(false);
+                continue;
+            }
+
+            if (it->second->is_removed())
+                continue;
+
+            auto kv = msgs::CreateKeyValue(
+                builder, 
+                builder.CreateString(key.c_str()), 
+                builder.CreateVector(
+                    reinterpret_cast<const uint8_t *>(it->second->data().c_str()), 
+                    it->second->data().size()
+                )
+            );
+
+            upserts.push_back(kv);
+        }
+
+        if (upserts.empty())
+            continue;
+
+        auto update = msgs::CreateUpdate(
+            builder,
+            static_cast<std::uint64_t>(rev),
+            builder.CreateString(meta->user.c_str()),
+            static_cast<std::uint64_t>(meta->timestamp.count()),
+            static_cast<std::uint32_t>(meta->type),
+            builder.CreateVector(upserts)
+        );
+
+        updates.push_back(update);
+    }
+
+    auto snapshot = msgs::CreateSnapshot(
+        builder, 
+        static_cast<std::uint64_t>(m_rev), 
+        builder.CreateVector(updates)
+    );
+
+    return snapshot;
 }

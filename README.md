@@ -23,6 +23,7 @@ cmake -DENABLE_COVERAGE=ON ..
 
 * [cppcrc](https://github.com/DarrenLevine/cppcrc). A very small, fast, header-only, C++ library for generating CRCs. MIT license.
 * [cstring](https://github.com/torrentg/cstring). A C++ immutable C-string with reference counting. LGPL-3.0 license.
+* [cqueue](https://github.com/torrentg/cqueue). A C++ circular queue. LGPL-3.0 license.
 * [journal](https://github.com/torrentg/journal). A simple log-structured database. MIT license.
 * [doctest](https://github.com/doctest/doctest). The fastest feature-rich C++11/14/17/20/23 single-header testing framework. MIT license.
 * [FastGlobbing](https://github.com/Robert-van-Engelen/FastGlobbing). Wildcard string matching and globbing library. CPOL license.

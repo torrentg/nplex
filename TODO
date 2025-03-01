@@ -4,6 +4,8 @@
 * Trap and manage SIGKILL(9)
 * Add check data (-c) command-line option
 * strerror() differentiates depending on error level (info, waning, etc)
+* Add timeout-factor param
+* Add buffer gto::cqueue<update_t>
 
 ## Useful commands
 

@@ -55,7 +55,9 @@ struct session_t
     void disconnect(int rc = 0);
     void send(flatbuffers::DetachedBuffer &&buf);
     void send_keepalive();
-    void do_login(const user_ptr &user);
+    void do_step1(const user_ptr &user);
+    void do_step2();
+    void report_peer_activity();
     std::string strerror() const;
 };
 

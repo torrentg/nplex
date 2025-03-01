@@ -78,6 +78,8 @@ static void cb_tcp_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
         return;
     }
 
+    obj->report_peer_activity();
+
     obj->input_msg.append(buf->base, static_cast<std::size_t>(nread));
 
     while (obj->input_msg.size() >= sizeof(output_msg_t::len))
@@ -125,6 +127,8 @@ static void cb_tcp_write(uv_write_t *req, int status)
         obj->disconnect(status);
         return;
     }
+
+    obj->report_peer_activity();
 
     auto *ptr = flatbuffers::GetRoot<nplex::msgs::Message>(msg->content.data());
     assert(ptr);
@@ -319,7 +323,7 @@ void nplex::session_t::send_keepalive()
         uv_timer_again(m_timer_keepalive);
 }
 
-void nplex::session_t::do_login(const user_ptr &user)
+void nplex::session_t::do_step1(const user_ptr &user)
 {
     int rc = 0;
 
@@ -355,6 +359,32 @@ void nplex::session_t::do_login(const user_ptr &user)
 
     if ((rc = uv_timer_start(m_timer_keepalive, ::cb_timer_keepalive, keepalive_millis, keepalive_millis)) != 0)
         disconnect(rc);
+}
+
+void nplex::session_t::do_step2()
+{
+    m_state = session_t::state_e::SYNCING;
+
+    assert(m_timer_disconnect);
+    uv_timer_stop(m_timer_disconnect);
+
+    uint64_t keepalive_millis = m_user->keepalive_millis;
+    if (keepalive_millis == 0) {
+        uv_close((uv_handle_t *) m_timer_disconnect, (uv_close_cb) free);
+        m_timer_disconnect = nullptr;
+    }
+    else {
+        uint64_t millis = static_cast<uint64_t>(static_cast<double>(keepalive_millis) * 3.0);
+        uv_timer_start(m_timer_disconnect, ::cb_timer_disconnect, millis, millis);
+    }
+}
+
+void nplex::session_t::report_peer_activity()
+{
+    auto handle = reinterpret_cast<uv_handle_t*>(m_timer_disconnect);
+
+    if (handle && uv_is_active(handle) && !uv_is_closing(handle) && uv_timer_get_repeat(m_timer_disconnect))
+        uv_timer_again(m_timer_disconnect);
 }
 
 std::string nplex::session_t::strerror() const

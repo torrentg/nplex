@@ -1,5 +1,6 @@
 #pragma once
 
+#include <set>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
@@ -61,7 +62,7 @@ struct meta_t
     gto::cstring user;              //!< Transaction creator.
     millis_t timestamp;             //!< Timestamp at transaction creation.
     std::uint32_t type;             //!< Transaction type (user-defined).
-    std::uint32_t nrefs;            //!< Number of references in the cache (internal use).
+    std::set<key_t> refs;           //!< Keys modified by the transaction.
 };
 
 using meta_ptr = std::shared_ptr<meta_t>;

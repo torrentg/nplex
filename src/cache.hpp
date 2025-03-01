@@ -17,6 +17,11 @@ struct update_t {
     std::vector<key_t> deletes;
 };
 
+enum struct meta_e : std::uint8_t {
+    APPEND,
+    SUBTRACT
+};
+
 /**
  * In-memory database content.
  * 
@@ -81,6 +86,18 @@ struct cache_t
      */
     std::uint32_t purge(millis_t timestamp = std::numeric_limits<millis_t>::max());
 
+    /**
+     * Serialize the database content to a snapshot.
+     * 
+     * The content is filtered according to the user's permissions.
+     * 
+     * @param[in] builder FlatBufferBuilder to use.
+     * @param[in] user User whose permissions are considered during serialization.
+     * 
+     * @return Serialized snapshot content.
+     */
+    flatbuffers::Offset<msgs::Snapshot> serialize(flatbuffers::FlatBufferBuilder &builder, const user_t &user) const;
+
   private:
 
     /**
@@ -97,12 +114,16 @@ struct cache_t
     meta_ptr create_meta(const rev_t rev, const char *username, std::uint32_t type);
 
     /**
-     * Release a metadata decreasing the ref counters and removing 
-     * entries in metas and users if required.
+     * Update a metadata object.
      * 
-     * @param[in] meta Metadata to release.
+     * On append mode, adds key as new reference.
+     * On subtract mode, removes key and if empty removes the meta itself.
+     * 
+     * @param[in] meta Metadata to update.
+     * @param[in] key Key to add/remove as reference.
+     * @param[in] mode Update mode.
      */
-    void release_meta(const meta_ptr &meta);
+    void update_meta(const meta_ptr &meta, const key_t &key, meta_e mode);
 
     /**
      * Upsert an entry updating content accordingly.

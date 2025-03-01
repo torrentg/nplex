@@ -229,7 +229,7 @@ void nplex::server_t::run()
     catch (const std::exception &e) {
         SPDLOG_ERROR("{}", e.what());
     }
-SPDLOG_ERROR("Event loop terminated (PRE)");
+
     uv_walk(m_loop.get(), ::cb_close_handle, NULL);
     while (uv_run(m_loop.get(), UV_RUN_NOWAIT));
     uv_loop_close(m_loop.get());
@@ -360,7 +360,7 @@ void nplex::server_t::process_login_request(session_t *session, const nplex::msg
         return;
     }
 
-    session->do_login(user);
+    session->do_step1(user);
     user->num_connections++;
 
     SPDLOG_INFO("User {} logged from {}", user->name, session->m_addr.str());
