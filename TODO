@@ -7,6 +7,8 @@
 * Add timeout-factor param
 * Add buffer gto::cqueue<update_t>
 * Add submit-req support
+* session_ptr = std::shared_ptr<session_t>
+* Replace user_t::num_connections by std::set<session_ptr> sessions
 
 ## Useful commands
 

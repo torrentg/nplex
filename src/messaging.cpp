@@ -64,26 +64,6 @@ flatbuffers::DetachedBuffer nplex::create_login_msg(std::size_t cid, msgs::Login
     return builder.Release();
 }
 
-flatbuffers::DetachedBuffer nplex::create_load_msg(std::size_t cid, msgs::LoadMode mode, rev_t rev)
-{
-    using namespace msgs;
-    using namespace flatbuffers;
-
-    FlatBufferBuilder builder;
-
-    auto msg = CreateMessage(builder, 
-        MsgContent::LOAD_REQUEST,
-        CreateLoadRequest(builder, 
-            cid, 
-            mode,
-            rev
-        ).Union()
-    );
-
-    builder.Finish(msg);
-    return builder.Release();
-}
-
 flatbuffers::DetachedBuffer nplex::create_keepalive_msg(rev_t crev)
 {
     using namespace msgs;
@@ -127,8 +107,92 @@ const nplex::msgs::Message * nplex::parse_network_msg(const char *ptr, size_t le
     len -= 3 * sizeof(std::uint32_t);
 
     auto verifier = flatbuffers::Verifier((const std::uint8_t *) ptr, len);
+
     if (!verifier.VerifyBuffer<nplex::msgs::Message>(nullptr))
         return nullptr;
 
     return flatbuffers::GetRoot<nplex::msgs::Message>(ptr);
+}
+
+flatbuffers::DetachedBuffer nplex::create_submit_msg(std::size_t cid, rev_t crev, msgs::SubmitCode code, rev_t erev)
+{
+    using namespace msgs;
+    using namespace flatbuffers;
+
+    FlatBufferBuilder builder;
+
+    auto msg = CreateMessage(builder, 
+        MsgContent::SUBMIT_RESPONSE,
+        CreateSubmitResponse(builder,
+            cid, 
+            crev,
+            code,
+            erev
+        ).Union()
+    );
+
+    builder.Finish(msg);
+    return builder.Release();
+}
+
+flatbuffers::DetachedBuffer nplex::create_update_msg(flatbuffers::FlatBufferBuilder &builder, std::size_t cid, rev_t crev, flatbuffers::Offset<msgs::Update> upd)
+{
+    using namespace msgs;
+    using namespace flatbuffers;
+
+    auto msg = CreateMessage(builder, 
+        MsgContent::UPDATE_PUSH,
+        CreateUpdatePush(builder, 
+            cid, 
+            crev,
+            upd
+        ).Union()
+    );
+
+    builder.Finish(msg);
+    return builder.Release();
+}
+
+flatbuffers::Offset<nplex::msgs::Update> nplex::serialize_update(flatbuffers::FlatBufferBuilder &builder, const update_t &update, const user_t &user)
+{
+    std::vector<flatbuffers::Offset<msgs::KeyValue>> upserts;
+    std::vector<flatbuffers::Offset<flatbuffers::String>> deletes;
+
+    for (const auto &[key, value] : update.upserts)
+    {
+        if (!user.is_authorized(NPLEX_READ, key))
+            continue;
+
+        auto kv = msgs::CreateKeyValue(
+            builder, 
+            builder.CreateString(key.c_str()), 
+            builder.CreateVector(
+                reinterpret_cast<const uint8_t *>(value->data().c_str()), 
+                value->data().size()
+            )
+        );
+
+        upserts.push_back(kv);
+    }
+
+    for (const auto &key : update.deletes)
+    {
+        if (!user.is_authorized(NPLEX_READ, key))
+            continue;
+
+        deletes.push_back(builder.CreateString(key.c_str()));
+    }
+
+    if (upserts.empty() && deletes.empty())
+        return 0;
+
+    return msgs::CreateUpdate(
+        builder,
+        update.meta->rev,
+        builder.CreateString(update.meta->user.c_str()),
+        static_cast<std::uint64_t>(update.meta->timestamp.count()),
+        update.meta->type,
+        builder.CreateVector(upserts),
+        builder.CreateVector(deletes)
+    );
 }

@@ -41,7 +41,10 @@ class server_t
     void process_submit_request(session_t *session, const nplex::msgs::SubmitRequest *req);
     void process_ping_request(session_t *session, const nplex::msgs::PingRequest *req);
 
-    void send_last_snapshot(session_t *session, std::size_t cid);
+    void send_last_snapshot(session_t *session, std::size_t cid);     // send last snapshot to a session
+    void push_update(const update_t &update);                         // push update to all synchronized sessions
+    void push_update(const update_t &update, const user_ptr &user);   // push update to all synchronized sessions of a user
+    void push_update(const update_t &update, session_t *session);     // push update to a specific session
 
 };
 

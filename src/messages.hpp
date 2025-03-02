@@ -1720,7 +1720,6 @@ struct SubmitResponseT : public ::flatbuffers::NativeTable {
   uint64_t crev = 0;
   nplex::msgs::SubmitCode code = nplex::msgs::SubmitCode::UNKNOW;
   uint64_t erev = 0;
-  std::string error{};
 };
 
 struct SubmitResponse FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
@@ -1731,8 +1730,7 @@ struct SubmitResponse FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_CID = 4,
     VT_CREV = 6,
     VT_CODE = 8,
-    VT_EREV = 10,
-    VT_ERROR = 12
+    VT_EREV = 10
   };
   uint64_t cid() const {
     return GetField<uint64_t>(VT_CID, 0);
@@ -1746,17 +1744,12 @@ struct SubmitResponse FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   uint64_t erev() const {
     return GetField<uint64_t>(VT_EREV, 0);
   }
-  const ::flatbuffers::String *error() const {
-    return GetPointer<const ::flatbuffers::String *>(VT_ERROR);
-  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint64_t>(verifier, VT_CID, 8) &&
            VerifyField<uint64_t>(verifier, VT_CREV, 8) &&
            VerifyField<int8_t>(verifier, VT_CODE, 1) &&
            VerifyField<uint64_t>(verifier, VT_EREV, 8) &&
-           VerifyOffset(verifier, VT_ERROR) &&
-           verifier.VerifyString(error()) &&
            verifier.EndTable();
   }
   SubmitResponseT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -1780,9 +1773,6 @@ struct SubmitResponseBuilder {
   void add_erev(uint64_t erev) {
     fbb_.AddElement<uint64_t>(SubmitResponse::VT_EREV, erev, 0);
   }
-  void add_error(::flatbuffers::Offset<::flatbuffers::String> error) {
-    fbb_.AddOffset(SubmitResponse::VT_ERROR, error);
-  }
   explicit SubmitResponseBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -1799,13 +1789,11 @@ inline ::flatbuffers::Offset<SubmitResponse> CreateSubmitResponse(
     uint64_t cid = 0,
     uint64_t crev = 0,
     nplex::msgs::SubmitCode code = nplex::msgs::SubmitCode::UNKNOW,
-    uint64_t erev = 0,
-    ::flatbuffers::Offset<::flatbuffers::String> error = 0) {
+    uint64_t erev = 0) {
   SubmitResponseBuilder builder_(_fbb);
   builder_.add_erev(erev);
   builder_.add_crev(crev);
   builder_.add_cid(cid);
-  builder_.add_error(error);
   builder_.add_code(code);
   return builder_.Finish();
 }
@@ -1814,23 +1802,6 @@ struct SubmitResponse::Traits {
   using type = SubmitResponse;
   static auto constexpr Create = CreateSubmitResponse;
 };
-
-inline ::flatbuffers::Offset<SubmitResponse> CreateSubmitResponseDirect(
-    ::flatbuffers::FlatBufferBuilder &_fbb,
-    uint64_t cid = 0,
-    uint64_t crev = 0,
-    nplex::msgs::SubmitCode code = nplex::msgs::SubmitCode::UNKNOW,
-    uint64_t erev = 0,
-    const char *error = nullptr) {
-  auto error__ = error ? _fbb.CreateString(error) : 0;
-  return nplex::msgs::CreateSubmitResponse(
-      _fbb,
-      cid,
-      crev,
-      code,
-      erev,
-      error__);
-}
 
 ::flatbuffers::Offset<SubmitResponse> CreateSubmitResponse(::flatbuffers::FlatBufferBuilder &_fbb, const SubmitResponseT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
@@ -2560,7 +2531,6 @@ inline void SubmitResponse::UnPackTo(SubmitResponseT *_o, const ::flatbuffers::r
   { auto _e = crev(); _o->crev = _e; }
   { auto _e = code(); _o->code = _e; }
   { auto _e = erev(); _o->erev = _e; }
-  { auto _e = error(); if (_e) _o->error = _e->str(); }
 }
 
 inline ::flatbuffers::Offset<SubmitResponse> SubmitResponse::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const SubmitResponseT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
@@ -2575,14 +2545,12 @@ inline ::flatbuffers::Offset<SubmitResponse> CreateSubmitResponse(::flatbuffers:
   auto _crev = _o->crev;
   auto _code = _o->code;
   auto _erev = _o->erev;
-  auto _error = _o->error.empty() ? 0 : _fbb.CreateString(_o->error);
   return nplex::msgs::CreateSubmitResponse(
       _fbb,
       _cid,
       _crev,
       _code,
-      _erev,
-      _error);
+      _erev);
 }
 
 inline KeepAlivePushT *KeepAlivePush::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {

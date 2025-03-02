@@ -141,10 +141,9 @@ table SubmitRequest
 table SubmitResponse
 {
     cid: uint64;                    // Correlation id (submitRequest cid)
-    crev: uint64;                   // Current database revision
+    crev: uint64;                   // Server current revision
     code: SubmitCode = UNKNOW;      // Response code
-    erev: uint64;                   // Expected commit revision (0 means only ensures)
-    error: string;                  // Error message (if any)
+    erev: uint64;                   // Expected commit revision (0 if not accepted)
 }
 
 table KeepAlivePush

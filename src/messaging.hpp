@@ -1,11 +1,8 @@
 #pragma once
 
-#include <array>
-#include <string>
-#include <memory>
-#include <variant>
 #include <uv.h>
 #include "common.hpp"
+#include "cache.hpp"
 #include "user.hpp"
 #include "messages.hpp"
 
@@ -29,8 +26,11 @@ inline std::size_t get_msg_length(const flatbuffers::DetachedBuffer &buf) noexce
 }
 
 flatbuffers::DetachedBuffer create_login_msg(std::size_t cid, msgs::LoginCode code, rev_t rev0 = 0, rev_t crev = 0, const user_t &user = {});
-flatbuffers::DetachedBuffer create_load_msg(std::size_t cid, msgs::LoadMode mode, rev_t rev);
 flatbuffers::DetachedBuffer create_keepalive_msg(rev_t crev);
+flatbuffers::DetachedBuffer create_submit_msg(std::size_t cid, rev_t crev, msgs::SubmitCode code, rev_t erev = 0);
+flatbuffers::DetachedBuffer create_update_msg(flatbuffers::FlatBufferBuilder &builder, std::size_t cid, rev_t crev, flatbuffers::Offset<msgs::Update> upd);
+
+flatbuffers::Offset<msgs::Update> serialize_update(flatbuffers::FlatBufferBuilder &builder, const update_t &update, const user_t &user);
 
 const nplex::msgs::Message * parse_network_msg(const char *ptr, size_t len);
 

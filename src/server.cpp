@@ -409,9 +409,30 @@ void nplex::server_t::process_load_request(session_t *session, const nplex::msgs
 
 void nplex::server_t::process_submit_request(session_t *session, const nplex::msgs::SubmitRequest *req)
 {
-    UNUSED(session);
-    UNUSED(req);
-    // TODO: implement
+    if (session->m_state == session_t::state_e::CONNECTED) {
+        session->disconnect(ERR_MSG_UNEXPECTED);
+        return;
+    }
+
+    update_t update;
+
+    auto rc = m_cache.try_commit(*session->m_user, req, update);
+
+    session->send(
+        create_submit_msg(
+            req->cid(), 
+            m_cache.m_rev,
+            rc,
+            (rc == msgs::SubmitCode::ACCEPTED ? m_cache.m_rev : 0)
+        )
+    );
+
+    if (rc != msgs::SubmitCode::ACCEPTED)
+        return;
+
+    // TODO: cache cleanup (purge)
+
+    push_update(update);
 }
 
 void nplex::server_t::process_ping_request(session_t *session, const nplex::msgs::PingRequest *req)
@@ -443,4 +464,24 @@ void nplex::server_t::send_last_snapshot(session_t *session, std::size_t cid)
     session->send(builder.Release());
     session->do_step2();
     session->m_state = session_t::state_e::SYNCED;
+}
+
+void nplex::server_t::push_update(const update_t &update)
+{
+    for (auto *session : m_sessions)
+    {
+        if (session->m_state != session_t::state_e::SYNCED)
+            continue;
+
+        flatbuffers::FlatBufferBuilder builder;
+
+        auto off = serialize_update(builder, update, *session->m_user);
+
+        if (off.IsNull())
+            continue;
+
+        session->send(
+            create_update_msg(builder, 0, m_cache.m_rev, off)
+        );
+    }
 }
