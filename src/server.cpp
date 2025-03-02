@@ -182,6 +182,8 @@ nplex::server_t::server_t(const params_t &params) : m_params(params)
     if (m_users.empty())
         throw nplex_exception("No valid users found");
 
+    // TODO: initialize m_cache from disk
+
     m_loop = std::make_unique<uv_loop_t>();
 
     if (uv_loop_init(m_loop.get()) != 0)
@@ -378,9 +380,31 @@ void nplex::server_t::process_login_request(session_t *session, const nplex::msg
 
 void nplex::server_t::process_load_request(session_t *session, const nplex::msgs::LoadRequest *req)
 {
-    UNUSED(session);
-    UNUSED(req);
-    // TODO: implement
+    if (session->m_state != session_t::state_e::LOGGED) {
+        session->disconnect(ERR_MSG_UNEXPECTED);
+        return;
+    }
+
+    switch (req->mode())
+    {
+        case msgs::LoadMode::SNAPSHOT_AT_FIXED_REV:
+            if (req->rev() == m_cache.m_rev)
+                send_last_snapshot(session, req->cid());
+            else
+                UNUSED(req);//TODO: pending
+            break;
+
+        case msgs::LoadMode::SNAPSHOT_AT_LAST_REV:
+            send_last_snapshot(session, req->cid());
+            break;
+
+        case msgs::LoadMode::ONLY_UPDATES_FROM_REV:
+            //TODO: pending
+            break;
+
+        default:
+            session->disconnect(ERR_MSG_ERROR);
+    }
 }
 
 void nplex::server_t::process_submit_request(session_t *session, const nplex::msgs::SubmitRequest *req)
@@ -395,4 +419,28 @@ void nplex::server_t::process_ping_request(session_t *session, const nplex::msgs
     UNUSED(session);
     UNUSED(req);
     // TODO: implement
+}
+
+void nplex::server_t::send_last_snapshot(session_t *session, std::size_t cid)
+{
+    using namespace msgs;
+    using namespace flatbuffers;
+
+    FlatBufferBuilder builder;
+
+    auto msg = CreateMessage(builder, 
+        MsgContent::LOAD_RESPONSE,
+        CreateLoadResponse(builder, 
+            cid, 
+            m_cache.m_rev,
+            true,
+            m_cache.serialize(builder, *session->m_user)
+        ).Union() 
+    );
+
+    builder.Finish(msg);
+
+    session->send(builder.Release());
+    session->do_step2();
+    session->m_state = session_t::state_e::SYNCED;
 }

@@ -6,6 +6,7 @@
 #include "params.hpp"
 #include "messages.hpp"
 #include "session.hpp"
+#include "cache.hpp"
 #include "user.hpp"
 
 namespace nplex {
@@ -33,12 +34,14 @@ class server_t
     std::unique_ptr<uv_signal_t> m_signal;
     std::map<std::string, user_ptr> m_users;
     std::set<session_t *> m_sessions;
-    //cache_t m_cache;
+    cache_t m_cache;
 
     void process_login_request(session_t *session, const nplex::msgs::LoginRequest *req);
     void process_load_request(session_t *session, const nplex::msgs::LoadRequest *req);
     void process_submit_request(session_t *session, const nplex::msgs::SubmitRequest *req);
     void process_ping_request(session_t *session, const nplex::msgs::PingRequest *req);
+
+    void send_last_snapshot(session_t *session, std::size_t cid);
 
 };
 

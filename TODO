@@ -6,6 +6,7 @@
 * strerror() differentiates depending on error level (info, waning, etc)
 * Add timeout-factor param
 * Add buffer gto::cqueue<update_t>
+* Add submit-req support
 
 ## Useful commands
 

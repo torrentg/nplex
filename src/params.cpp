@@ -23,14 +23,12 @@
 
 static std::string mode_to_string(std::uint8_t mode)
 {
-    std::string str;
-
-    str += ((mode & NPLEX_CREATE) ? "c" : "-");
-    str += ((mode & NPLEX_READ)   ? "r" : "-");
-    str += ((mode & NPLEX_UPDATE) ? "u" : "-");
-    str += ((mode & NPLEX_DELETE) ? "d" : "-");
-
-    return str;
+    return std::string{
+        ((mode & NPLEX_CREATE) ? 'c' : '-'),
+        ((mode & NPLEX_READ)   ? 'r' : '-'),
+        ((mode & NPLEX_UPDATE) ? 'u' : '-'),
+        ((mode & NPLEX_DELETE) ? 'd' : '-')
+    };
 }
 
 static std::uint8_t parse_mode(const std::string_view &str)

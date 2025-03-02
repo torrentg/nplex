@@ -492,7 +492,7 @@ flatbuffers::Offset<nplex::msgs::Snapshot> nplex::cache_t::serialize(flatbuffers
         if (upserts.empty())
             continue;
 
-        auto update = msgs::CreateUpdate(
+        auto upd = msgs::CreateUpdate(
             builder,
             static_cast<std::uint64_t>(rev),
             builder.CreateString(meta->user.c_str()),
@@ -501,7 +501,7 @@ flatbuffers::Offset<nplex::msgs::Snapshot> nplex::cache_t::serialize(flatbuffers
             builder.CreateVector(upserts)
         );
 
-        updates.push_back(update);
+        updates.push_back(upd);
     }
 
     auto snapshot = msgs::CreateSnapshot(
