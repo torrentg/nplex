@@ -9,7 +9,7 @@
 namespace nplex {
 
 /**
- * Internal class representing a client session.
+ * Class representing a client session.
  * 
  * server_t is accessed via tcp.loop->data.
  */
@@ -60,6 +60,8 @@ struct session_t
     void report_peer_activity();
     std::string strerror() const;
 };
+
+using session_ptr = std::shared_ptr<session_t>;
 
 void cb_close_session(uv_handle_t *handle);
 

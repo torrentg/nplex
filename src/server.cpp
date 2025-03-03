@@ -102,8 +102,7 @@ static void cb_signal_handler(uv_signal_t *handle, int signum)
 static void cb_process_async(uv_async_t *handle)
 {
     UNUSED(handle);
-    // auto *impl = (nplex::session_t::impl_t *) handle->loop->data;
-    // impl->process_commands();
+    //TODO: use async signal to stop the thread (ex. SIGINT signal)
 }
 
 static void cb_close_handle(uv_handle_t *handle, void *arg)
@@ -147,12 +146,9 @@ static void cb_tcp_connection(uv_stream_t *stream, int status)
         return;
     }
 
-    using namespace nplex;
-    auto *server = (server_t *) stream->loop->data;
+    auto *server = (nplex::server_t *) stream->loop->data;
     assert(server);
-
-    auto *session = new session_t(stream);
-    server->append_session(session);
+    server->append_session(stream);
 }
 
 static bool is_valid_user(const nplex::user_t &user)
@@ -238,20 +234,19 @@ void nplex::server_t::run()
     SPDLOG_DEBUG("Event loop terminated");
 }
 
-void nplex::server_t::append_session(session_t *session)
+void nplex::server_t::append_session(uv_stream_t *stream)
 {
-    assert(session);
-
-    SPDLOG_DEBUG("New connection: {}", session->m_addr.str());
+    assert(stream);
 
     if (m_sessions.size() >= m_params.max_connections) {
-        SPDLOG_WARN("Max clients reached: {}", m_params.max_connections);
-        session->disconnect(ERR_MAX_CONN);
+        SPDLOG_WARN("Connection rejected (max clients reached)");
         return;
     }
 
-    m_sessions.insert(session);
+    auto session = std::make_shared<session_t>(stream);
+    SPDLOG_DEBUG("New connection: {}", session->m_addr.str());
 
+    m_sessions.insert(session);
 }
 
 void nplex::server_t::release_session(session_t *session)
@@ -259,19 +254,17 @@ void nplex::server_t::release_session(session_t *session)
     if (!session)
         return;
 
-    m_sessions.erase(session);
+    auto it = m_sessions.find(session);
 
-    if (session->m_user && session->m_user->num_connections > 0)
-    session->m_user->num_connections--;
+    if (it == m_sessions.end())
+        return;
 
     SPDLOG_INFO("Connection {} closed ({})", session->m_addr.str(), session->strerror());
-}
 
-void nplex::server_t::on_msg_delivered(session_t *session, const msgs::Message *msg)
-{
-    UNUSED(session);
-    UNUSED(msg);
-    // TODO: report client activity
+    if (session->m_user && session->m_user->num_connections > 0)
+        session->m_user->num_connections--;
+
+    m_sessions.erase(it);
 }
 
 void nplex::server_t::on_msg_received(session_t *session, const msgs::Message *msg)
@@ -282,7 +275,6 @@ void nplex::server_t::on_msg_received(session_t *session, const msgs::Message *m
     }
 
     SPDLOG_DEBUG("Received {} from {}", msgs::EnumNameMsgContent(msg->content_type()), session->m_addr.str());
-    // TODO: report client activity
 
     switch (msg->content_type())
     {
@@ -352,7 +344,7 @@ void nplex::server_t::process_login_request(session_t *session, const nplex::msg
         return;
     }
 
-    if (user->num_connections + 1 >= user->max_connections) {
+    if (user->num_connections >= user->max_connections) {
         session->send(
             create_login_msg(
                 req->cid(), 
@@ -372,7 +364,7 @@ void nplex::server_t::process_login_request(session_t *session, const nplex::msg
             req->cid(), 
             msgs::LoginCode::AUTHORIZED,
             0, //rev0,
-            0, //crev,
+            m_cache.rev(),
             *user
         ) 
     );
@@ -437,9 +429,18 @@ void nplex::server_t::process_submit_request(session_t *session, const nplex::ms
 
 void nplex::server_t::process_ping_request(session_t *session, const nplex::msgs::PingRequest *req)
 {
-    UNUSED(session);
-    UNUSED(req);
-    // TODO: implement
+    if (session->m_state == session_t::state_e::CONNECTED) {
+        session->disconnect(ERR_MSG_UNEXPECTED);
+        return;
+    }
+
+    session->send(
+        create_ping_msg(
+            req->cid(), 
+            m_cache.rev(),
+            (req->payload() ? req->payload()->str() : "")
+        )
+    );
 }
 
 void nplex::server_t::send_last_snapshot(session_t *session, std::size_t cid)
@@ -468,7 +469,7 @@ void nplex::server_t::send_last_snapshot(session_t *session, std::size_t cid)
 
 void nplex::server_t::push_update(const update_t &update)
 {
-    for (auto *session : m_sessions)
+    for (auto &session : m_sessions)
     {
         if (session->m_state != session_t::state_e::SYNCED)
             continue;

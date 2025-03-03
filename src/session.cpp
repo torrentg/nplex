@@ -198,8 +198,6 @@ void nplex::cb_close_session(uv_handle_t *handle)
     session->m_timer_keepalive = nullptr;
 
     server->release_session(session);
-
-    delete session;
 }
 
 // ==========================================================

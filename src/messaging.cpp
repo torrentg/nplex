@@ -114,6 +114,26 @@ const nplex::msgs::Message * nplex::parse_network_msg(const char *ptr, size_t le
     return flatbuffers::GetRoot<nplex::msgs::Message>(ptr);
 }
 
+flatbuffers::DetachedBuffer nplex::create_ping_msg(std::size_t cid, rev_t crev, const std::string &payload)
+{
+    using namespace msgs;
+    using namespace flatbuffers;
+
+    FlatBufferBuilder builder;
+
+    auto msg = CreateMessage(builder, 
+        MsgContent::PING_RESPONSE,
+        CreatePingResponse(builder,
+            cid, 
+            crev,
+            builder.CreateString(payload.c_str())
+        ).Union()
+    );
+
+    builder.Finish(msg);
+    return builder.Release();
+}
+
 flatbuffers::DetachedBuffer nplex::create_submit_msg(std::size_t cid, rev_t crev, msgs::SubmitCode code, rev_t erev)
 {
     using namespace msgs;

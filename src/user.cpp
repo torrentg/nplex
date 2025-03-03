@@ -3,7 +3,7 @@
 
 bool nplex::user_t::is_authorized(uint8_t mode, const char *key) const
 {
-    if (!active)
+    if (!active || !key || !mode)
         return false;
 
     if (permissions.empty())

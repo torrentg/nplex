@@ -25,6 +25,7 @@ inline std::size_t get_msg_length(const flatbuffers::DetachedBuffer &buf) noexce
     return buf.size() + 3 * sizeof(std::uint32_t);
 }
 
+flatbuffers::DetachedBuffer create_ping_msg(std::size_t cid, rev_t crev, const std::string &payload);
 flatbuffers::DetachedBuffer create_login_msg(std::size_t cid, msgs::LoginCode code, rev_t rev0 = 0, rev_t crev = 0, const user_t &user = {});
 flatbuffers::DetachedBuffer create_keepalive_msg(rev_t crev);
 flatbuffers::DetachedBuffer create_submit_msg(std::size_t cid, rev_t crev, msgs::SubmitCode code, rev_t erev = 0);

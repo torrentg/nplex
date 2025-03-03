@@ -5,9 +5,10 @@
 * Add check data (-c) command-line option
 * strerror() differentiates depending on error level (info, waning, etc)
 * Add timeout-factor param
+* Add max-unack-msgs param
+* Add max-unack-bytes param
+* Add max-msg-length param
 * Add buffer gto::cqueue<update_t>
-* Add submit-req support
-* session_ptr = std::shared_ptr<session_t>
 * Replace user_t::num_connections by std::set<session_ptr> sessions
 
 ## Useful commands

@@ -19,11 +19,9 @@ class server_t
 
     void run();
 
-    // methods called from libuv
-    void append_session(session_t *session);
+    void append_session(uv_stream_t *stream);
     void release_session(session_t *session);
     void on_msg_received(session_t *session, const msgs::Message *msg);
-    void on_msg_delivered(session_t *session, const msgs::Message *msg);
 
   private:
 
@@ -33,7 +31,7 @@ class server_t
     std::unique_ptr<uv_async_t> m_async;
     std::unique_ptr<uv_signal_t> m_signal;
     std::map<std::string, user_ptr> m_users;
-    std::set<session_t *> m_sessions;
+    std::set<session_ptr, shared_ptr_compare<session_t>> m_sessions;
     cache_t m_cache;
 
     void process_login_request(session_t *session, const nplex::msgs::LoginRequest *req);
