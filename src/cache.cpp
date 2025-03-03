@@ -16,6 +16,13 @@ static gto::cstring create_cstring(const flatbuffers::Vector<std::uint8_t> *valu
 }
 
 // ==========================================================
+// value_t members
+// ==========================================================
+
+const gto::cstring nplex::value_t::EMPTY = "";
+const gto::cstring nplex::value_t::REMOVED = "REMOVED";
+
+// ==========================================================
 // cache_t methods
 // ==========================================================
 

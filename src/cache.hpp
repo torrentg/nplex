@@ -1,5 +1,6 @@
 #pragma once
 
+#include <set>
 #include <map>
 #include <vector>
 #include <memory>
@@ -10,6 +11,49 @@
 #include "user.hpp"
 
 namespace nplex {
+
+//! Transaction metadata.
+struct meta_t
+{
+    rev_t rev;                      //!< Revision at transaction creation.
+    gto::cstring user;              //!< Transaction creator.
+    millis_t timestamp;             //!< Timestamp at transaction creation.
+    std::uint32_t type;             //!< Transaction type (user-defined).
+    std::set<key_t> refs;           //!< Keys modified by the transaction.
+};
+
+using meta_ptr = std::shared_ptr<meta_t>;
+
+//! Database value.
+class value_t
+{
+    friend class cache_t;
+    static const gto::cstring REMOVED;
+    static const gto::cstring EMPTY;
+
+  private:
+
+    gto::cstring m_data;
+    meta_ptr m_meta;
+
+  public:
+
+    value_t(const gto::cstring &data, std::shared_ptr<meta_t> meta) : m_data{data}, m_meta{meta} {}
+
+    const meta_ptr & meta() const { return m_meta; }
+    const gto::cstring & data() const { return m_data; }
+
+    rev_t rev() const { return (m_meta ? m_meta->rev : 0); }
+    const gto::cstring & user() const { return (m_meta ? m_meta->user : EMPTY); }
+    millis_t timestamp() const { return (m_meta ? m_meta->timestamp : millis_t{0}); }
+    std::uint32_t type() const { return (m_meta ? m_meta->type : 0); }
+
+    // Auxiliar methods
+    void set_removed() { m_data = REMOVED; }
+    bool is_removed() const { return (m_data.c_str() == REMOVED.c_str()); }
+};
+
+using value_ptr = std::shared_ptr<value_t>;
 
 struct update_t {
     meta_ptr meta;
@@ -27,13 +71,89 @@ enum struct meta_e : std::uint8_t {
  * 
  * @note This class is not thread-safe.
  */
-struct cache_t
+class cache_t
 {
+  private:
+
     rev_t m_rev = 0;
     std::map<rev_t, meta_ptr> m_metas;
     std::map<key_t, value_ptr, gto::cstring_compare> m_data;
-    std::map<gto::cstring, std::uint32_t, gto::cstring_compare> m_users; // value=number of updates
+    std::map<gto::cstring, std::uint32_t, gto::cstring_compare> m_users; // value=number of metas referencing the user
     gto::cqueue<key_t> m_removed_keys;   // can contain duplicates and reinserted keys
+
+    /**
+     * Creates a transaction metadata object.
+     * Using current time and the given params.
+     * Aggregating the user to user list if required.
+     * 
+     * @param[in] rev Revision.
+     * @param[in] username User name.
+     * @param[in] type Transaction type (user-defined value).
+     * 
+     * @return The inserted metadata.
+     */
+    meta_ptr create_meta(const rev_t rev, const char *username, std::uint32_t type);
+
+    /**
+     * Update a metadata object.
+     * 
+     * On append mode, adds key as new reference.
+     * On subtract mode, removes key and if empty removes the meta itself.
+     * 
+     * @param[in] meta Metadata to update.
+     * @param[in] key Key to add/remove as reference.
+     * @param[in] mode Update mode.
+     */
+    void update_meta(const meta_ptr &meta, const key_t &key, meta_e mode);
+
+    /**
+     * Upsert an entry updating content accordingly.
+     * 
+     * @param[in] key Key to insert or update.
+     * @param[in] value Value to set.
+     * 
+     * @return true = change done, false = no change.
+     */
+    bool upsert_entry(const char *key, const value_ptr &value);
+    bool upsert_entry(const key_t &key, const value_ptr &value);
+
+    /**
+     * Delete an entry updating content accordingly.
+     * 
+     * @param[in] key Key to delete.
+     * 
+     * @return true = entry delete, false = otherwise.
+     */
+    bool delete_entry(const char *key);
+
+    /**
+     * Mark an entry as deleted.
+     * 
+     * Append the key to the removed keys set.
+     * 
+     * @param[in] key Key to delete.
+     * @param[in] meta Metadata of the transaction removing the key.
+     * 
+     * @return true = entry delete, false = otherwise.
+     */
+    bool mark_as_removed(const key_t &key, const meta_ptr &meta);
+
+    /**
+     * Internal function.
+     * 
+     * Pre-conditions: update is empty.
+     * Post-conditions: update has a meta that must be released on error.
+     */
+    msgs::SubmitCode try_commit_inner(const user_t &user, const msgs::SubmitRequest *msg, update_t &update);
+
+  public:
+
+    /**
+     * Get the current revision of the cache.
+     * 
+     * @return The current revision number.
+     */
+    rev_t rev() const noexcept { return m_rev; }
 
     /**
      * Load the database content from a snapshot.
@@ -97,62 +217,6 @@ struct cache_t
      * @return Serialized snapshot content.
      */
     flatbuffers::Offset<msgs::Snapshot> serialize(flatbuffers::FlatBufferBuilder &builder, const user_t &user) const;
-
-  private:
-
-    /**
-     * Creates a transaction metadata object.
-     * Using current time and the given params.
-     * Aggregating the user to user list if required.
-     * 
-     * @param[in] rev Revision.
-     * @param[in] username User name.
-     * @param[in] type Transaction type (user-defined value).
-     * 
-     * @return The inserted metadata.
-     */
-    meta_ptr create_meta(const rev_t rev, const char *username, std::uint32_t type);
-
-    /**
-     * Update a metadata object.
-     * 
-     * On append mode, adds key as new reference.
-     * On subtract mode, removes key and if empty removes the meta itself.
-     * 
-     * @param[in] meta Metadata to update.
-     * @param[in] key Key to add/remove as reference.
-     * @param[in] mode Update mode.
-     */
-    void update_meta(const meta_ptr &meta, const key_t &key, meta_e mode);
-
-    /**
-     * Upsert an entry updating content accordingly.
-     * 
-     * @param[in] key Key to insert or update.
-     * @param[in] value Value to set.
-     * 
-     * @return true = change done, false = no change.
-     */
-    bool upsert_entry(const char *key, const value_ptr &value);
-    bool upsert_entry(const key_t &key, const value_ptr &value);
-
-    /**
-     * Delete an entry updating content accordingly.
-     * 
-     * @param[in] key Key to delete.
-     * 
-     * @return true = entry delete, false = otherwise.
-     */
-    bool delete_entry(const char *key);
-    bool mark_as_removed(const key_t &key, const meta_ptr &meta);
-
-    /**
-     * Internal function.
-     * 
-     * Pre-conditions: update is empty.
-     * Post-conditions: update has a meta that must be released on error.
-     */
-    msgs::SubmitCode try_commit_inner(const user_t &user, const msgs::SubmitRequest *msg, update_t &update);
 
 };
 

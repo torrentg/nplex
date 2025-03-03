@@ -388,7 +388,7 @@ void nplex::server_t::process_load_request(session_t *session, const nplex::msgs
     switch (req->mode())
     {
         case msgs::LoadMode::SNAPSHOT_AT_FIXED_REV:
-            if (req->rev() == m_cache.m_rev)
+            if (req->rev() == m_cache.rev())
                 send_last_snapshot(session, req->cid());
             else
                 UNUSED(req);//TODO: pending
@@ -421,9 +421,9 @@ void nplex::server_t::process_submit_request(session_t *session, const nplex::ms
     session->send(
         create_submit_msg(
             req->cid(), 
-            m_cache.m_rev,
+            m_cache.rev(),
             rc,
-            (rc == msgs::SubmitCode::ACCEPTED ? m_cache.m_rev : 0)
+            (rc == msgs::SubmitCode::ACCEPTED ? m_cache.rev() : 0)
         )
     );
 
@@ -453,7 +453,7 @@ void nplex::server_t::send_last_snapshot(session_t *session, std::size_t cid)
         MsgContent::LOAD_RESPONSE,
         CreateLoadResponse(builder, 
             cid, 
-            m_cache.m_rev,
+            m_cache.rev(),
             true,
             m_cache.serialize(builder, *session->m_user)
         ).Union() 
@@ -481,7 +481,7 @@ void nplex::server_t::push_update(const update_t &update)
             continue;
 
         session->send(
-            create_update_msg(builder, 0, m_cache.m_rev, off)
+            create_update_msg(builder, 0, m_cache.rev(), off)
         );
     }
 }
