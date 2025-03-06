@@ -173,14 +173,14 @@ flatbuffers::DetachedBuffer nplex::create_update_msg(flatbuffers::FlatBufferBuil
     return builder.Release();
 }
 
-flatbuffers::Offset<nplex::msgs::Update> nplex::serialize_update(flatbuffers::FlatBufferBuilder &builder, const update_t &update, const user_t &user)
+flatbuffers::Offset<nplex::msgs::Update> nplex::serialize_update(flatbuffers::FlatBufferBuilder &builder, const update_t &update, const user_t *user, bool force)
 {
     std::vector<flatbuffers::Offset<msgs::KeyValue>> upserts;
     std::vector<flatbuffers::Offset<flatbuffers::String>> deletes;
 
     for (const auto &[key, value] : update.upserts)
     {
-        if (!user.is_authorized(NPLEX_READ, key))
+        if (user && !user->is_authorized(NPLEX_READ, key))
             continue;
 
         auto kv = msgs::CreateKeyValue(
@@ -197,13 +197,13 @@ flatbuffers::Offset<nplex::msgs::Update> nplex::serialize_update(flatbuffers::Fl
 
     for (const auto &key : update.deletes)
     {
-        if (!user.is_authorized(NPLEX_READ, key))
+        if (user && !user->is_authorized(NPLEX_READ, key))
             continue;
 
         deletes.push_back(builder.CreateString(key.c_str()));
     }
 
-    if (upserts.empty() && deletes.empty())
+    if (!force && upserts.empty() && deletes.empty())
         return 0;
 
     return msgs::CreateUpdate(
@@ -216,3 +216,61 @@ flatbuffers::Offset<nplex::msgs::Update> nplex::serialize_update(flatbuffers::Fl
         builder.CreateVector(deletes)
     );
 }
+
+flatbuffers::DetachedBuffer nplex::serialize_update(const update_t &update)
+{
+    using namespace msgs;
+    using namespace flatbuffers;
+
+    FlatBufferBuilder builder;
+
+    auto msg = serialize_update(builder, update, nullptr, true);
+
+    builder.Finish(msg);
+    return builder.Release();
+}
+
+// nplex::update_t nplex::deserialize_update(const msgs::Update *msg, const user_t *user)
+// {
+//     update_t update;
+
+//     update.meta = std::make_shared<meta_t>(
+//         msg->rev(),
+//         msg->user()->str(),
+//         millis_t(msg->timestamp()),
+//         msg->type()
+//     );
+
+//     if (msg->upserts())
+//     {
+//         for (const auto &kv : *msg->upserts())
+//         {
+//             if (user && !user->is_authorized(NPLEX_READ, kv->key()->c_str()))
+//                 continue;
+
+//             update.upserts.push_back({
+//                 key_t{kv->key()->c_str()},
+//                 std::make_shared<value_t>(
+//                     gto::cstring{
+//                         reinterpret_cast<const char *>(kv->value()->data()), 
+//                         kv->value()->size()
+//                     },
+//                     update.meta
+//                 )
+//             });
+//         }
+//     }
+
+//     if (msg->deletes())
+//     {
+//         for (const auto &key : *msg->deletes())
+//         {
+//             if (user && !user->is_authorized(NPLEX_READ, key->c_str()))
+//                 continue;
+
+//             update.deletes.push_back(key->c_str());
+//         }
+//     }
+
+//     return update;
+// }

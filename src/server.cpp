@@ -21,6 +21,13 @@
 
 #define MAX_QUEUED_CONNECTIONS 128
 
+// TODO: remove this test function
+static void cb_timer_test(uv_timer_t *timer)
+{
+    auto *server = (nplex::server_t *) timer->loop->data;
+    server->simule_submit();
+}
+
 // ==========================================================
 // Internal (static) functions
 // ==========================================================
@@ -102,7 +109,7 @@ static void cb_signal_handler(uv_signal_t *handle, int signum)
 static void cb_process_async(uv_async_t *handle)
 {
     UNUSED(handle);
-    //TODO: use async signal to stop the thread (ex. SIGINT signal)
+    //TODO: use async signal to stop the thread (ex. SIGINT signal) or notify a write
 }
 
 static void cb_close_handle(uv_handle_t *handle, void *arg)
@@ -216,6 +223,15 @@ nplex::server_t::server_t(const params_t &params) : m_params(params)
         throw nplex_exception("Error starting signal handler (uv_signal_start)");
 
     // TODO: start write thread
+
+    // TODO: Remove this testing code
+    uv_timer_t *timer = (uv_timer_t *) malloc(sizeof(uv_timer_t));
+    uv_timer_init(m_loop.get(), timer);
+    uv_timer_start(timer, ::cb_timer_test, 4000, 4000);
+    uv_timer_start(timer, [](uv_timer_t *x) {
+        auto *server = (nplex::server_t *) x->loop->data;
+        server->simule_submit();
+    }, 1000, 1000);
 }
 
 void nplex::server_t::run()
@@ -476,7 +492,7 @@ void nplex::server_t::push_update(const update_t &update)
 
         flatbuffers::FlatBufferBuilder builder;
 
-        auto off = serialize_update(builder, update, *session->m_user);
+        auto off = serialize_update(builder, update, session->m_user.get());
 
         if (off.IsNull())
             continue;
@@ -485,4 +501,66 @@ void nplex::server_t::push_update(const update_t &update)
             create_update_msg(builder, 0, m_cache.rev(), off)
         );
     }
+}
+
+// TODO: remove this test function
+void nplex::server_t::simule_submit()
+{
+    fmt::print("simule_submit\n");
+
+    auto it = m_users.find("admin");
+    if (it == m_users.end()) {
+        SPDLOG_WARN("Admin user not found");
+        return;
+    }
+
+    auto &user = it->second;
+
+    // Create a valid SubmitRequest message
+    using namespace msgs;
+    flatbuffers::FlatBufferBuilder builder;
+
+    std::vector<flatbuffers::Offset<msgs::KeyValue>> upserts;
+    std::vector<flatbuffers::Offset<flatbuffers::String>> deletes;
+    std::vector<flatbuffers::Offset<flatbuffers::String>> ensures;
+
+    upserts.push_back(
+        CreateKeyValue(
+            builder, 
+            builder.CreateString("key1"), 
+            builder.CreateVector((uint8_t *) "value1", 7)
+        )
+    );
+    upserts.push_back(
+        CreateKeyValue(
+            builder, 
+            builder.CreateString("key2"), 
+            builder.CreateVector((uint8_t *) "value2", 7)
+        )
+    );
+
+    auto msg = CreateMessage(builder, 
+        MsgContent::SUBMIT_REQUEST, 
+        CreateSubmitRequest(builder, 
+            4,              // cid
+            m_cache.rev(),  // crev
+            1,              // type
+            builder.CreateVector(upserts),
+            builder.CreateVector(deletes),
+            builder.CreateVector(ensures),
+            true
+        ).Union()
+    );
+
+    builder.Finish(msg);
+
+    auto submit_req = flatbuffers::GetRoot<msgs::Message>(builder.GetBufferPointer())->content_as_SUBMIT_REQUEST();
+
+    update_t update;
+    auto rc = m_cache.try_commit(*user, submit_req, update);
+
+    fmt::print("try_commit = {}\n", static_cast<int>(rc));
+
+    if (rc == msgs::SubmitCode::ACCEPTED)
+        push_update(update);
 }

@@ -21,6 +21,10 @@ struct params_t
     std::vector<user_t> users;                          // List of users.
     bool disable_fsync = false;                         // Disable fsync.
     bool daemonize = false;                             // Run as daemon.
+    std::uint32_t write_queue_max_length = 1000;
+    std::uint32_t write_queue_max_bytes = 350 * 1024 * 1024;
+    std::uint32_t flush_max_entries = 50;
+    std::uint32_t flush_max_bytes = 25 * 1024 * 1024;
 
     params_t() = default;
     params_t(const fs::path &path);

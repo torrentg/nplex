@@ -1,5 +1,8 @@
 #pragma once
 
+#include <set>
+#include <vector>
+#include <memory>
 #include <cstdint>
 #include <string>
 #include <chrono>
@@ -38,7 +41,6 @@
 #define ERR_TIMEOUT_STEP_1 1010
 #define ERR_TIMEOUT_STEP_2 1011
 
-
 #define UNUSED(x) (void)(x)
 
 namespace nplex {
@@ -51,6 +53,55 @@ using key_t = gto::cstring;
 
 //! Database timestamps (milliseconds from epoch time).
 using millis_t = std::chrono::milliseconds;
+
+//! Transaction metadata.
+struct meta_t
+{
+    rev_t rev;                      //!< Revision at transaction creation.
+    gto::cstring user;              //!< Transaction creator.
+    millis_t timestamp;             //!< Timestamp at transaction creation.
+    std::uint32_t type;             //!< Transaction type (user-defined).
+    std::set<key_t> refs;           //!< Keys modified by the transaction.
+};
+
+using meta_ptr = std::shared_ptr<meta_t>;
+
+//! Database value.
+class value_t
+{
+    friend class cache_t;
+    static const gto::cstring REMOVED;
+    static const gto::cstring EMPTY;
+
+  private:
+
+    gto::cstring m_data;
+    meta_ptr m_meta;
+
+  public:
+
+    value_t(const gto::cstring &data, std::shared_ptr<meta_t> meta) : m_data{data}, m_meta{meta} {}
+
+    const meta_ptr & meta() const { return m_meta; }
+    const gto::cstring & data() const { return m_data; }
+
+    rev_t rev() const { return (m_meta ? m_meta->rev : 0); }
+    const gto::cstring & user() const { return (m_meta ? m_meta->user : EMPTY); }
+    millis_t timestamp() const { return (m_meta ? m_meta->timestamp : millis_t{0}); }
+    std::uint32_t type() const { return (m_meta ? m_meta->type : 0); }
+
+    // Auxiliar methods
+    void set_removed() { m_data = REMOVED; }
+    bool is_removed() const { return (m_data.c_str() == REMOVED.c_str()); }
+};
+
+using value_ptr = std::shared_ptr<value_t>;
+
+struct update_t {
+    meta_ptr meta;
+    std::vector<std::pair<key_t, value_ptr>> upserts;
+    std::vector<key_t> deletes;
+};
 
 enum log_level_e : std::uint8_t {
     DEBUG,

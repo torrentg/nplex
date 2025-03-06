@@ -16,13 +16,6 @@ static gto::cstring create_cstring(const flatbuffers::Vector<std::uint8_t> *valu
 }
 
 // ==========================================================
-// value_t members
-// ==========================================================
-
-const gto::cstring nplex::value_t::EMPTY = "";
-const gto::cstring nplex::value_t::REMOVED = "REMOVED";
-
-// ==========================================================
 // cache_t methods
 // ==========================================================
 
@@ -99,7 +92,7 @@ bool nplex::cache_t::upsert_entry(const char *key, const value_ptr &value)
     {
         ckey = key;
         m_data[ckey] = value;
-    }                    
+    }
 
     update_meta(value->m_meta, ckey, meta_e::APPEND);
 

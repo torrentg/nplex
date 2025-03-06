@@ -9,7 +9,7 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
 #include "params.hpp"
-#include "journal.hpp"
+#include "journal.h"
 #include "addr.hpp"
 #include "server.hpp"
 #include "common.hpp"
@@ -221,10 +221,10 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    std::shared_ptr<journal_t> journal;
+    std::shared_ptr<ldb::journal_t> journal;
 
     try {
-        journal = std::make_shared<journal_t>(fs::current_path());
+        journal = std::make_shared<ldb::journal_t>(fs::current_path(), PROJECT_NAME);
         journal->set_fsync(!params.disable_fsync);
     }
     catch (const std::exception &e) {

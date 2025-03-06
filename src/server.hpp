@@ -23,6 +23,9 @@ class server_t
     void release_session(session_t *session);
     void on_msg_received(session_t *session, const msgs::Message *msg);
 
+    // TODO: remove this test method
+    void simule_submit();
+
   private:
 
     params_t m_params;
@@ -43,7 +46,6 @@ class server_t
     void push_update(const update_t &update);                         // push update to all synchronized sessions
     void push_update(const update_t &update, const user_ptr &user);   // push update to all synchronized sessions of a user
     void push_update(const update_t &update, session_t *session);     // push update to a specific session
-
 };
 
 } // namespace nplex

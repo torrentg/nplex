@@ -21,6 +21,11 @@
 #define USER_MAX_UNACK_BYTES "max-unack-bytes"
 #define USER_ACL "acl"
 
+#define WRITE_QUEUE_MAX_LENGTH "write-queue-max-length"
+#define WRITE_QUEUE_MAX_BYTES "write-queue-max-bytes"
+#define FLUSH_MAX_ENTRIES "flush-max-entries"
+#define FLUSH_MAX_BYTES "flush-max-bytes"
+
 static std::string mode_to_string(std::uint8_t mode)
 {
     return std::string{
@@ -155,7 +160,7 @@ static int cb_inih_inner(void *obj, const char *section, const char *name, const
 {
     using namespace nplex;
 
-    auto params = (params_t *) obj;
+    auto params = static_cast<params_t *>(obj);
 
     if (strcmp(section, "") == 0)
     {
@@ -167,6 +172,14 @@ static int cb_inih_inner(void *obj, const char *section, const char *name, const
             params->max_connections = parse_uint32(value);
         } else if (strcmp(name, GENERAL_DISABLE_FSYNC) == 0) {
             params->disable_fsync = parse_bool(value);
+        } else if (strcmp(name, WRITE_QUEUE_MAX_LENGTH) == 0) {
+            params->write_queue_max_length = parse_uint32(value);
+        } else if (strcmp(name, WRITE_QUEUE_MAX_BYTES) == 0) {
+            params->write_queue_max_bytes = parse_bytes(value);
+        } else if (strcmp(name, FLUSH_MAX_ENTRIES) == 0) {
+            params->flush_max_entries = parse_uint32(value);
+        } else if (strcmp(name, FLUSH_MAX_BYTES) == 0) {
+            params->flush_max_entries = parse_bytes(value);
         } else {
             throw std::invalid_argument(fmt::format("Unrecognized entry ({})", name));
         }
@@ -266,8 +279,14 @@ void nplex::params_t::save(const fs::path &path) const
 
     ofs << GENERAL_ADDR << " = " << addr.str() << std::endl;
     ofs << GENERAL_LOG_LEVEL << " = " << to_string(log_level) << std::endl;
-    ofs << GENERAL_MAX_CLIENTS << " = " << max_connections << std::endl;
     ofs << GENERAL_DISABLE_FSYNC << " = " << (disable_fsync ? "true" : "false") << std::endl;
+    ofs << std::endl;
+
+    ofs << GENERAL_MAX_CLIENTS << " = " << max_connections << std::endl;
+    ofs << WRITE_QUEUE_MAX_LENGTH << " = " << write_queue_max_length << std::endl;
+    ofs << WRITE_QUEUE_MAX_BYTES << " = " << ::bytes_to_string(write_queue_max_bytes) << std::endl;
+    ofs << FLUSH_MAX_ENTRIES << " = " << flush_max_entries << std::endl;
+    ofs << FLUSH_MAX_BYTES << " = " << ::bytes_to_string(flush_max_bytes) << std::endl;
     ofs << std::endl;
 
     ofs << "[" << SECTION_DEFAULTS << "]" << std::endl;
@@ -300,7 +319,7 @@ void nplex::params_t::save(const fs::path &path) const
         if (user.max_unack_msgs != default_user.max_unack_msgs)
             ofs << USER_MAX_UNACK_MSGS << " = " << user.max_unack_msgs << std::endl;
         if (user.max_unack_bytes != default_user.max_unack_bytes)
-            ofs << USER_MAX_UNACK_BYTES << " = " << ::bytes_to_string(user.max_unack_bytes) << std::endl;  
+            ofs << USER_MAX_UNACK_BYTES << " = " << ::bytes_to_string(user.max_unack_bytes) << std::endl;
 
         for (const auto &acl : user.permissions)
             if (!acl.pattern.empty())
