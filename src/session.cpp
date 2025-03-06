@@ -372,7 +372,8 @@ void nplex::session_t::do_step2()
         m_timer_disconnect = nullptr;
     }
     else {
-        uint64_t millis = static_cast<uint64_t>(static_cast<double>(keepalive_millis) * 3.0);
+        assert(m_user->timeout_factor > 1.0);
+        uint64_t millis = static_cast<uint64_t>(static_cast<double>(keepalive_millis) * m_user->timeout_factor);
         uv_timer_start(m_timer_disconnect, ::cb_timer_disconnect, millis, millis);
     }
 }

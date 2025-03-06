@@ -176,6 +176,9 @@ nplex::server_t::server_t(const params_t &params) : m_params(params)
         if (!is_valid_user(user))
             continue;
 
+        if (user.timeout_factor <= 1.0)
+            throw nplex_exception(fmt::format("Invalid timeout factor ({})", user.timeout_factor));
+
         if (m_users.contains(user.name))
             throw nplex_exception(fmt::format("Duplicated user ({})", user.name));
 

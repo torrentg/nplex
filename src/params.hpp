@@ -25,6 +25,7 @@ struct params_t
     std::uint32_t write_queue_max_bytes = 350 * 1024 * 1024;
     std::uint32_t flush_max_entries = 50;
     std::uint32_t flush_max_bytes = 25 * 1024 * 1024;
+    float timeout_factor = 3.0;
 
     params_t() = default;
     params_t(const fs::path &path);

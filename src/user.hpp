@@ -26,6 +26,7 @@ struct user_t
     std::uint32_t max_unack_msgs = 0;                   // Maximum number of unacknowledged messages (0 = unlimited).
     std::uint32_t max_unack_bytes = 0;                  // Maximum number of unacknowledged bytes (0 = unlimited).
     std::uint32_t max_msg_bytes = 0;                    // Maximum incomming message size (0 = unlimited).
+    float timeout_factor = 3.0;                         // Timeout factor.
 
     std::uint32_t num_connections = 0;                  // Number of active connections.
 

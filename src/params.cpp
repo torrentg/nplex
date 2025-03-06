@@ -19,6 +19,7 @@
 #define USER_MAX_MSG_BYTES "max-msg-bytes"
 #define USER_MAX_UNACK_MSGS "max-unack-msgs"
 #define USER_MAX_UNACK_BYTES "max-unack-bytes"
+#define USER_TIMEOUT_FACTOR "timeout-factor"
 #define USER_ACL "acl"
 
 #define WRITE_QUEUE_MAX_LENGTH "write-queue-max-length"
@@ -73,6 +74,26 @@ static bool parse_bool(const std::string_view &str)
         return false;
 
     throw std::invalid_argument(fmt::format("Invalid bool ({})", str));
+}
+
+static float parse_float(const std::string_view &str)
+{
+    if (str.empty() || !isdigit(str[0]))
+        throw std::invalid_argument(fmt::format("Invalid float value ({})", str));
+
+    float num = 0;
+
+    auto [ptr, ec] = std::from_chars(str.begin(), str.end(), num);
+
+    if (ec != std::errc())
+        throw std::invalid_argument(fmt::format("Invalid float value ({})", str));
+
+    while (isspace(*ptr)) ptr++;
+
+    if (ptr != str.end())
+        throw std::invalid_argument(fmt::format("Invalid float value ({})", str));
+
+    return num;
 }
 
 static std::uint32_t parse_uint32(const std::string_view &str)
@@ -203,6 +224,10 @@ static int cb_inih_inner(void *obj, const char *section, const char *name, const
             params->default_user.max_unack_msgs = parse_uint32(value);
         } else if (strcmp(name, USER_MAX_UNACK_BYTES) == 0) {
             params->default_user.max_unack_bytes = parse_bytes(value);
+        } else if (strcmp(name, USER_TIMEOUT_FACTOR) == 0) {
+            params->default_user.timeout_factor = parse_float(value);
+            if (params->default_user.timeout_factor <= 1.0)
+                throw std::invalid_argument(fmt::format("Invalid timeout factor ({})", value));
         } else {
             throw std::invalid_argument(fmt::format("Unrecognized entry ({})", name));
         }
@@ -236,6 +261,10 @@ static int cb_inih_inner(void *obj, const char *section, const char *name, const
         it->max_unack_msgs = parse_uint32(value);
     } else if (strcmp(name, USER_MAX_UNACK_BYTES) == 0) {
         it->max_unack_bytes = parse_bytes(value);
+    } else if (strcmp(name, USER_TIMEOUT_FACTOR) == 0) {
+        it->timeout_factor = parse_float(value);
+        if (params->default_user.timeout_factor <= 1.0)
+            throw std::invalid_argument(fmt::format("Invalid timeout factor ({})", value));
     } else if (strcmp(name, USER_ACL) == 0) {
         it->permissions.push_back(parse_acl(value));
     } else
@@ -291,9 +320,10 @@ void nplex::params_t::save(const fs::path &path) const
 
     ofs << "[" << SECTION_DEFAULTS << "]" << std::endl;
     ofs << USER_ACTIVE << " = " << (default_user.active ? "true" : "false") << std::endl;
-    ofs << USER_MAX_CONNECTIONS << " = " << default_user.max_connections << std::endl;
     ofs << USER_CAN_FORCE << " = " << (default_user.can_force ? "true" : "false") << std::endl;
+    ofs << USER_MAX_CONNECTIONS << " = " << default_user.max_connections << std::endl;
     ofs << USER_KEEPALIVE_MILLIS << " = " << default_user.keepalive_millis << std::endl;
+    ofs << USER_TIMEOUT_FACTOR << " = " << fmt::format("{:.1f}", default_user.timeout_factor) << std::endl;
     ofs << USER_MAX_MSG_BYTES << " = " << ::bytes_to_string(default_user.max_msg_bytes) << std::endl;
     ofs << USER_MAX_UNACK_MSGS << " = " << default_user.max_unack_msgs << std::endl;
     ofs << USER_MAX_UNACK_BYTES << " = " << ::bytes_to_string(default_user.max_unack_bytes) << std::endl;
@@ -308,12 +338,14 @@ void nplex::params_t::save(const fs::path &path) const
         ofs << USER_PASSWORD << " = " << user.password << std::endl;
         if (user.active != default_user.active)
             ofs << USER_ACTIVE << " = " << (user.active ? "true" : "false") << std::endl;
+        if (user.can_force != default_user.can_force)
+            ofs << USER_CAN_FORCE << " = " << (user.can_force ? "true" : "false") << std::endl;
         if (user.max_connections != default_user.max_connections)
             ofs << USER_MAX_CONNECTIONS << " = " << user.max_connections << std::endl;
         if (user.keepalive_millis != default_user.keepalive_millis)
             ofs << USER_KEEPALIVE_MILLIS << " = " << user.keepalive_millis << std::endl;
-        if (user.can_force != default_user.can_force)
-            ofs << USER_CAN_FORCE << " = " << (user.can_force ? "true" : "false") << std::endl;
+        if (user.timeout_factor != default_user.timeout_factor)
+            ofs << USER_TIMEOUT_FACTOR << " = " << fmt::format("{:.1f}", user.timeout_factor) << std::endl;
         if (user.max_msg_bytes != default_user.max_msg_bytes)
             ofs << USER_MAX_MSG_BYTES << " = " << ::bytes_to_string(user.max_msg_bytes) << std::endl;
         if (user.max_unack_msgs != default_user.max_unack_msgs)
@@ -333,8 +365,6 @@ void nplex::params_t::save(const fs::path &path) const
         ofs << "[admin]" << std::endl;
         ofs << USER_ACTIVE << " = true" << std::endl;
         ofs << USER_PASSWORD << " = s3cr3t" << std::endl;
-        ofs << USER_MAX_CONNECTIONS << " = 10" << std::endl;
-        ofs << USER_KEEPALIVE_MILLIS << " = 1000" << std::endl;
         ofs << USER_CAN_FORCE << " = true" << std::endl;
         ofs << USER_ACL << " = crud:**" << std::endl;
         ofs << std::endl;

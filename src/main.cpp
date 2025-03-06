@@ -256,11 +256,6 @@ int main(int argc, char *argv[])
     // @see https://github.com/gabime/spdlog/wiki/3.-Custom-formatting#pattern-flags
     spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%s:%#] [%-5l] %v");
 
-    SPDLOG_ERROR("Welcome to nplex!");
-    SPDLOG_WARN("Welcome to nplex!");
-    SPDLOG_INFO("Welcome to nplex!");
-    SPDLOG_DEBUG("Welcome to nplex!");
-
     // TODO: install signal catcher
 
     try {
