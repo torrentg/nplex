@@ -88,7 +88,7 @@ static float parse_float(const std::string_view &str)
     if (ec != std::errc())
         throw std::invalid_argument(fmt::format("Invalid float value ({})", str));
 
-    while (isspace(*ptr)) ptr++;
+    while (ptr != str.end() && isspace(*ptr)) ptr++;
 
     if (ptr != str.end())
         throw std::invalid_argument(fmt::format("Invalid float value ({})", str));

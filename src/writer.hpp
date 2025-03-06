@@ -2,7 +2,7 @@
 #include <memory>
 #include <functional>
 #include <condition_variable>
-#include "flatbuffers/flatbuffers.h"
+#include <flatbuffers/flatbuffers.h>
 #include "cqueue.hpp"
 #include "journal.h"
 #include "exception.hpp"

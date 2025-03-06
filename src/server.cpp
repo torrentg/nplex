@@ -2,7 +2,9 @@
 #include <cstring>
 #include <cassert>
 #include <stdexcept>
+#include <filesystem>
 #include <fmt/core.h>
+#include <fmt/ranges.h>
 #include <sys/socket.h>
 #include <spdlog/spdlog.h>
 #include "messaging.hpp"
@@ -21,16 +23,16 @@
 
 #define MAX_QUEUED_CONNECTIONS 128
 
+// ==========================================================
+// Internal (static) functions
+// ==========================================================
+
 // TODO: remove this test function
 static void cb_timer_test(uv_timer_t *timer)
 {
     auto *server = (nplex::server_t *) timer->loop->data;
     server->simule_submit();
 }
-
-// ==========================================================
-// Internal (static) functions
-// ==========================================================
 
 /**
  * Convert an string address to a sockaddr.
@@ -160,35 +162,73 @@ static void cb_tcp_connection(uv_stream_t *stream, int status)
 
 static bool is_valid_user(const nplex::user_t &user)
 {
-    return (user.active && !user.password.empty() && user.max_connections > 0 && !user.permissions.empty());
+    if (!user.active)
+        return false;
+
+    if (user.password.empty())
+        return false;
+
+    if (user.max_connections == 0)
+        return false;
+
+    if (user.timeout_factor <= 1.0)
+        return false;
+
+    int sum = 0;
+
+    for (const auto &perm : user.permissions)
+        sum += perm.mode;
+
+    if (sum == 0)
+        return false;
+
+    return true;
 }
 
 // ==========================================================
 // server_t methods
 // ==========================================================
-
-nplex::server_t::server_t(const params_t &params) : m_params(params)
+#include "storage.hpp"
+void nplex::server_t::init(const params_t &params)
 {
-    int rc = 0;
+    init_users(params);
+    init_event_loop(params);
+    init_network(params);
+
+    m_journal = std::make_shared<ldb::journal_t>(std::filesystem::current_path(), "entries");
+    m_journal->set_fsync(!params.disable_fsync);
+
+    // TODO: initialize m_cache from disk
+    // TODO: start write thread
+}
+
+void nplex::server_t::init_users(const params_t &params)
+{
+    std::vector<std::string> valid_users;
 
     for (const auto &user : params.users)
     {
         if (!is_valid_user(user))
             continue;
 
-        if (user.timeout_factor <= 1.0)
-            throw nplex_exception(fmt::format("Invalid timeout factor ({})", user.timeout_factor));
-
         if (m_users.contains(user.name))
             throw nplex_exception(fmt::format("Duplicated user ({})", user.name));
 
         m_users[user.name] = std::make_shared<user_t>(user);
+        valid_users.push_back(user.name);
     }
 
     if (m_users.empty())
         throw nplex_exception("No valid users found");
 
-    // TODO: initialize m_cache from disk
+    SPDLOG_INFO("Users: [{}]", fmt::join(valid_users, ", "));
+}
+
+void nplex::server_t::init_event_loop(const params_t &params)
+{
+    UNUSED(params);
+
+    int rc = 0;
 
     m_loop = std::make_unique<uv_loop_t>();
 
@@ -197,7 +237,35 @@ nplex::server_t::server_t(const params_t &params) : m_params(params)
 
     m_loop->data = this;
 
+    m_async = std::make_unique<uv_async_t>();
+
+    if (uv_async_init(m_loop.get(), m_async.get(), ::cb_process_async) != 0)
+        throw nplex_exception(uv_strerror(rc));
+
+    m_signal = std::make_unique<uv_signal_t>();
+
+    if ((rc = uv_signal_init(m_loop.get(), m_signal.get())) != 0)
+        throw nplex_exception(uv_strerror(rc));
+
+    if (uv_signal_start(m_signal.get(), ::cb_signal_handler, SIGINT) != 0)
+        throw nplex_exception("Error setting signal handler");
+
+    // TODO: Remove this testing code
+    uv_timer_t *timer = (uv_timer_t *) malloc(sizeof(uv_timer_t));
+    uv_timer_init(m_loop.get(), timer);
+    uv_timer_start(timer, ::cb_timer_test, 4000, 4000);
+    uv_timer_start(timer, [](uv_timer_t *x) {
+        auto *server = (nplex::server_t *) x->loop->data;
+        server->simule_submit();
+    }, 1000, 1000);
+}
+
+void nplex::server_t::init_network(const params_t &params)
+{
+    int rc = 0;
     struct sockaddr_storage addr_in = ::get_sockaddr(m_loop.get(), params.addr);
+
+    m_max_connections = params.max_connections;
 
     m_tcp = std::make_unique<uv_tcp_t>();
 
@@ -211,30 +279,6 @@ nplex::server_t::server_t(const params_t &params) : m_params(params)
         throw nplex_exception(uv_strerror(rc));
 
     SPDLOG_INFO("Nplex listening on {}", params.addr.str());
-
-    m_async = std::make_unique<uv_async_t>();
-
-    if (uv_async_init(m_loop.get(), m_async.get(), ::cb_process_async) != 0)
-        throw nplex_exception(uv_strerror(rc));
-
-    m_signal = std::make_unique<uv_signal_t>();
-
-    if ((rc = uv_signal_init(m_loop.get(), m_signal.get())) != 0)
-        throw nplex_exception(uv_strerror(rc));
-
-    if (uv_signal_start(m_signal.get(), ::cb_signal_handler, SIGINT) != 0)
-        throw nplex_exception("Error starting signal handler (uv_signal_start)");
-
-    // TODO: start write thread
-
-    // TODO: Remove this testing code
-    uv_timer_t *timer = (uv_timer_t *) malloc(sizeof(uv_timer_t));
-    uv_timer_init(m_loop.get(), timer);
-    uv_timer_start(timer, ::cb_timer_test, 4000, 4000);
-    uv_timer_start(timer, [](uv_timer_t *x) {
-        auto *server = (nplex::server_t *) x->loop->data;
-        server->simule_submit();
-    }, 1000, 1000);
 }
 
 void nplex::server_t::run()
@@ -253,11 +297,17 @@ void nplex::server_t::run()
     SPDLOG_DEBUG("Event loop terminated");
 }
 
+void nplex::server_t::stop()
+{
+    // TODO: check if running
+    // TODO: send signal to stop the event loop
+}
+
 void nplex::server_t::append_session(uv_stream_t *stream)
 {
     assert(stream);
 
-    if (m_sessions.size() >= m_params.max_connections) {
+    if (m_sessions.size() >= m_max_connections) {
         SPDLOG_WARN("Connection rejected (max clients reached)");
         return;
     }
@@ -509,8 +559,6 @@ void nplex::server_t::push_update(const update_t &update)
 // TODO: remove this test function
 void nplex::server_t::simule_submit()
 {
-    fmt::print("simule_submit\n");
-
     auto it = m_users.find("admin");
     if (it == m_users.end()) {
         SPDLOG_WARN("Admin user not found");
@@ -562,8 +610,11 @@ void nplex::server_t::simule_submit()
     update_t update;
     auto rc = m_cache.try_commit(*user, submit_req, update);
 
-    fmt::print("try_commit = {}\n", static_cast<int>(rc));
-
-    if (rc == msgs::SubmitCode::ACCEPTED)
+    if (rc == msgs::SubmitCode::ACCEPTED) {
+        SPDLOG_DEBUG("Update rev = {}", m_cache.rev());
         push_update(update);
+    }
+    else {
+        SPDLOG_ERROR("Error try_commit = {}", static_cast<int>(rc));
+    }
 }

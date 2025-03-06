@@ -1,12 +1,7 @@
 # TODO
 
-* Supports signal indicating log-rotate (only if daemonized)
-* Trap and manage SIGKILL(9)
 * Add check data (-c) command-line option
 * strerror() differentiates depending on error level (info, waning, etc)
-* Add max-unack-msgs param
-* Add max-unack-bytes param
-* Add max-msg-length param
 * Add snapshot-max-entries param
 * Add snapshot-max-bytes param
 * Add buffer gto::cqueue<update_t>

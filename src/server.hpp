@@ -6,6 +6,7 @@
 #include "params.hpp"
 #include "messages.hpp"
 #include "session.hpp"
+#include "journal.h"
 #include "cache.hpp"
 #include "user.hpp"
 
@@ -15,9 +16,9 @@ class server_t
 {
   public:
 
-    explicit server_t(const params_t &params);
-
+    void init(const params_t &params);
     void run();
+    void stop();
 
     void append_session(uv_stream_t *stream);
     void release_session(session_t *session);
@@ -28,13 +29,14 @@ class server_t
 
   private:
 
-    params_t m_params;
+    std::uint32_t m_max_connections = 0;
     std::unique_ptr<uv_loop_t> m_loop;
     std::unique_ptr<uv_tcp_t> m_tcp;
     std::unique_ptr<uv_async_t> m_async;
     std::unique_ptr<uv_signal_t> m_signal;
     std::map<std::string, user_ptr> m_users;
     std::set<session_ptr, shared_ptr_compare<session_t>> m_sessions;
+    std::shared_ptr<ldb::journal_t> m_journal;
     cache_t m_cache;
 
     void process_login_request(session_t *session, const nplex::msgs::LoginRequest *req);
@@ -46,6 +48,10 @@ class server_t
     void push_update(const update_t &update);                         // push update to all synchronized sessions
     void push_update(const update_t &update, const user_ptr &user);   // push update to all synchronized sessions of a user
     void push_update(const update_t &update, session_t *session);     // push update to a specific session
+
+    void init_users(const params_t &params);
+    void init_event_loop(const params_t &params);
+    void init_network(const params_t &params);
 };
 
 } // namespace nplex

@@ -16,8 +16,9 @@
 
 #define CONFIG_FILENAME "nplex.ini"
 #define LOG_FILENAME "nplex.log"
-#define DATA_FILENAME "nplex.dat"
-#define INDEX_FILENAME "nplex.idx"
+#define DATA_FILENAME "entries.dat"
+#define INDEX_FILENAME "entries.idx"
+#define SNAPSHOT_FILENAME "snapshot-{}.dat"
 
 #define DEFAULT_ADDR "localhost:14022"
 #define MAX_CONNECTIONS 256

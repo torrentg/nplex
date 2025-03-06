@@ -124,6 +124,7 @@ target_sources(
     ${CMAKE_CURRENT_LIST_DIR}/src/messages.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/messaging.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/session.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/storage.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/writer.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/params.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/server.cpp

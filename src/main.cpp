@@ -1,7 +1,7 @@
 #include <getopt.h>
 #include <cstdlib>
 #include <cstdint>
-#include <cctype>
+#include <csignal>
 #include <iostream>
 #include <filesystem>
 #include <limits>
@@ -9,7 +9,6 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
 #include "params.hpp"
-#include "journal.h"
 #include "addr.hpp"
 #include "server.hpp"
 #include "common.hpp"
@@ -19,7 +18,9 @@ using namespace nplex;
 
 namespace fs = std::filesystem;
 
-static spdlog::level::level_enum to_spdlog(log_level_e level)
+server_t server;
+
+spdlog::level::level_enum to_spdlog(log_level_e level)
 {
     switch (level)
     {
@@ -31,7 +32,7 @@ static spdlog::level::level_enum to_spdlog(log_level_e level)
     }
 }
 
-static void help()
+void help()
 {
     std::cout <<
     "Nplex is a key-value stream database.\n"
@@ -42,8 +43,8 @@ static void help()
     "Options:\n"
     "  -D DATADIR       Database directory.\n"
     "  -a HOST:PORT     Address to listen on (ex: localhost:14022).\n"
-    "  -N MAX-CONNECT   Maximum number of allowed connections.\n"
     "  -l LOGLEVEL      Log level (debug, info, warning, error).\n"
+    "  -c               Check journal files at startup.\n"
     "  -d               Run the program as a daemon.\n"
     "  -F               Turn fsync off.\n"
     "  -V, --version    Output version information, then exit.\n"
@@ -57,7 +58,7 @@ static void help()
     << std::endl;
 }
 
-static void version()
+void version()
 {
     std::cout <<
     PROJECT_NAME << " " << PROJECT_VERSION << "\n"
@@ -66,12 +67,48 @@ static void version()
     << std::endl;
 }
 
+void handle_sighup(int signal)
+{
+    if (signal != SIGHUP)
+        return;
+
+    try {
+        spdlog::drop("basic_logger");
+        auto logger = spdlog::basic_logger_mt("basic_logger", LOG_FILENAME, true);
+        logger->flush_on(spdlog::level::debug);
+        spdlog::set_default_logger(logger);
+    } catch (const spdlog::spdlog_ex &e) {
+        std::cerr << "Failed to recreate log file: " << e.what() << std::endl;
+    }
+}
+
+void handle_sigterm(int signal)
+{
+    if (signal != SIGTERM)
+        return;
+
+    server.stop();
+}
+
+void install_signal_handler(int signal, void (*handle)(int))
+{
+    struct sigaction sa;
+    sa.sa_handler = handle;
+    sa.sa_flags = 0;
+    sigemptyset(&sa.sa_mask);
+
+    if (sigaction(signal, &sa, nullptr) == -1) {
+        std::cerr << "Error: Failed to install signal handler." << std::endl;
+        std::exit(EXIT_FAILURE);
+    }
+}
+
 int main(int argc, char *argv[])
 {
     params_t params;
 
     // short options
-    const char* const options1 = "dVhFD:l:a:N:";
+    const char* const options1 = "cdVhFD:l:a:";
 
     // long options (name + has_arg + flag + val)
     const struct option options2[] = {
@@ -127,19 +164,8 @@ int main(int argc, char *argv[])
                 }
                 break;
 
-            case 'N': // -N max-connections (set maximum number of connections)
-                try {
-                    int num = std::stoi(optarg);
-
-                    if (!isdigit(*optarg) || *optarg == '0' || num <= 0 || num > MAX_CONNECTIONS)
-                        throw std::invalid_argument("Invalid number of connections");
-
-                    params.max_connections = static_cast<std::uint32_t>(num);
-                }
-                catch (...) {
-                    std::cerr << "Error: Invalid maximum number of connections (" << optarg << ")." << std::endl;
-                    return EXIT_FAILURE;
-                }
+            case 'c': // -c (check journal at startup)
+                params.check_journal = true;
                 break;
 
             case 'd': // -d (run as daemon)
@@ -208,9 +234,9 @@ int main(int argc, char *argv[])
         params_t aux(config_file);
 
         aux.datadir = params.datadir;
+        aux.check_journal = params.check_journal;
         aux.addr = params.addr;
         aux.log_level = params.log_level;
-        aux.max_connections = params.max_connections;
         aux.disable_fsync = params.disable_fsync;
         aux.daemonize = params.daemonize;
 
@@ -221,25 +247,15 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    std::shared_ptr<ldb::journal_t> journal;
-
-    try {
-        journal = std::make_shared<ldb::journal_t>(fs::current_path(), PROJECT_NAME);
-        journal->set_fsync(!params.disable_fsync);
-    }
-    catch (const std::exception &e) {
-        std::cerr << "Error: " << e.what() << std::endl;
-        return EXIT_FAILURE;
-    }
-
     if (params.daemonize)
     {
         spdlog::filename_t log_file = LOG_FILENAME;
 
         try {
             auto logger = spdlog::basic_logger_mt("basic_logger", log_file);
-            logger->flush_on(spdlog::level::info);
+            logger->flush_on(spdlog::level::debug);
             spdlog::set_default_logger(logger);
+            install_signal_handler(SIGHUP, handle_sighup);
         }
         catch (const spdlog::spdlog_ex &e) {
             std::cerr << e.what() << std::endl;
@@ -256,10 +272,9 @@ int main(int argc, char *argv[])
     // @see https://github.com/gabime/spdlog/wiki/3.-Custom-formatting#pattern-flags
     spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%s:%#] [%-5l] %v");
 
-    // TODO: install signal catcher
-
     try {
-        server_t server{params};
+        install_signal_handler(SIGTERM, handle_sigterm);
+        server.init(params);
         server.run();
         return EXIT_SUCCESS;
     }

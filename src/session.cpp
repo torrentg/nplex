@@ -293,9 +293,6 @@ void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
     if (stats.unack_msgs >= params.max_unack_msgs)
         throw nplex_exception("Output message queue is full");
 
-    if (len > params.max_msg_bytes)
-        throw nplex_exception("Message too large");
-
     if (stats.unack_bytes + len >= params.max_unack_bytes)
         throw nplex_exception("Too many output unacked bytes");
 
@@ -310,6 +307,9 @@ void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
 
     auto aux = flatbuffers::GetRoot<nplex::msgs::Message>(msg->content.data());
     SPDLOG_DEBUG("Sent {} to {}", msgs::EnumNameMsgContent(aux->content_type()), m_addr.str());
+
+    if (m_timer_keepalive && uv_is_active((uv_handle_t *) m_timer_keepalive))
+        uv_timer_again(m_timer_keepalive);
 }
 
 void nplex::session_t::send_keepalive()
