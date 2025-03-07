@@ -70,7 +70,7 @@ using meta_ptr = std::shared_ptr<meta_t>;
 //! Database value.
 class value_t
 {
-    friend class cache_t;
+    friend class repo_t;
     static const gto::cstring REMOVED;
     static const gto::cstring EMPTY;
 
@@ -91,7 +91,6 @@ class value_t
     millis_t timestamp() const { return (m_meta ? m_meta->timestamp : millis_t{0}); }
     std::uint32_t type() const { return (m_meta ? m_meta->type : 0); }
 
-    // Auxiliar methods
     void set_removed() { m_data = REMOVED; }
     bool is_removed() const { return (m_data.c_str() == REMOVED.c_str()); }
 };

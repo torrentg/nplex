@@ -13,6 +13,11 @@
 
 namespace nplex {
 
+/** 
+ * Persistent storage (disk).
+ * 
+ * This object is accessed by multiple threads.
+ */
 class storage_t
 {
   public:
@@ -99,6 +104,9 @@ class storage_t
      * @exception nplex_exception Error writing file or invalid buffer.
      */
     void write_snapshot(rev_t rev, const std::string_view &data) const;
+
+    // TODO: implement
+    //repo_t get_repo(rev_t rev, const user_ptr &user);
 
   private:
 

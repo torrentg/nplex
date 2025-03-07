@@ -5,7 +5,7 @@
 #include <algorithm>
 #include "match.h"
 #include "exception.hpp"
-#include "cache.hpp"
+#include "repository.hpp"
 
 // ==========================================================
 // Internal (static) functions
@@ -16,10 +16,10 @@ static gto::cstring create_cstring(const flatbuffers::Vector<std::uint8_t> *valu
 }
 
 // ==========================================================
-// cache_t methods
+// repo_t methods
 // ==========================================================
 
-nplex::meta_ptr nplex::cache_t::create_meta(const rev_t rev, const char *username, std::uint32_t type)
+nplex::meta_ptr nplex::repo_t::create_meta(const rev_t rev, const char *username, std::uint32_t type)
 {
     assert(username);
 
@@ -43,7 +43,7 @@ nplex::meta_ptr nplex::cache_t::create_meta(const rev_t rev, const char *usernam
     return std::make_shared<meta_t>(meta_t{rev, user, timestamp, type, {}});
 }
 
-void nplex::cache_t::update_meta(const meta_ptr &meta, const key_t &key, meta_e mode)
+void nplex::repo_t::update_meta(const meta_ptr &meta, const key_t &key, meta_e mode)
 {
     assert(meta);
 
@@ -70,7 +70,7 @@ void nplex::cache_t::update_meta(const meta_ptr &meta, const key_t &key, meta_e 
     m_metas.erase(meta->rev);
 }
 
-bool nplex::cache_t::upsert_entry(const char *key, const value_ptr &value)
+bool nplex::repo_t::upsert_entry(const char *key, const value_ptr &value)
 {
     assert(key);
     assert(value);
@@ -99,7 +99,7 @@ bool nplex::cache_t::upsert_entry(const char *key, const value_ptr &value)
     return true;
 }
 
-bool nplex::cache_t::upsert_entry(const key_t &key, const value_ptr &value)
+bool nplex::repo_t::upsert_entry(const key_t &key, const value_ptr &value)
 {
     auto it = m_data.find(key);
 
@@ -118,7 +118,7 @@ bool nplex::cache_t::upsert_entry(const key_t &key, const value_ptr &value)
     return true;
 }
 
-bool nplex::cache_t::delete_entry(const char *key)
+bool nplex::repo_t::delete_entry(const char *key)
 {
     assert(key);
 
@@ -134,7 +134,7 @@ bool nplex::cache_t::delete_entry(const char *key)
     return true;
 }
 
-bool nplex::cache_t::mark_as_removed(const key_t &key, const meta_ptr &meta)
+bool nplex::repo_t::mark_as_removed(const key_t &key, const meta_ptr &meta)
 {
     auto it = m_data.find(key);
 
@@ -153,7 +153,7 @@ bool nplex::cache_t::mark_as_removed(const key_t &key, const meta_ptr &meta)
     return true;
 }
 
-void nplex::cache_t::load(const msgs::Snapshot *snapshot)
+void nplex::repo_t::load(const msgs::Snapshot *snapshot)
 {
     m_rev = 0;
     m_data.clear();
@@ -180,7 +180,7 @@ void nplex::cache_t::load(const msgs::Snapshot *snapshot)
     m_rev = rev;
 }
 
-bool nplex::cache_t::update(const msgs::Update *msg)
+bool nplex::repo_t::update(const msgs::Update *msg)
 {
     if (!msg) {
         assert(false);
@@ -240,7 +240,7 @@ bool nplex::cache_t::update(const msgs::Update *msg)
     return true;
 }
 
-nplex::msgs::SubmitCode nplex::cache_t::try_commit(const user_t &user, const msgs::SubmitRequest *msg, update_t &update)
+nplex::msgs::SubmitCode nplex::repo_t::try_commit(const user_t &user, const msgs::SubmitRequest *msg, update_t &update)
 {
     assert(user.active);
 
@@ -269,7 +269,7 @@ nplex::msgs::SubmitCode nplex::cache_t::try_commit(const user_t &user, const msg
     return ret;
 }
 
-nplex::msgs::SubmitCode nplex::cache_t::try_commit_inner(const user_t &user, const msgs::SubmitRequest *msg, update_t &update)
+nplex::msgs::SubmitCode nplex::repo_t::try_commit_inner(const user_t &user, const msgs::SubmitRequest *msg, update_t &update)
 {
     bool forced = (user.can_force && msg->force());
     auto meta = create_meta(m_rev + 1, user.name.c_str(), msg->type());
@@ -412,7 +412,7 @@ nplex::msgs::SubmitCode nplex::cache_t::try_commit_inner(const user_t &user, con
     return msgs::SubmitCode::ACCEPTED;
 }
 
-std::uint32_t nplex::cache_t::purge(millis_t timestamp)
+std::uint32_t nplex::repo_t::purge(millis_t timestamp)
 {
     std::uint32_t count = 0;
 
@@ -451,7 +451,7 @@ std::uint32_t nplex::cache_t::purge(millis_t timestamp)
     return count;
 }
 
-flatbuffers::Offset<nplex::msgs::Snapshot> nplex::cache_t::serialize(flatbuffers::FlatBufferBuilder &builder, const user_t &user) const
+flatbuffers::Offset<nplex::msgs::Snapshot> nplex::repo_t::serialize(flatbuffers::FlatBufferBuilder &builder, const user_t &user) const
 {
     std::vector<flatbuffers::Offset<msgs::Update>> updates;
     std::vector<flatbuffers::Offset<msgs::KeyValue>> upserts;

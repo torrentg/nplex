@@ -14,7 +14,7 @@ namespace nplex {
  * 
  * @note This class is not thread-safe.
  */
-class cache_t
+class repo_t
 {
     enum struct meta_e : std::uint8_t {
       APPEND,
@@ -97,7 +97,7 @@ class cache_t
   public:
 
     /**
-     * Get the current revision of the cache.
+     * Get the current revision.
      * 
      * @return The current revision number.
      */
@@ -108,7 +108,7 @@ class cache_t
      * 
      * On exception, the database is left in an inconsistent state.
      * 
-     * @param[in] snapshot Content to load (nullptr reset cache).
+     * @param[in] snapshot Content to load (nullptr reset content).
      * 
      * @exception nplex_exception Invalid snapshot.
      */
@@ -117,23 +117,25 @@ class cache_t
     /**
      * Apply an update to the database (comming from disk or another server).
      * 
-     * This method alters the cache content on success increasing the revision.
-     * On exception, the database is left in an inconsistent state.
+     * This method alters the repository content. 
+     * On success, the content is updated and revision increased.
+     * On exception, the content is left in an inconsistent state.
      * 
      * @param[in] msg Update to apply.
      * 
      * @return true = update done, false = no update.
      * 
-     * @exception nplex_exception Invalid update (ex: update.rev < cache.rev, or invalid-key).
+     * @exception nplex_exception Invalid update (ex: update.rev < repo.rev, or invalid-key).
      */
     bool update(const msgs::Update *msg);
 
     /**
      * Try to commit a transaction (coming from a client).
      * 
-     * This method alters the cache content on success increasing the revision.
-     * On invalid or rejected request data is not modified.
-     * On exception, the database is left in an inconsistent state.
+     * This method alters the repository content. 
+     * On success, the content is updated and revision increased.
+     * On invalid or rejected request, content is not modified.
+     * On exception, the content is left in an inconsistent state.
      * 
      * @param[in] user User submitting the request.
      * @param[in] msg Submit request.
@@ -168,6 +170,6 @@ class cache_t
 
 };
 
-using cache_ptr = std::shared_ptr<cache_t>;
+using repo_ptr = std::shared_ptr<repo_t>;
 
 } // namespace nplex

@@ -1,6 +1,5 @@
 # TODO
 
-* Add check data (-c) command-line option
 * strerror() differentiates depending on error level (info, waning, etc)
 * Add snapshot-max-entries param
 * Add snapshot-max-bytes param

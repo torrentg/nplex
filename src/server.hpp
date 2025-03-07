@@ -5,9 +5,9 @@
 #include <uv.h>
 #include "params.hpp"
 #include "messages.hpp"
+#include "repository.hpp"
 #include "session.hpp"
 #include "journal.h"
-#include "cache.hpp"
 #include "user.hpp"
 
 namespace nplex {
@@ -37,7 +37,7 @@ class server_t
     std::map<std::string, user_ptr> m_users;
     std::set<session_ptr, shared_ptr_compare<session_t>> m_sessions;
     std::shared_ptr<ldb::journal_t> m_journal;
-    cache_t m_cache;
+    repo_t m_repo;
 
     void process_login_request(session_t *session, const nplex::msgs::LoginRequest *req);
     void process_load_request(session_t *session, const nplex::msgs::LoadRequest *req);

@@ -198,7 +198,7 @@ void nplex::server_t::init(const params_t &params)
     m_journal = std::make_shared<ldb::journal_t>(std::filesystem::current_path(), "entries");
     m_journal->set_fsync(!params.disable_fsync);
 
-    // TODO: initialize m_cache from disk
+    // TODO: initialize m_repo from disk
     // TODO: start write thread
 }
 
@@ -433,7 +433,7 @@ void nplex::server_t::process_login_request(session_t *session, const nplex::msg
             req->cid(), 
             msgs::LoginCode::AUTHORIZED,
             0, //rev0,
-            m_cache.rev(),
+            m_repo.rev(),
             *user
         ) 
     );
@@ -449,7 +449,7 @@ void nplex::server_t::process_load_request(session_t *session, const nplex::msgs
     switch (req->mode())
     {
         case msgs::LoadMode::SNAPSHOT_AT_FIXED_REV:
-            if (req->rev() == m_cache.rev())
+            if (req->rev() == m_repo.rev())
                 send_last_snapshot(session, req->cid());
             else
                 UNUSED(req);//TODO: pending
@@ -477,21 +477,21 @@ void nplex::server_t::process_submit_request(session_t *session, const nplex::ms
 
     update_t update;
 
-    auto rc = m_cache.try_commit(*session->m_user, req, update);
+    auto rc = m_repo.try_commit(*session->m_user, req, update);
 
     session->send(
         create_submit_msg(
             req->cid(), 
-            m_cache.rev(),
+            m_repo.rev(),
             rc,
-            (rc == msgs::SubmitCode::ACCEPTED ? m_cache.rev() : 0)
+            (rc == msgs::SubmitCode::ACCEPTED ? m_repo.rev() : 0)
         )
     );
 
     if (rc != msgs::SubmitCode::ACCEPTED)
         return;
 
-    // TODO: cache cleanup (purge)
+    // TODO: repo cleanup (purge)
 
     push_update(update);
 }
@@ -506,7 +506,7 @@ void nplex::server_t::process_ping_request(session_t *session, const nplex::msgs
     session->send(
         create_ping_msg(
             req->cid(), 
-            m_cache.rev(),
+            m_repo.rev(),
             (req->payload() ? req->payload()->str() : "")
         )
     );
@@ -523,9 +523,9 @@ void nplex::server_t::send_last_snapshot(session_t *session, std::size_t cid)
         MsgContent::LOAD_RESPONSE,
         CreateLoadResponse(builder, 
             cid, 
-            m_cache.rev(),
+            m_repo.rev(),
             true,
-            m_cache.serialize(builder, *session->m_user)
+            m_repo.serialize(builder, *session->m_user)
         ).Union() 
     );
 
@@ -551,7 +551,7 @@ void nplex::server_t::push_update(const update_t &update)
             continue;
 
         session->send(
-            create_update_msg(builder, 0, m_cache.rev(), off)
+            create_update_msg(builder, 0, m_repo.rev(), off)
         );
     }
 }
@@ -594,7 +594,7 @@ void nplex::server_t::simule_submit()
         MsgContent::SUBMIT_REQUEST, 
         CreateSubmitRequest(builder, 
             4,              // cid
-            m_cache.rev(),  // crev
+            m_repo.rev(),  // crev
             1,              // type
             builder.CreateVector(upserts),
             builder.CreateVector(deletes),
@@ -608,10 +608,10 @@ void nplex::server_t::simule_submit()
     auto submit_req = flatbuffers::GetRoot<msgs::Message>(builder.GetBufferPointer())->content_as_SUBMIT_REQUEST();
 
     update_t update;
-    auto rc = m_cache.try_commit(*user, submit_req, update);
+    auto rc = m_repo.try_commit(*user, submit_req, update);
 
     if (rc == msgs::SubmitCode::ACCEPTED) {
-        SPDLOG_DEBUG("Update rev = {}", m_cache.rev());
+        SPDLOG_DEBUG("Update rev = {}", m_repo.rev());
         push_update(update);
     }
     else {

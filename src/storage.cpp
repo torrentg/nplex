@@ -52,7 +52,7 @@ nplex::storage_t::storage_t(const nplex::params_t &params) : m_path{params.datad
     m_flush_max_entries = params.flush_max_entries;
     m_flush_max_bytes = params.flush_max_bytes;
 
-    m_journal = ldb::journal_t(m_path, "entries");
+    m_journal = ldb::journal_t(m_path, "entries", params.check_journal);
     m_journal.set_fsync(!params.disable_fsync);
 
     m_thread = std::thread(&nplex::storage_t::run_writer, this);

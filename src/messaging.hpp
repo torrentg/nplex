@@ -2,9 +2,8 @@
 
 #include <uv.h>
 #include "common.hpp"
-#include "cache.hpp"
-#include "user.hpp"
 #include "messages.hpp"
+#include "user.hpp"
 
 namespace nplex {
 
