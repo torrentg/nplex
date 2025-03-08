@@ -10,6 +10,8 @@
 #include "params.hpp"
 #include "cqueue.hpp"
 #include "journal.h"
+#include "repository.hpp"
+#include "user.hpp"
 
 namespace nplex {
 
@@ -67,13 +69,18 @@ class storage_t
     /**
      * Reads num entries starting from rev (included).
      * 
-     * @param[in] rev Initial revision.
+     * Updates are filtered according to user visibility.
+     * Even if an update has no visible content, it is still returned.
+     * 
+     * @param[in] rev Initial revision (included).
      * @param[in] num Number of entries to read.
-     * @param[out] entries Array of entries.
+     * @param[in] user User used to filter content (nullptr means no filter).
+     * 
+     * @return Array of entries (can be empty or have less than num records when no data).
      * 
      * @exception nplex_exception Error reading entries.
      */
-    void read_entries(rev_t rev, std::size_t num, std::vector<update_t> &entries);
+    std::vector<update_t> read_entries(rev_t rev, std::size_t num, const user_ptr &user);
 
     /**
      * Reads a snapshot from disk.
@@ -87,7 +94,7 @@ class storage_t
      * 
      * @return Snapshot binary data (empty if not available).
      * 
-     * @exception nplex_exception Error reading file or invalid buffer.
+     * @exception nplex_exception Error reading file or invalid content.
      */
     std::string read_snapshot(rev_t rev);
 
@@ -98,15 +105,27 @@ class storage_t
      * 
      * This is a blocking method.
      * 
-     * @param[in] rev Snapshot revision.
      * @param[in] data Data to save to disk.
      * 
-     * @exception nplex_exception Error writing file or invalid buffer.
+     * @return Revision of the persisted snapshot
+     * 
+     * @exception nplex_exception Invalid snapshot data, error writing file or invalid buffer.
      */
-    void write_snapshot(rev_t rev, const std::string_view &data) const;
+    rev_t write_snapshot(const std::string_view &data) const;
 
-    // TODO: implement
-    //repo_t get_repo(rev_t rev, const user_ptr &user);
+    /**
+     * Recreates the repo content at a given revision.
+     * 
+     * This method is blocking.
+     * 
+     * @param[in] rev Revision.
+     * @param[in] user User used to filter repo content.
+     * 
+     * @return Repository content adapted to user visibility.
+     * 
+     * @exception nplex_exception Error reading entries.
+     */
+    repo_t get_repo(rev_t rev, const user_ptr &user);
 
   private:
 

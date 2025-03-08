@@ -32,7 +32,7 @@ flatbuffers::DetachedBuffer create_update_msg(flatbuffers::FlatBufferBuilder &bu
 
 flatbuffers::DetachedBuffer serialize_update(const update_t &update);
 flatbuffers::Offset<msgs::Update> serialize_update(flatbuffers::FlatBufferBuilder &builder, const update_t &update, const user_t *user = nullptr, bool force = false);
-update_t deserialize_update(const msgs::Update *msg);
+update_t deserialize_update(const msgs::Update *msg, const user_ptr &user = nullptr);
 
 const nplex::msgs::Message * parse_network_msg(const char *ptr, size_t len);
 

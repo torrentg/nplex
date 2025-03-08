@@ -230,47 +230,48 @@ flatbuffers::DetachedBuffer nplex::serialize_update(const update_t &update)
     return builder.Release();
 }
 
-// nplex::update_t nplex::deserialize_update(const msgs::Update *msg, const user_t *user)
-// {
-//     update_t update;
+nplex::update_t nplex::deserialize_update(const msgs::Update *msg, const user_ptr &user)
+{
+    update_t update;
 
-//     update.meta = std::make_shared<meta_t>(
-//         msg->rev(),
-//         msg->user()->str(),
-//         millis_t(msg->timestamp()),
-//         msg->type()
-//     );
+    update.meta = std::make_shared<meta_t>(meta_t{
+        msg->rev(),
+        msg->user()->c_str(),
+        millis_t(msg->timestamp()),
+        msg->type(),
+        {}
+    });
 
-//     if (msg->upserts())
-//     {
-//         for (const auto &kv : *msg->upserts())
-//         {
-//             if (user && !user->is_authorized(NPLEX_READ, kv->key()->c_str()))
-//                 continue;
+    if (msg->upserts())
+    {
+        for (const auto &kv : *msg->upserts())
+        {
+            if (user && !user->is_authorized(NPLEX_READ, kv->key()->c_str()))
+                continue;
 
-//             update.upserts.push_back({
-//                 key_t{kv->key()->c_str()},
-//                 std::make_shared<value_t>(
-//                     gto::cstring{
-//                         reinterpret_cast<const char *>(kv->value()->data()), 
-//                         kv->value()->size()
-//                     },
-//                     update.meta
-//                 )
-//             });
-//         }
-//     }
+            update.upserts.push_back({
+                key_t{kv->key()->c_str()},
+                std::make_shared<value_t>(
+                    gto::cstring{
+                        reinterpret_cast<const char *>(kv->value()->data()), 
+                        kv->value()->size()
+                    },
+                    update.meta
+                )
+            });
+        }
+    }
 
-//     if (msg->deletes())
-//     {
-//         for (const auto &key : *msg->deletes())
-//         {
-//             if (user && !user->is_authorized(NPLEX_READ, key->c_str()))
-//                 continue;
+    if (msg->deletes())
+    {
+        for (const auto &key : *msg->deletes())
+        {
+            if (user && !user->is_authorized(NPLEX_READ, key->c_str()))
+                continue;
 
-//             update.deletes.push_back(key->c_str());
-//         }
-//     }
+            update.deletes.push_back(key->c_str());
+        }
+    }
 
-//     return update;
-// }
+    return update;
+}

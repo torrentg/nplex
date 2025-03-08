@@ -40,7 +40,7 @@ class repo_t
      * 
      * @return The inserted metadata.
      */
-    meta_ptr create_meta(const rev_t rev, const char *username, std::uint32_t type);
+    meta_ptr create_meta(rev_t rev, const char *username, std::uint32_t type);
 
     /**
      * Update a metadata object.
@@ -109,10 +109,11 @@ class repo_t
      * On exception, the database is left in an inconsistent state.
      * 
      * @param[in] snapshot Content to load (nullptr reset content).
+     * @param[in] user User whose permissions are considered during loading (nullptr means no filter).
      * 
      * @exception nplex_exception Invalid snapshot.
      */
-    void load(const msgs::Snapshot *snapshot = nullptr);
+    void load(const msgs::Snapshot *snapshot = nullptr, const user_ptr &user = nullptr);
 
     /**
      * Apply an update to the database (comming from disk or another server).
@@ -122,12 +123,13 @@ class repo_t
      * On exception, the content is left in an inconsistent state.
      * 
      * @param[in] msg Update to apply.
+     * @param[in] user User whose permissions are considered during loading (nullptr means no filter).
      * 
      * @return true = update done, false = no update.
      * 
      * @exception nplex_exception Invalid update (ex: update.rev < repo.rev, or invalid-key).
      */
-    bool update(const msgs::Update *msg);
+    bool update(const msgs::Update *msg, const user_ptr &user = nullptr);
 
     /**
      * Try to commit a transaction (coming from a client).
@@ -162,11 +164,11 @@ class repo_t
      * The content is filtered according to the user's permissions.
      * 
      * @param[in] builder FlatBufferBuilder to use.
-     * @param[in] user User whose permissions are considered during serialization.
+     * @param[in] user User whose permissions are considered during serialization (empty means no filter).
      * 
      * @return Serialized snapshot content.
      */
-    flatbuffers::Offset<msgs::Snapshot> serialize(flatbuffers::FlatBufferBuilder &builder, const user_t &user) const;
+    flatbuffers::Offset<msgs::Snapshot> serialize(flatbuffers::FlatBufferBuilder &builder, const user_ptr &user) const;
 
 };
 

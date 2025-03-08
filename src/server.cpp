@@ -525,7 +525,7 @@ void nplex::server_t::send_last_snapshot(session_t *session, std::size_t cid)
             cid, 
             m_repo.rev(),
             true,
-            m_repo.serialize(builder, *session->m_user)
+            m_repo.serialize(builder, session->m_user)
         ).Union() 
     );
 

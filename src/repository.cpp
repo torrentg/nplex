@@ -19,7 +19,7 @@ static gto::cstring create_cstring(const flatbuffers::Vector<std::uint8_t> *valu
 // repo_t methods
 // ==========================================================
 
-nplex::meta_ptr nplex::repo_t::create_meta(const rev_t rev, const char *username, std::uint32_t type)
+nplex::meta_ptr nplex::repo_t::create_meta(rev_t rev, const char *username, std::uint32_t type)
 {
     assert(username);
 
@@ -153,7 +153,7 @@ bool nplex::repo_t::mark_as_removed(const key_t &key, const meta_ptr &meta)
     return true;
 }
 
-void nplex::repo_t::load(const msgs::Snapshot *snapshot)
+void nplex::repo_t::load(const msgs::Snapshot *snapshot, const user_ptr &user)
 {
     m_rev = 0;
     m_data.clear();
@@ -170,7 +170,7 @@ void nplex::repo_t::load(const msgs::Snapshot *snapshot)
     {
         for (flatbuffers::uoffset_t i = 0; i < updates->size(); i++)
         {
-            update(updates->Get(i));
+            update(updates->Get(i), user);
 
             if (m_rev > rev)
                 throw nplex_exception("Invalid snapshot");
@@ -180,7 +180,7 @@ void nplex::repo_t::load(const msgs::Snapshot *snapshot)
     m_rev = rev;
 }
 
-bool nplex::repo_t::update(const msgs::Update *msg)
+bool nplex::repo_t::update(const msgs::Update *msg, const user_ptr &user)
 {
     if (!msg) {
         assert(false);
@@ -211,6 +211,10 @@ bool nplex::repo_t::update(const msgs::Update *msg)
                 throw nplex_exception("Malformed update message (r{})", rev);
 
             auto key = keyval->key()->c_str();
+
+            if (user && !user->is_authorized(NPLEX_READ, key))
+                continue;
+
             gto::cstring data = ::create_cstring(keyval->value());
             auto value = std::make_shared<value_t>(data, meta);
 
@@ -226,6 +230,9 @@ bool nplex::repo_t::update(const msgs::Update *msg)
 
             if (!key || !key->c_str())
                 throw nplex_exception("Malformed update message (r{})", rev);
+
+            if (user && !user->is_authorized(NPLEX_READ, key->c_str()))
+                continue;
 
             delete_entry(key->c_str());
         }
@@ -451,7 +458,7 @@ std::uint32_t nplex::repo_t::purge(millis_t timestamp)
     return count;
 }
 
-flatbuffers::Offset<nplex::msgs::Snapshot> nplex::repo_t::serialize(flatbuffers::FlatBufferBuilder &builder, const user_t &user) const
+flatbuffers::Offset<nplex::msgs::Snapshot> nplex::repo_t::serialize(flatbuffers::FlatBufferBuilder &builder, const user_ptr &user) const
 {
     std::vector<flatbuffers::Offset<msgs::Update>> updates;
     std::vector<flatbuffers::Offset<msgs::KeyValue>> upserts;
@@ -464,7 +471,7 @@ flatbuffers::Offset<nplex::msgs::Snapshot> nplex::repo_t::serialize(flatbuffers:
 
         for (auto &key : meta->refs)
         {
-            if (!user.is_authorized(NPLEX_READ, key))
+            if (user && !user->is_authorized(NPLEX_READ, key))
                 continue;
 
             auto it = m_data.find(key);

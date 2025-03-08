@@ -1,10 +1,14 @@
 #include <regex>
 #include <fstream>
 #include <charconv>
+#include <algorithm>
+#include <experimental/scope>
 #include <spdlog/spdlog.h>
 #include "exception.hpp"
 #include "messaging.hpp"
 #include "storage.hpp"
+
+#define READ_BATCH_SIZE 100ul
 
 namespace fs = std::filesystem;
 
@@ -62,10 +66,10 @@ std::string nplex::storage_t::read_snapshot(rev_t rev)
 {
     rev_t rev_available = 0;
 
-    for (auto const& dir_entry : std::filesystem::directory_iterator(m_path)) 
+    for (auto const &dir_entry : std::filesystem::directory_iterator(m_path)) 
     {
         if (!std::regex_match(dir_entry.path().c_str(), snapshot_pattern))
-        continue;
+            continue;
 
         rev_t rnum = parse_rev(dir_entry.path().c_str());
 
@@ -76,11 +80,11 @@ std::string nplex::storage_t::read_snapshot(rev_t rev)
     if (rev_available == 0)
         return {};
 
-    fs::path path = m_path / fmt::format(SNAPSHOT_FILENAME, rev_available);
-    std::ifstream ifs(path, std::ios::binary | std::ios::ate);
+    std::string filename = fmt::format(SNAPSHOT_FILENAME, rev_available);
+    std::ifstream ifs(m_path / filename, std::ios::binary | std::ios::ate);
 
     if (!ifs)
-        throw nplex::nplex_exception(fmt::format("Failed to open snapshot file ({})", path.string()));
+        throw nplex::nplex_exception(fmt::format("Failed to open snapshot file ({})", filename));
 
     auto file_size = ifs.tellg();
     ifs.seekg(0, std::ios::beg);
@@ -88,20 +92,80 @@ std::string nplex::storage_t::read_snapshot(rev_t rev)
     std::string content(static_cast<std::size_t>(file_size), '\0');
     ifs.read(&content[0], static_cast<std::streamsize>(file_size));
 
+    auto verifier = flatbuffers::Verifier((const std::uint8_t *) content.c_str(), content.length());
+
+    if (!verifier.VerifyBuffer<nplex::msgs::Snapshot>(nullptr))
+        throw nplex_exception("Invalid snapshot file ({})", filename);
+
     return content;
 }
 
-void nplex::storage_t::write_snapshot(rev_t rev, const std::string_view &data) const
+nplex::rev_t nplex::storage_t::write_snapshot(const std::string_view &data) const
 {
-    fs::path path = m_path / fmt::format(SNAPSHOT_FILENAME, rev);
-    std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
+    auto verifier = flatbuffers::Verifier((const std::uint8_t *) data.data(), data.length());
+
+    if (!verifier.VerifyBuffer<nplex::msgs::Snapshot>(nullptr))
+        throw nplex_exception("Invalid snapshot data");
+
+    auto snapshot = flatbuffers::GetRoot<nplex::msgs::Snapshot>(data.data());
+    rev_t rev = snapshot->rev();
+
+    std::string filename = fmt::format(SNAPSHOT_FILENAME, rev);
+    std::ofstream ofs(m_path / filename, std::ios::binary | std::ios::trunc);
 
     if (!ofs)
-        throw nplex::nplex_exception(fmt::format("Failed to open snapshot file ({})", path.string()));
+        throw nplex::nplex_exception(fmt::format("Failed to open snapshot file ({})", filename));
 
     ofs.write(data.data(), static_cast<std::streamsize>(data.size()));
     if (!ofs)
-        throw nplex::nplex_exception(fmt::format("Failed to write to snapshot file ({})", path.string()));
+        throw nplex::nplex_exception(fmt::format("Failed to write to snapshot file ({})", filename));
+
+    return rev;
+}
+
+std::vector<nplex::update_t> nplex::storage_t::read_entries(rev_t rev, std::size_t num, const user_ptr &user)
+{
+    if (rev == 0 || num == 0)
+        return {};
+
+    std::vector<update_t> ret;
+    ldb_entry_t entries[READ_BATCH_SIZE];
+    
+    memset(entries, 0x0, sizeof(ldb_entry_t) * READ_BATCH_SIZE);
+    auto guard = std::experimental::scope_exit{[&] { 
+        ldb_free_entries(entries, READ_BATCH_SIZE);
+    }};
+    
+    while (ret.size() < num)
+    {
+        std::size_t num_reads = 0;
+        std::size_t len = std::min(READ_BATCH_SIZE, num - ret.size());
+
+        int rc = m_journal.read(rev, entries, len, &num_reads);
+
+        if (rc != LDB_OK && rc != LDB_ERR_NOT_FOUND)
+            throw nplex_exception("Error reading journal entries ({})", ldb_strerror(rc));
+
+        for (std::size_t i = 0; i < num_reads; i++)
+        {
+            auto verifier = flatbuffers::Verifier((const std::uint8_t *) entries[i].data, entries[i].data_len);
+
+            if (!verifier.VerifyBuffer<nplex::msgs::Update>(nullptr))
+                throw nplex_exception("Invalid update entry ({})", rev);
+
+            auto update = flatbuffers::GetRoot<nplex::msgs::Update>(entries[i].data);
+            auto entry = deserialize_update(update, user);
+            ret.push_back(std::move(entry));
+
+            assert(update->rev() == rev);
+            rev++;
+        }
+
+        if (num_reads < len)
+            break;
+    }
+
+    return ret;
 }
 
 void nplex::storage_t::write_entry(update_t &&upd)
@@ -257,4 +321,59 @@ void nplex::storage_t::process_write_commands()
     lock.unlock();
 
     m_entries.clear();
+}
+
+nplex::repo_t nplex::storage_t::get_repo(rev_t rev, const user_ptr &user)
+{
+    repo_t repo;
+
+    std::string str = read_snapshot(rev);
+    if (!str.empty())
+    {
+        auto *snapshot = flatbuffers::GetRoot<nplex::msgs::Snapshot>(str.c_str());
+        repo.load(snapshot, user);
+        str = std::string{};
+    }
+
+    if (repo.rev() == rev)
+        return repo;
+
+    std::vector<update_t> ret;
+    ldb_entry_t entries[READ_BATCH_SIZE];
+
+    memset(entries, 0x0, sizeof(ldb_entry_t) * READ_BATCH_SIZE);
+    auto guard = std::experimental::scope_exit{[&] { 
+        ldb_free_entries(entries, READ_BATCH_SIZE);
+    }};
+
+    while (repo.rev() < rev)
+    {
+        std::size_t num_reads = 0;
+        std::size_t len = std::min(READ_BATCH_SIZE, rev - repo.rev());
+
+        int rc = m_journal.read(rev, entries, len, &num_reads);
+
+        if (rc != LDB_OK && rc != LDB_ERR_NOT_FOUND)
+            throw nplex_exception("Error reading journal entries ({})", ldb_strerror(rc));
+
+        for (std::size_t i = 0; i < num_reads; i++)
+        {
+            auto verifier = flatbuffers::Verifier((const std::uint8_t *) entries[i].data, entries[i].data_len);
+
+            if (!verifier.VerifyBuffer<nplex::msgs::Update>(nullptr))
+                throw nplex_exception("Invalid update entry ({})", rev);
+
+            auto update = flatbuffers::GetRoot<nplex::msgs::Update>(entries[i].data);
+
+            repo.update(update, user);
+        }
+
+        if (num_reads < len)
+            break;
+    }
+
+    if (repo.rev() != rev)
+        throw nplex_exception("Failed to load repository at revision {}", rev);
+
+    return repo;
 }
