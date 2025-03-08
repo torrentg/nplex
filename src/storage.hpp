@@ -45,6 +45,13 @@ class storage_t
     void close();
 
     /**
+     * Returns the data revision range.
+     * 
+     * @return Pair of revisions (min, max).
+     */
+    std::pair<rev_t, rev_t> get_range() const { return {min_rev, max_rev}; }
+
+    /**
      * Sets the callback function invoked on each journal write.
      * 
      * First callback argument is the result (success/failure).
@@ -80,7 +87,7 @@ class storage_t
      * 
      * @exception nplex_exception Error reading entries.
      */
-    std::vector<update_t> read_entries(rev_t rev, std::size_t num, const user_ptr &user);
+    std::vector<update_t> read_entries(rev_t rev, std::size_t num, const user_ptr &user = nullptr);
 
     /**
      * Reads a snapshot from disk.
@@ -119,13 +126,13 @@ class storage_t
      * This method is blocking.
      * 
      * @param[in] rev Revision.
-     * @param[in] user User used to filter repo content.
+     * @param[in] user User used to filter repo content (empty means no filter).
      * 
      * @return Repository content adapted to user visibility.
      * 
      * @exception nplex_exception Error reading entries.
      */
-    repo_t get_repo(rev_t rev, const user_ptr &user);
+    repo_t get_repo(rev_t rev, const user_ptr &user = nullptr);
 
   private:
 
@@ -148,9 +155,12 @@ class storage_t
     std::uint32_t m_flush_max_bytes;
     std::uint32_t m_bytes_in_queue = 0;
     std::atomic<bool> m_running = false;
+    rev_t min_rev = 0;
+    rev_t max_rev = 0;
 
     void run_writer();
     void process_write_commands();
+    rev_t get_snapshot_rev(rev_t rev, bool le = true) const;
 };
 
 } // namespace nplex

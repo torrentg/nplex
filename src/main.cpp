@@ -8,6 +8,7 @@
 #include <string>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
 #include "params.hpp"
 #include "addr.hpp"
 #include "server.hpp"
@@ -73,9 +74,8 @@ void handle_sighup(int signal)
         return;
 
     try {
-        spdlog::drop("basic_logger");
-        auto logger = spdlog::basic_logger_mt("basic_logger", LOG_FILENAME, true);
-        logger->flush_on(spdlog::level::debug);
+        spdlog::drop(PROJECT_NAME);
+        auto logger = spdlog::basic_logger_mt(PROJECT_NAME, LOG_FILENAME, true);
         spdlog::set_default_logger(logger);
     } catch (const spdlog::spdlog_ex &e) {
         std::cerr << "Failed to recreate log file: " << e.what() << std::endl;
@@ -247,30 +247,34 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
+    try
+    {
+        spdlog::set_default_logger(
+            params.daemonize ?
+                spdlog::basic_logger_mt(PROJECT_NAME, LOG_FILENAME):
+                spdlog::stdout_color_mt(PROJECT_NAME)
+        );
+
+        spdlog::flush_on(spdlog::level::debug);
+        spdlog::set_level(to_spdlog(params.log_level));
+        // @see https://github.com/gabime/spdlog/wiki/3.-Custom-formatting#pattern-flags
+        spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%s:%#] [%-5l] %v");
+    }
+    catch (const spdlog::spdlog_ex &e) {
+        std::cerr << e.what() << std::endl;
+        return EXIT_FAILURE;
+    }
+
     if (params.daemonize)
     {
-        spdlog::filename_t log_file = LOG_FILENAME;
-
-        try {
-            auto logger = spdlog::basic_logger_mt("basic_logger", log_file);
-            logger->flush_on(spdlog::level::debug);
-            spdlog::set_default_logger(logger);
-            install_signal_handler(SIGHUP, handle_sighup);
-        }
-        catch (const spdlog::spdlog_ex &e) {
-            std::cerr << e.what() << std::endl;
-            return EXIT_FAILURE;
-        }
-
         if (daemon(1, 0) == -1) {
             std::cerr << "Error: Failed to daemonize the process." << std::endl;
             return EXIT_FAILURE;
         }
-    }
 
-    spdlog::set_level(to_spdlog(params.log_level));
-    // @see https://github.com/gabime/spdlog/wiki/3.-Custom-formatting#pattern-flags
-    spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%s:%#] [%-5l] %v");
+        // logrotate signal
+        install_signal_handler(SIGHUP, handle_sighup);
+    }
 
     try {
         install_signal_handler(SIGTERM, handle_sigterm);

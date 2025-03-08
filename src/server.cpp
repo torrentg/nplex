@@ -188,18 +188,13 @@ static bool is_valid_user(const nplex::user_t &user)
 // ==========================================================
 // server_t methods
 // ==========================================================
-#include "storage.hpp"
+
 void nplex::server_t::init(const params_t &params)
 {
     init_users(params);
+    init_data(params);
     init_event_loop(params);
     init_network(params);
-
-    m_journal = std::make_shared<ldb::journal_t>(std::filesystem::current_path(), "entries");
-    m_journal->set_fsync(!params.disable_fsync);
-
-    // TODO: initialize m_repo from disk
-    // TODO: start write thread
 }
 
 void nplex::server_t::init_users(const params_t &params)
@@ -222,6 +217,15 @@ void nplex::server_t::init_users(const params_t &params)
         throw nplex_exception("No valid users found");
 
     SPDLOG_INFO("Users: [{}]", fmt::join(valid_users, ", "));
+}
+
+void nplex::server_t::init_data(const params_t &params)
+{
+    m_storage = std::make_unique<storage_t>(params);
+
+    auto [min_rev, max_rev] = m_storage->get_range();
+
+    m_repo = m_storage->get_repo(max_rev);
 }
 
 void nplex::server_t::init_event_loop(const params_t &params)
@@ -295,6 +299,8 @@ void nplex::server_t::run()
     while (uv_run(m_loop.get(), UV_RUN_NOWAIT));
     uv_loop_close(m_loop.get());
     SPDLOG_DEBUG("Event loop terminated");
+
+    m_storage->close();
 }
 
 void nplex::server_t::stop()
@@ -594,7 +600,7 @@ void nplex::server_t::simule_submit()
         MsgContent::SUBMIT_REQUEST, 
         CreateSubmitRequest(builder, 
             4,              // cid
-            m_repo.rev(),  // crev
+            m_repo.rev(),   // crev
             1,              // type
             builder.CreateVector(upserts),
             builder.CreateVector(deletes),
@@ -617,4 +623,6 @@ void nplex::server_t::simule_submit()
     else {
         SPDLOG_ERROR("Error try_commit = {}", static_cast<int>(rc));
     }
+
+    m_storage->write_entry(std::move(update));
 }

@@ -1,4 +1,5 @@
 #include <regex>
+#include <limits>
 #include <fstream>
 #include <charconv>
 #include <algorithm>
@@ -59,12 +60,35 @@ nplex::storage_t::storage_t(const nplex::params_t &params) : m_path{params.datad
     m_journal = ldb::journal_t(m_path, "entries", params.check_journal);
     m_journal.set_fsync(!params.disable_fsync);
 
+    int rc = 0;
+    ldb_stats_t stats = {};
+    if ((rc = m_journal.stats(0, UINT64_MAX, &stats)) != LDB_OK)
+        throw nplex::nplex_exception(fmt::format("Failed to get journal stats ({})", ldb_strerror(rc)));
+
+    min_rev = stats.min_seqnum;
+    max_rev = stats.max_seqnum;
+    SPDLOG_INFO("Journal range: [r{}, r{}]", min_rev, max_rev);
+
+    rev_t min_snp = get_snapshot_rev(0, false);
+    rev_t max_snp = get_snapshot_rev(std::numeric_limits<rev_t>::max(), true);
+    SPDLOG_INFO("Snapshot range: [r{}, r{}]", min_snp, max_snp);
+
+    rev_t rev0 = get_snapshot_rev(min_rev, false);
+
+    if (rev0 == 0 && min_rev > 1)
+        throw nplex_exception("No snapshot available for the first revision (r{})", min_rev);
+
+    min_rev = rev0;
+
+    SPDLOG_INFO("Data range: [r{}, r{}]", min_rev, max_rev);
+
     m_thread = std::thread(&nplex::storage_t::run_writer, this);
 }
 
-std::string nplex::storage_t::read_snapshot(rev_t rev)
+// Returns the latest snapshot revision available that is less-eq/great-eq than rev
+nplex::rev_t nplex::storage_t::get_snapshot_rev(rev_t rev, bool le) const
 {
-    rev_t rev_available = 0;
+    nplex::rev_t rev_available = 0;
 
     for (auto const &dir_entry : std::filesystem::directory_iterator(m_path)) 
     {
@@ -73,9 +97,24 @@ std::string nplex::storage_t::read_snapshot(rev_t rev)
 
         rev_t rnum = parse_rev(dir_entry.path().c_str());
 
-        if (rnum <= rev && rnum > rev_available)
-            rev_available = rnum;
+        if (le)
+        {
+            if (rnum <= rev && rnum > rev_available)
+                rev_available = rnum;
+        }
+        else
+        {
+            if (rev <= rnum && (rev_available == 0 || rnum < rev_available))
+                rev_available = rnum;
+        }
     }
+
+    return rev_available;
+}
+
+std::string nplex::storage_t::read_snapshot(rev_t rev)
+{
+    rev_t rev_available = get_snapshot_rev(rev);
 
     if (rev_available == 0)
         return {};
@@ -129,9 +168,7 @@ std::vector<nplex::update_t> nplex::storage_t::read_entries(rev_t rev, std::size
         return {};
 
     std::vector<update_t> ret;
-    ldb_entry_t entries[READ_BATCH_SIZE];
-    
-    memset(entries, 0x0, sizeof(ldb_entry_t) * READ_BATCH_SIZE);
+    ldb_entry_t entries[READ_BATCH_SIZE] = {};
     auto guard = std::experimental::scope_exit{[&] { 
         ldb_free_entries(entries, READ_BATCH_SIZE);
     }};
@@ -222,6 +259,7 @@ void nplex::storage_t::run_writer()
         if (m_running && !m_queue.empty()) {
             lock.unlock();
             process_write_commands();
+            lock.lock();
         }
     }
 
@@ -297,6 +335,7 @@ void nplex::storage_t::process_write_commands()
         assert(cmd.buffer.size() <= m_bytes_in_queue);
         m_bytes_in_queue -= static_cast<std::uint32_t>(cmd.buffer.size());
 
+        max_rev = cmd.update.meta->rev;
         updates.push_back(std::move(cmd.update));
     }
 
@@ -339,9 +378,7 @@ nplex::repo_t nplex::storage_t::get_repo(rev_t rev, const user_ptr &user)
         return repo;
 
     std::vector<update_t> ret;
-    ldb_entry_t entries[READ_BATCH_SIZE];
-
-    memset(entries, 0x0, sizeof(ldb_entry_t) * READ_BATCH_SIZE);
+    ldb_entry_t entries[READ_BATCH_SIZE] = {};
     auto guard = std::experimental::scope_exit{[&] { 
         ldb_free_entries(entries, READ_BATCH_SIZE);
     }};

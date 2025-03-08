@@ -7,7 +7,7 @@
 #include "messages.hpp"
 #include "repository.hpp"
 #include "session.hpp"
-#include "journal.h"
+#include "storage.hpp"
 #include "user.hpp"
 
 namespace nplex {
@@ -36,7 +36,7 @@ class server_t
     std::unique_ptr<uv_signal_t> m_signal;
     std::map<std::string, user_ptr> m_users;
     std::set<session_ptr, shared_ptr_compare<session_t>> m_sessions;
-    std::shared_ptr<ldb::journal_t> m_journal;
+    std::unique_ptr<storage_t> m_storage;
     repo_t m_repo;
 
     void process_login_request(session_t *session, const nplex::msgs::LoginRequest *req);
@@ -50,6 +50,7 @@ class server_t
     void push_update(const update_t &update, session_t *session);     // push update to a specific session
 
     void init_users(const params_t &params);
+    void init_data(const params_t &params);
     void init_event_loop(const params_t &params);
     void init_network(const params_t &params);
 };
