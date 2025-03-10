@@ -9,6 +9,7 @@
 #include <spdlog/spdlog.h>
 #include "messaging.hpp"
 #include "exception.hpp"
+#include "tasks.hpp"
 #include "server.hpp"
 
 /**
@@ -142,6 +143,9 @@ static void cb_close_handle(uv_handle_t *handle, void *arg)
             SPDLOG_DEBUG("Closing UV_TIMER");
             uv_close(handle, (uv_close_cb) free);
             break;
+        case UV_WORK:
+            assert(false);
+            break;
         default:
             SPDLOG_DEBUG("Closing OTHER");
             uv_close(handle, (uv_close_cb) free);
@@ -221,7 +225,7 @@ void nplex::server_t::init_users(const params_t &params)
 
 void nplex::server_t::init_data(const params_t &params)
 {
-    m_storage = std::make_unique<storage_t>(params);
+    m_storage = std::make_shared<storage_t>(params);
 
     auto [min_rev, max_rev] = m_storage->get_range();
 
@@ -288,6 +292,7 @@ void nplex::server_t::init_network(const params_t &params)
 void nplex::server_t::run()
 {
     try {
+        m_running = true;
         SPDLOG_DEBUG("Event loop started");
         uv_run(m_loop.get(), UV_RUN_DEFAULT);
     }
@@ -295,12 +300,19 @@ void nplex::server_t::run()
         SPDLOG_ERROR("{}", e.what());
     }
 
+    m_running = false;
+
+    // stoping the thread writing to journal
+    m_storage->close();
+
+    // stoping tasks in the thread-pool
+    if (m_num_running_tasks != 0)
+        uv_run(m_loop.get(), UV_RUN_DEFAULT);
+
     uv_walk(m_loop.get(), ::cb_close_handle, NULL);
     while (uv_run(m_loop.get(), UV_RUN_NOWAIT));
     uv_loop_close(m_loop.get());
     SPDLOG_DEBUG("Event loop terminated");
-
-    m_storage->close();
 }
 
 void nplex::server_t::stop()
@@ -312,6 +324,9 @@ void nplex::server_t::stop()
 void nplex::server_t::append_session(uv_stream_t *stream)
 {
     assert(stream);
+
+    if (!m_running)
+        return;
 
     if (m_sessions.size() >= m_max_connections) {
         SPDLOG_WARN("Connection rejected (max clients reached)");
@@ -458,7 +473,7 @@ void nplex::server_t::process_load_request(session_t *session, const nplex::msgs
             if (req->rev() == m_repo.rev())
                 send_last_snapshot(session, req->cid());
             else
-                UNUSED(req);//TODO: pending
+                send_fixed_snapshot(session, req->rev(), req->cid());
             break;
 
         case msgs::LoadMode::SNAPSHOT_AT_LAST_REV:
@@ -540,6 +555,44 @@ void nplex::server_t::send_last_snapshot(session_t *session, std::size_t cid)
     session->send(builder.Release());
     session->do_step2();
     session->m_state = session_t::state_e::SYNCED;
+}
+
+void nplex::server_t::send_fixed_snapshot(session_t *session, rev_t rev, std::size_t cid)
+{
+    auto [min_rev, max_rev] = m_storage->get_range();
+    if (rev < min_rev || rev > max_rev) {
+        session->send(
+            create_load_err_msg(cid, m_repo.rev())
+        );
+        return;
+    }
+
+    submit_task(new repo_task_t(m_storage, session, rev, cid));
+}
+
+void nplex::server_t::submit_task(task_t *task)
+{
+    assert(task);
+
+    if (!m_running) {
+        delete task;
+        return;
+    }
+
+    int rc = 0;
+    if ((rc = uv_queue_work(m_loop.get(), &task->work, cb_task_run, cb_task_after)) != 0)
+        throw std::runtime_error(uv_strerror(rc));
+
+    m_num_running_tasks++;
+}
+
+void nplex::server_t::release_task(task_t *)
+{
+    assert(m_num_running_tasks);
+    m_num_running_tasks--;
+
+    if (!m_running)
+        uv_stop(m_loop.get());
 }
 
 void nplex::server_t::push_update(const update_t &update)

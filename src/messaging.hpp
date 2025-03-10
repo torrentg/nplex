@@ -29,6 +29,7 @@ flatbuffers::DetachedBuffer create_login_msg(std::size_t cid, msgs::LoginCode co
 flatbuffers::DetachedBuffer create_keepalive_msg(rev_t crev);
 flatbuffers::DetachedBuffer create_submit_msg(std::size_t cid, rev_t crev, msgs::SubmitCode code, rev_t erev = 0);
 flatbuffers::DetachedBuffer create_update_msg(flatbuffers::FlatBufferBuilder &builder, std::size_t cid, rev_t crev, flatbuffers::Offset<msgs::Update> upd);
+flatbuffers::DetachedBuffer create_load_err_msg(std::size_t cid, rev_t crev);
 
 flatbuffers::DetachedBuffer serialize_update(const update_t &update);
 flatbuffers::Offset<msgs::Update> serialize_update(flatbuffers::FlatBufferBuilder &builder, const update_t &update, const user_t *user = nullptr, bool force = false);

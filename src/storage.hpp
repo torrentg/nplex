@@ -1,8 +1,11 @@
+#pragma once
+
 #include <mutex>
 #include <atomic>
 #include <thread>
 #include <string>
 #include <vector>
+#include <memory>
 #include <filesystem>
 #include <condition_variable>
 #include <flatbuffers/flatbuffers.h>
@@ -162,5 +165,7 @@ class storage_t
     void process_write_commands();
     rev_t get_snapshot_rev(rev_t rev, bool le = true) const;
 };
+
+using storage_ptr = std::shared_ptr<storage_t>;
 
 } // namespace nplex

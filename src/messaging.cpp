@@ -134,6 +134,26 @@ flatbuffers::DetachedBuffer nplex::create_ping_msg(std::size_t cid, rev_t crev, 
     return builder.Release();
 }
 
+flatbuffers::DetachedBuffer nplex::create_load_err_msg(std::size_t cid, rev_t crev)
+{
+    using namespace msgs;
+    using namespace flatbuffers;
+
+    FlatBufferBuilder builder;
+
+    auto msg = CreateMessage(builder, 
+        MsgContent::LOAD_RESPONSE,
+        CreateLoadResponse(builder,
+            cid, 
+            crev,
+            false
+        ).Union()
+    );
+
+    builder.Finish(msg);
+    return builder.Release();
+}
+
 flatbuffers::DetachedBuffer nplex::create_submit_msg(std::size_t cid, rev_t crev, msgs::SubmitCode code, rev_t erev)
 {
     using namespace msgs;

@@ -172,7 +172,7 @@ std::vector<nplex::update_t> nplex::storage_t::read_entries(rev_t rev, std::size
     auto guard = std::experimental::scope_exit{[&] { 
         ldb_free_entries(entries, READ_BATCH_SIZE);
     }};
-    
+
     while (ret.size() < num)
     {
         std::size_t num_reads = 0;
@@ -388,7 +388,9 @@ nplex::repo_t nplex::storage_t::get_repo(rev_t rev, const user_ptr &user)
         std::size_t num_reads = 0;
         std::size_t len = std::min(READ_BATCH_SIZE, rev - repo.rev());
 
-        int rc = m_journal.read(rev, entries, len, &num_reads);
+        int rc = m_journal.read(repo.rev() + 1, entries, len, &num_reads);
+        SPDLOG_DEBUG("Read journal entries, range = [r{}, r{}], rc = {}", 
+            repo.rev() + 1, repo.rev() + num_reads, ldb_strerror(rc));
 
         if (rc != LDB_OK && rc != LDB_ERR_NOT_FOUND)
             throw nplex_exception("Error reading journal entries ({})", ldb_strerror(rc));

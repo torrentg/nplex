@@ -13,7 +13,7 @@ cd build
 cmake -DENABLE_SANITIZERS=ON ..
 make VERBOSE=1
 ctest -V
-valgrind --tool=memcheck --leak-check=yes ./nplex -D tests -l debug
+valgrind --tool=memcheck --leak-check=yes ./nplex -D test -l debug
 cmake -DENABLE_COVERAGE=ON ..
 ```
 
