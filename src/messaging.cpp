@@ -1,4 +1,5 @@
 #include "cppcrc.h"
+#include "utils.hpp"
 #include "exception.hpp"
 #include "messaging.hpp"
 
@@ -12,10 +13,8 @@
  *   - C-style pointer casting.
  */
 
-nplex::output_msg_t::output_msg_t(flatbuffers::DetachedBuffer &&content_)
+nplex::output_msg_t::output_msg_t(flatbuffers::DetachedBuffer &&msg) : content(std::move(msg))
 {
-    content = std::move(content_);
-
     len = (std::uint32_t)(content.size() + sizeof(len) + sizeof(metadata) + sizeof(checksum));
     len = htonl(len);
 
@@ -28,10 +27,10 @@ nplex::output_msg_t::output_msg_t(flatbuffers::DetachedBuffer &&content_)
     checksum = CRC32::CRC32::calc(reinterpret_cast<const std::uint8_t *>(content.data()), content.size(), checksum);
     checksum = htonl(checksum);
 
-    buf[0] = uv_buf_init((char *) &len, sizeof(len));
-    buf[1] = uv_buf_init((char *) &metadata, sizeof(metadata));
-    buf[2] = uv_buf_init((char *) content.data(), (unsigned int) content.size());
-    buf[3] = uv_buf_init((char *) &checksum, sizeof(checksum));
+    buf[0] = uv_buf_init(reinterpret_cast<char *>(&len), sizeof(len));
+    buf[1] = uv_buf_init(reinterpret_cast<char *>(&metadata), sizeof(metadata));
+    buf[2] = uv_buf_init(reinterpret_cast<char *>(content.data()), static_cast<unsigned int>(content.size()));
+    buf[3] = uv_buf_init(reinterpret_cast<char *>(&checksum), sizeof(checksum));
 }
 
 flatbuffers::DetachedBuffer nplex::create_login_msg(std::size_t cid, msgs::LoginCode code, rev_t rev0, rev_t crev, const user_t &user)
@@ -91,14 +90,14 @@ const nplex::msgs::Message * nplex::parse_network_msg(const char *ptr, size_t le
     if (len <= 3 * sizeof(std::uint32_t))
         return nullptr;
 
-    if (len != ntohl(*((const std::uint32_t *) ptr)))
+    if (len != ntohl_ptr(ptr))
         return nullptr;
 
-    std::uint32_t metadata = ntohl(*((const std::uint32_t *) (ptr + sizeof(std::uint32_t))));
+    std::uint32_t metadata = ntohl_ptr(ptr + sizeof(std::uint32_t));
     // TODO: uncompress if (metadata & LZ4)
     UNUSED(metadata);
 
-    std::uint32_t checksum = ntohl(*((const std::uint32_t *) (ptr + len - sizeof(std::uint32_t))));
+    std::uint32_t checksum = ntohl_ptr(ptr + len - sizeof(std::uint32_t));
 
     if (checksum != CRC32::CRC32::calc(reinterpret_cast<const std::uint8_t *>(ptr), len - sizeof(std::uint32_t)))
         return nullptr;
@@ -106,7 +105,7 @@ const nplex::msgs::Message * nplex::parse_network_msg(const char *ptr, size_t le
     ptr += 2 * sizeof(std::uint32_t);
     len -= 3 * sizeof(std::uint32_t);
 
-    auto verifier = flatbuffers::Verifier((const std::uint8_t *) ptr, len);
+    auto verifier = flatbuffers::Verifier(reinterpret_cast<const std::uint8_t *>(ptr), len);
 
     if (!verifier.VerifyBuffer<nplex::msgs::Message>(nullptr))
         return nullptr;

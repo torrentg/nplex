@@ -4,6 +4,7 @@
 #include "exception.hpp"
 #include "messaging.hpp"
 #include "server.hpp"
+#include "utils.hpp"
 #include "session.hpp"
 
 /**
@@ -25,19 +26,29 @@
 // Internal (static) functions
 // ==========================================================
 
+template <typename T>
+static uv_handle_t * get_handle(T *obj) {
+    return reinterpret_cast<uv_handle_t *>(obj);
+}
+
+template <typename T>
+static uv_stream_t * get_stream(T *obj) {
+    return reinterpret_cast<uv_stream_t *>(obj);
+}
+
 static int get_peeraddr(const uv_tcp_t *con, char *str, size_t len)
 {
     int rc = 0;
-    struct sockaddr_storage sa;
+    sockaddr_storage sa;
     int sa_len = sizeof(sa);
-    struct sockaddr_in *addr_in = (struct sockaddr_in *) &sa;
+    sockaddr_in *addr_in = reinterpret_cast<sockaddr_in *>(&sa);
     uint16_t port = 0;
     char ip[128] = {0};
 
-    if ((rc = uv_tcp_getpeername((const uv_tcp_t *) con, (struct sockaddr *) &sa, &sa_len)) != 0)
+    if ((rc = uv_tcp_getpeername(con, reinterpret_cast<sockaddr *>(&sa), &sa_len)) != 0)
         return rc;
 
-    if ((rc = uv_ip_name((struct sockaddr *) &sa, ip, sizeof(ip))) != 0)
+    if ((rc = uv_ip_name(reinterpret_cast<sockaddr *>(&sa), ip, sizeof(ip))) != 0)
         return rc;
 
     port = ntohs(addr_in->sin_port);
@@ -52,10 +63,9 @@ static int get_peeraddr(const uv_tcp_t *con, char *str, size_t len)
 
 static void cb_tcp_alloc(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf)
 {
-    using namespace nplex;
     UNUSED(suggested_size);
 
-    auto *obj = (session_t *) handle;
+    auto *obj = reinterpret_cast<nplex::session_t *>(handle);
 
     buf->base = obj->input_buffer;
     buf->len = sizeof(obj->input_buffer);
@@ -65,8 +75,8 @@ static void cb_tcp_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
 {
     using namespace nplex;
 
-    auto *obj = (session_t *) stream;
-    auto *server = (server_t *) stream->loop->data;
+    auto *obj = reinterpret_cast<nplex::session_t *>(stream);
+    auto *server = reinterpret_cast<nplex::server_t *>(stream->loop->data);
 
     if (nread == UV_EOF || buf->base == NULL) {
         obj->disconnect(ERR_CLOSED_BY_PEER);
@@ -85,7 +95,7 @@ static void cb_tcp_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
     while (obj->input_msg.size() >= sizeof(output_msg_t::len))
     {
         const char *ptr = obj->input_msg.c_str();
-        std::uint32_t len = ntohl(*((const std::uint32_t *) ptr));
+        std::uint32_t len = ntohl_ptr(ptr);
 
         if (len > obj->params.max_msg_bytes) {
             obj->disconnect(ERR_MSG_SIZE);
@@ -112,8 +122,8 @@ static void cb_tcp_write(uv_write_t *req, int status)
 {
     using namespace nplex;
 
-    auto msg = std::unique_ptr<output_msg_t>((output_msg_t *) req);
-    auto *obj = (session_t *) req->handle;
+    auto msg = std::unique_ptr<output_msg_t>(reinterpret_cast<output_msg_t *>(req));
+    auto *obj = reinterpret_cast<session_t *>(req->handle);
 
     assert(obj->stats.unack_msgs > 0);
     assert(obj->stats.unack_bytes >= msg->length());
@@ -139,11 +149,15 @@ static void cb_tcp_write(uv_write_t *req, int status)
 
 static void cb_timer_disconnect(uv_timer_t *timer)
 {
-    auto *session = (nplex::session_t *) timer->data;
-    assert(session);
+    assert(timer->data);
+    auto *session = static_cast<nplex::session_t *>(timer->data);
 
     switch (session->m_state)
     {
+        case nplex::session_t::state_e::CLOSED:
+            uv_timer_stop(timer);
+            assert(false);
+            break;
         case nplex::session_t::state_e::CONNECTED:
             session->disconnect(ERR_TIMEOUT_STEP_1);
             break;
@@ -151,16 +165,15 @@ static void cb_timer_disconnect(uv_timer_t *timer)
             session->disconnect(ERR_TIMEOUT_STEP_2);
             break;
         default:
-            uv_timer_stop(timer);
-            assert(false);
+            session->disconnect(ERR_CONNECTION_LOST);
             break;
     }
 }
 
 static void cb_timer_keepalive(uv_timer_t *timer)
 {
-    auto *session = (nplex::session_t *) timer->data;
-    assert(session);
+    assert(timer->data);
+    auto *session = static_cast<nplex::session_t *>(timer->data);
 
     switch (session->m_state)
     {
@@ -184,11 +197,11 @@ void nplex::cb_close_session(uv_handle_t *handle)
 {
     using namespace nplex;
 
-    auto *session = (session_t *) handle->data;
-    assert(session);
+    assert(handle->data);
+    auto *session = static_cast<session_t *>(handle->data);
 
-    auto *server = (server_t *) handle->loop->data;
-    assert(server);
+    assert(handle->loop->data);
+    auto *server = static_cast<server_t *>(handle->loop->data);
 
     // On Ctrl-C, all objects are destroyed with no order.
     // timers are ignored because there are no guarantees about its state
@@ -219,10 +232,10 @@ nplex::session_t::session_t(uv_stream_t *stream) : m_state{state_e::CLOSED}
     if ((rc = uv_tcp_init(stream->loop, &m_tcp)) != 0)
         goto CTOR_ERR;
 
-    if ((rc = uv_accept(stream, (uv_stream_t *) &m_tcp)) != 0)
+    if ((rc = uv_accept(stream, get_stream(&m_tcp))) != 0)
         goto CTOR_ERR;
 
-    if ((rc = uv_read_start((uv_stream_t*) &m_tcp, ::cb_tcp_alloc, ::cb_tcp_read)) != 0)
+    if ((rc = uv_read_start(get_stream(&m_tcp), ::cb_tcp_alloc, ::cb_tcp_read)) != 0)
         goto CTOR_ERR;
 
     if ((rc = get_peeraddr(&m_tcp, addr_str, sizeof(addr_str))) != 0)
@@ -252,7 +265,7 @@ nplex::session_t::session_t(uv_stream_t *stream) : m_state{state_e::CLOSED}
 CTOR_ERR:
     m_error = rc;
     m_tcp.data = this;
-    uv_close((uv_handle_t*) this, cb_close_session);
+    uv_close(get_handle(this), cb_close_session);
     SPDLOG_WARN(uv_strerror(rc));
 }
 
@@ -271,19 +284,19 @@ void nplex::session_t::disconnect(int rc)
     if (!m_error)
         m_error = rc;
 
-    if (m_timer_disconnect && !uv_is_closing((uv_handle_t *) m_timer_disconnect)) {
+    if (m_timer_disconnect && !uv_is_closing(get_handle(m_timer_disconnect))) {
         uv_timer_stop(m_timer_disconnect);
-        uv_close((uv_handle_t *) m_timer_disconnect, (uv_close_cb) free);
+        uv_close(get_handle(m_timer_disconnect), (uv_close_cb) free);
         m_timer_disconnect = nullptr;
     }
 
-    if (m_timer_keepalive && !uv_is_closing((uv_handle_t *) m_timer_keepalive)) {
+    if (m_timer_keepalive && !uv_is_closing(get_handle(m_timer_keepalive))) {
         uv_timer_stop(m_timer_keepalive);
-        uv_close((uv_handle_t *) m_timer_keepalive, (uv_close_cb) free);
+        uv_close(get_handle(m_timer_keepalive), (uv_close_cb) free);
         m_timer_keepalive = nullptr;
     }
 
-    uv_close((uv_handle_t *) &m_tcp, cb_close_session);
+    uv_close(get_handle(&m_tcp), cb_close_session);
 }
 
 void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
@@ -300,7 +313,7 @@ void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
 
     assert(len == msg->length());
 
-    uv_write(&msg->req, (uv_stream_t *) &m_tcp, msg->buf.data(), (unsigned int) msg->buf.size(), ::cb_tcp_write);
+    uv_write(&msg->req, get_stream(&m_tcp), msg->buf.data(), static_cast<unsigned int>(msg->buf.size()), ::cb_tcp_write);
 
     stats.unack_msgs++;
     stats.unack_bytes += static_cast<std::uint32_t>(len);
@@ -308,16 +321,19 @@ void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
     auto aux = flatbuffers::GetRoot<nplex::msgs::Message>(msg->content.data());
     SPDLOG_DEBUG("Sent {} to {}", msgs::EnumNameMsgContent(aux->content_type()), m_addr.str());
 
-    if (m_timer_keepalive && uv_is_active((uv_handle_t *) m_timer_keepalive))
+    if (m_timer_keepalive && uv_is_active(get_handle(m_timer_keepalive)))
         uv_timer_again(m_timer_keepalive);
 }
 
 void nplex::session_t::send_keepalive()
 {
-    // TODO: set current rev in keepalive message
-    send(create_keepalive_msg(23));
+    assert(m_tcp.loop->data);
+    const auto *server = reinterpret_cast<nplex::server_t *>(m_tcp.loop->data);
+    rev_t crev = server->rev();
 
-    if (m_timer_keepalive && uv_is_active((uv_handle_t *) m_timer_keepalive))
+    send(create_keepalive_msg(crev));
+
+    if (m_timer_keepalive && uv_is_active(get_handle(m_timer_keepalive)))
         uv_timer_again(m_timer_keepalive);
 }
 
@@ -368,7 +384,7 @@ void nplex::session_t::do_step2()
 
     uint64_t keepalive_millis = m_user->keepalive_millis;
     if (keepalive_millis == 0) {
-        uv_close((uv_handle_t *) m_timer_disconnect, (uv_close_cb) free);
+        uv_close(get_handle(m_timer_disconnect), (uv_close_cb) free);
         m_timer_disconnect = nullptr;
     }
     else {
@@ -380,7 +396,7 @@ void nplex::session_t::do_step2()
 
 void nplex::session_t::report_peer_activity()
 {
-    auto handle = reinterpret_cast<uv_handle_t*>(m_timer_disconnect);
+    auto handle = get_handle(m_timer_disconnect);
 
     if (handle && uv_is_active(handle) && !uv_is_closing(handle) && uv_timer_get_repeat(m_timer_disconnect))
         uv_timer_again(m_timer_disconnect);
@@ -405,6 +421,7 @@ std::string nplex::session_t::strerror() const
         case ERR_API_VERSION: return "unsupported API version";
         case ERR_TIMEOUT_STEP_1: return "login request timeout";
         case ERR_TIMEOUT_STEP_2: return "load request timeout";
+        case ERR_CONNECTION_LOST: return "connection lost";
         default: return fmt::format("unknow error -{}-", m_error);
     }
 }

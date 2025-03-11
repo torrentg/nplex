@@ -258,7 +258,7 @@ int main(int argc, char *argv[])
         spdlog::flush_on(spdlog::level::debug);
         spdlog::set_level(to_spdlog(params.log_level));
         // @see https://github.com/gabime/spdlog/wiki/3.-Custom-formatting#pattern-flags
-        spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%s:%#] [%-5l] %v");
+        spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%t] [%s:%#] [%-5l] %v");
     }
     catch (const spdlog::spdlog_ex &e) {
         std::cerr << e.what() << std::endl;

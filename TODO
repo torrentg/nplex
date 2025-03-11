@@ -7,8 +7,12 @@
 * Add database-max-bytes param
 * Add buffer gto::cqueue<update_t>
 * Replace user_t::num_connections by std::set<session_ptr> sessions
+* Create networking_t class
+* Create async_t class
+* replace uv_timers_t * malloc/free by new/delete
+* Move utilities from common.hpp to utils.hpp
 
 ## Useful commands
 
 * cloc --exclude-content="automatically generated" include src test
-* cppcheck --enable=all --inconclusive --std=c++20 --force --suppress=missingIncludeSystem --suppress=unusedFunction --suppress=useInitializationList --suppress=noExplicitConstructor --suppress=cstyleCast -Ideps -Isrc -Iinclude src &> removeme.txt
+* cppcheck --enable=all --inconclusive --std=c++20 --force --suppress=missingIncludeSystem --suppress=unusedFunction --suppress=noExplicitConstructor  --suppress=normalCheckLevelMaxBranches -Ideps -Isrc -Iinclude src &> removeme.txt

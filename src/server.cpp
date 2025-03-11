@@ -31,7 +31,8 @@
 // TODO: remove this test function
 static void cb_timer_test(uv_timer_t *timer)
 {
-    auto *server = (nplex::server_t *) timer->loop->data;
+    assert(timer->loop->data);
+    auto *server = static_cast<nplex::server_t *>(timer->loop->data);
     server->simule_submit();
 }
 
@@ -52,19 +53,19 @@ static struct sockaddr_storage get_sockaddr(uv_loop_t *loop, const nplex::addr_t
     using namespace nplex;
 
     int rc = 0;
-    struct sockaddr_storage ret;
+    sockaddr_storage ret;
 
     std::memset(&ret, 0, sizeof(ret));
 
     switch(addr.family())
     {
         case AF_INET:
-            if ((rc = uv_ip4_addr(addr.host().c_str(), addr.port(), (struct sockaddr_in*) &ret)) != 0)
+            if ((rc = uv_ip4_addr(addr.host().c_str(), addr.port(), reinterpret_cast<sockaddr_in *>(&ret))) != 0)
                 throw std::runtime_error(uv_strerror(rc));
             break;
 
         case AF_INET6:
-            if ((rc = uv_ip6_addr(addr.host().c_str(), addr.port(), (struct sockaddr_in6*) &ret)) != 0)
+            if ((rc = uv_ip6_addr(addr.host().c_str(), addr.port(), reinterpret_cast<sockaddr_in6 *>(&ret))) != 0)
                 throw std::runtime_error(uv_strerror(rc));
             break;
 
@@ -106,7 +107,7 @@ static void cb_signal_handler(uv_signal_t *handle, int signum)
     SPDLOG_WARN("Signal received: {}({})", ::strsignal(signum), signum);
     uv_stop(handle->loop);
     uv_signal_stop(handle);
-    uv_close((uv_handle_t*) handle, nullptr);
+    uv_close(reinterpret_cast<uv_handle_t *>(handle), nullptr);
 }
 
 static void cb_process_async(uv_async_t *handle)
@@ -145,6 +146,7 @@ static void cb_close_handle(uv_handle_t *handle, void *arg)
             break;
         case UV_WORK:
             assert(false);
+            uv_close(handle, nullptr);
             break;
         default:
             SPDLOG_DEBUG("Closing OTHER");
@@ -159,8 +161,9 @@ static void cb_tcp_connection(uv_stream_t *stream, int status)
         return;
     }
 
-    auto *server = (nplex::server_t *) stream->loop->data;
+    auto *server = static_cast<nplex::server_t *>(stream->loop->data);
     assert(server);
+
     server->append_session(stream);
 }
 
@@ -283,7 +286,7 @@ void nplex::server_t::init_network(const params_t &params)
     if ((rc = uv_tcp_bind(m_tcp.get(), reinterpret_cast<struct sockaddr *>(&addr_in), 0)) != 0)
         throw nplex_exception(uv_strerror(rc));
 
-    if ((rc = uv_listen((uv_stream_t*) m_tcp.get(), MAX_QUEUED_CONNECTIONS, ::cb_tcp_connection)) != 0)
+    if ((rc = uv_listen(reinterpret_cast<uv_stream_t *>(m_tcp.get()), MAX_QUEUED_CONNECTIONS, ::cb_tcp_connection)) != 0)
         throw nplex_exception(uv_strerror(rc));
 
     SPDLOG_INFO("Nplex listening on {}", params.addr.str());
@@ -624,7 +627,7 @@ void nplex::server_t::simule_submit()
         return;
     }
 
-    auto &user = it->second;
+    const auto &user = it->second;
 
     // Create a valid SubmitRequest message
     using namespace msgs;
@@ -638,14 +641,14 @@ void nplex::server_t::simule_submit()
         CreateKeyValue(
             builder, 
             builder.CreateString("key1"), 
-            builder.CreateVector((uint8_t *) "value1", 7)
+            builder.CreateVector(reinterpret_cast<const uint8_t *>("value1"), 7)
         )
     );
     upserts.push_back(
         CreateKeyValue(
             builder, 
             builder.CreateString("key2"), 
-            builder.CreateVector((uint8_t *) "value2", 7)
+            builder.CreateVector(reinterpret_cast<const uint8_t *>("value2"), 7)
         )
     );
 

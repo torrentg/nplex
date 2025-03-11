@@ -164,7 +164,7 @@ void nplex::repo_t::load(const msgs::Snapshot *snapshot, const user_ptr &user)
         return;
 
     auto updates = snapshot->updates();
-    rev_t rev = snapshot->rev();
+    rev_t srev = snapshot->rev();
 
     if (updates)
     {
@@ -172,12 +172,12 @@ void nplex::repo_t::load(const msgs::Snapshot *snapshot, const user_ptr &user)
         {
             update(updates->Get(i), user);
 
-            if (m_rev > rev)
+            if (m_rev > srev)
                 throw nplex_exception("Invalid snapshot");
         }
     }
 
-    m_rev = rev;
+    m_rev = srev;
 }
 
 bool nplex::repo_t::update(const msgs::Update *msg, const user_ptr &user)
@@ -189,17 +189,17 @@ bool nplex::repo_t::update(const msgs::Update *msg, const user_ptr &user)
 
     auto upserts = msg->upserts();
     auto deletes = msg->deletes();
-    rev_t rev = msg->rev();
+    rev_t urev = msg->rev();
 
-    if (rev <= m_rev)
-        throw nplex_exception("Update out of order (r{})", rev);
+    if (urev <= m_rev)
+        throw nplex_exception("Update out of order (r{})", urev);
 
     if (!msg->user() || msg->user()->size() == 0)
-        throw nplex_exception("Malformed update message (r{})", rev);
+        throw nplex_exception("Malformed update message (r{})", urev);
 
-    auto meta = create_meta(rev, msg->user()->c_str(), msg->type());
+    auto meta = create_meta(urev, msg->user()->c_str(), msg->type());
 
-    m_rev = rev;
+    m_rev = urev;
 
     if (upserts)
     {
@@ -208,7 +208,7 @@ bool nplex::repo_t::update(const msgs::Update *msg, const user_ptr &user)
             auto keyval = upserts->Get(i);
 
             if (!keyval || !keyval->key() || !keyval->value())
-                throw nplex_exception("Malformed update message (r{})", rev);
+                throw nplex_exception("Malformed update message (r{})", urev);
 
             auto key = keyval->key()->c_str();
 
@@ -229,7 +229,7 @@ bool nplex::repo_t::update(const msgs::Update *msg, const user_ptr &user)
             auto key = deletes->Get(i);
 
             if (!key || !key->c_str())
-                throw nplex_exception("Malformed update message (r{})", rev);
+                throw nplex_exception("Malformed update message (r{})", urev);
 
             if (user && !user->is_authorized(NPLEX_READ, key->c_str()))
                 continue;
@@ -243,7 +243,7 @@ bool nplex::repo_t::update(const msgs::Update *msg, const user_ptr &user)
         return false;
     }
 
-    m_metas[rev] = meta;
+    m_metas[urev] = meta;
     return true;
 }
 
@@ -463,9 +463,9 @@ flatbuffers::Offset<nplex::msgs::Snapshot> nplex::repo_t::serialize(flatbuffers:
     std::vector<flatbuffers::Offset<msgs::Update>> updates;
     std::vector<flatbuffers::Offset<msgs::KeyValue>> upserts;
 
-    for (const auto &[rev, meta] : m_metas)
+    for (const auto &[mrev, meta] : m_metas)
     {
-        assert(rev == meta->rev);
+        assert(mrev == meta->rev);
 
         upserts.clear();
 
@@ -501,7 +501,7 @@ flatbuffers::Offset<nplex::msgs::Snapshot> nplex::repo_t::serialize(flatbuffers:
 
         auto upd = msgs::CreateUpdate(
             builder,
-            static_cast<std::uint64_t>(rev),
+            static_cast<std::uint64_t>(mrev),
             builder.CreateString(meta->user.c_str()),
             static_cast<std::uint64_t>(meta->timestamp.count()),
             static_cast<std::uint32_t>(meta->type),

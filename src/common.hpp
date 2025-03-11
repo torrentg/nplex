@@ -41,6 +41,7 @@
 #define ERR_API_VERSION 1009
 #define ERR_TIMEOUT_STEP_1 1010
 #define ERR_TIMEOUT_STEP_2 1011
+#define ERR_CONNECTION_LOST 1012
 
 #define UNUSED(x) (void)(x)
 

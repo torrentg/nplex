@@ -16,7 +16,7 @@ struct output_msg_t
     std::uint32_t checksum;     // CRC32 of len + metadata + content (big-endian)
     std::uint32_t len;          // Total message length (including len, metadata, content, checksum) (big-endian)
 
-    output_msg_t(flatbuffers::DetachedBuffer &&content_);
+    output_msg_t(flatbuffers::DetachedBuffer &&msg);
     std::uint32_t length() const { return ntohl(len); }
 };
 

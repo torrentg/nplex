@@ -1,6 +1,7 @@
 #include <cassert>
 #include <cstddef>
 #include <spdlog/spdlog.h>
+#include "exception.hpp"
 #include "messaging.hpp"
 #include "session.hpp"
 #include "server.hpp"
@@ -46,10 +47,18 @@ void nplex::cb_task_after(uv_work_t *req, int status)
     auto *task = get_task(req);
     auto *server = get_server(req);
 
+    if (status != 0)
+    {
+        if (status != UV_ECANCELED)
+            SPDLOG_ERROR("Task error: {}", uv_strerror(status));
+
+        task->excpt = std::make_exception_ptr(nplex_exception(uv_strerror(status)));
+    }
+
     if (!task->excpt)
     {
         try {
-            task->after(status);
+            task->after();
         }
         catch (const std::exception &e) {
             SPDLOG_ERROR("Task error: {}", e.what());
@@ -57,7 +66,7 @@ void nplex::cb_task_after(uv_work_t *req, int status)
         }
     }
 
-    if (task->excpt) {
+    if (task->excpt && status != UV_ECANCELED) {
         uv_stop(req->loop);
     }
 
@@ -73,19 +82,16 @@ void nplex::cb_task_after(uv_work_t *req, int status)
 void nplex::repo_task_t::run() {
     m_repo = m_storage->get_repo(m_rev, m_session->m_user);
     SPDLOG_DEBUG("repo_task completed: r{}", m_repo.rev());
+    // TODO: create DettachedBuffer in run
+    // TODO: set crev in after() using use SetField() and send msg
 }
 
-void nplex::repo_task_t::after(int status)
+void nplex::repo_task_t::after()
 {
-    if (status != 0) {
-        m_session->disconnect(status);
-        return;
-    }
-
     using namespace msgs;
     using namespace flatbuffers;
 
-    auto *server = get_server(&work);
+    const auto *server = get_server(&work);
     FlatBufferBuilder builder;
 
     auto msg = CreateMessage(builder, 

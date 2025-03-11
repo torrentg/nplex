@@ -128,6 +128,7 @@ target_sources(
     ${CMAKE_CURRENT_LIST_DIR}/src/params.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/server.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/tasks.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/utils.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/user.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/main.cpp
 )
