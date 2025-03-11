@@ -28,9 +28,11 @@ struct task_t
 {
     uv_work_t work;
     std::exception_ptr excpt;
+    uint64_t start_time = 0;
 
     task_t() { work.data = this; }
     virtual ~task_t() = default;
+    virtual const char * name() const = 0;
     virtual void run() = 0;
     virtual void after() = 0;
 };
@@ -42,13 +44,15 @@ struct repo_task_t : public task_t
 {
     storage_ptr &m_storage;
     session_t *m_session;
-    nplex::rev_t m_rev;
+    rev_t m_rev;
     std::size_t m_cid;
-    repo_t m_repo;
+    flatbuffers::FlatBufferBuilder m_builder;
+    flatbuffers::Offset<nplex::msgs::Snapshot>  m_offset;
 
     repo_task_t(storage_ptr &storage, session_t *session, nplex::rev_t rev, std::size_t cid)
         : m_storage(storage), m_session(session), m_rev(rev), m_cid(cid) {}
 
+    const char * name() const override { return "repo_task"; }
     void run() override;
     void after() override;
 };

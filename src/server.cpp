@@ -161,7 +161,7 @@ static void cb_task_run(uv_work_t *req)
         task->run();
     }
     catch (const std::exception &e) {
-        SPDLOG_ERROR("Task error: {}", e.what());
+        SPDLOG_ERROR("Task {} error: {}", task->name(), e.what());
         task->excpt = std::current_exception();
     }
 }
@@ -174,13 +174,17 @@ static void cb_task_after(uv_work_t *req, int status)
     assert(req->loop->data);
     auto *server = static_cast<nplex::server_t *>(req->loop->data);
 
+    uint64_t duration_us = (uv_hrtime() - task->start_time) / 1000;
+
+    SPDLOG_DEBUG("Task {}: duration = {} μs", task->name(), duration_us);
+
     if (status == UV_ECANCELED) {
-        SPDLOG_TRACE("Task cancelled");
+        SPDLOG_TRACE("Task {} cancelled", task->name());
         goto END;
     }
 
     if (status != 0) {
-        SPDLOG_ERROR("Task error: {}", uv_strerror(status));
+        SPDLOG_ERROR("Task {} error: {}", task->name(), uv_strerror(status));
         goto ERR;
     }
 
@@ -194,7 +198,7 @@ static void cb_task_after(uv_work_t *req, int status)
         goto END;
     }
     catch (const std::exception &e) {
-        SPDLOG_ERROR("Task exception: {}", e.what());
+        SPDLOG_ERROR("Task {} exception: {}", task->name(), e.what());
         goto ERR;
     }
 
@@ -645,6 +649,8 @@ void nplex::server_t::submit_task(task_t *task)
         delete task;
         return;
     }
+
+    task->start_time = uv_hrtime();
 
     int rc = 0;
     if ((rc = uv_queue_work(m_loop.get(), &task->work, ::cb_task_run, ::cb_task_after)) != 0)

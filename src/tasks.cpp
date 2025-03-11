@@ -22,33 +22,29 @@ static nplex::server_t * get_server(uv_work_t *req)
 // repo_task_t methods
 // ==========================================================
 
-void nplex::repo_task_t::run() {
-    m_repo = m_storage->get_repo(m_rev, m_session->m_user);
+void nplex::repo_task_t::run()
+{
+    auto m_repo = m_storage->get_repo(m_rev, m_session->m_user);
     SPDLOG_TRACE("repo_task completed: r{}", m_repo.rev());
-    // TODO: create DettachedBuffer in run
-    // TODO: set crev in after() using use SetField() and send msg
+    m_offset = m_repo.serialize(m_builder);
 }
 
 void nplex::repo_task_t::after()
 {
-    using namespace msgs;
-    using namespace flatbuffers;
-
     const auto *server = get_server(&work);
-    FlatBufferBuilder builder;
 
-    auto msg = CreateMessage(builder, 
+    auto msg = msgs::CreateMessage(m_builder, 
         msgs::MsgContent::LOAD_RESPONSE,
-        CreateLoadResponse(builder, 
+        msgs::CreateLoadResponse(m_builder, 
             m_cid,
             server->rev(),
             true,
-            m_repo.serialize(builder)
-        ).Union() 
+            m_offset
+        ).Union()
     );
 
-    builder.Finish(msg);
+    m_builder.Finish(msg);
 
-    m_session->send(builder.Release());
+    m_session->send(m_builder.Release());
     m_session->do_step2();
 }
