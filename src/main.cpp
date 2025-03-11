@@ -11,6 +11,7 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include "params.hpp"
 #include "addr.hpp"
+#include "utils.hpp"
 #include "server.hpp"
 #include "common.hpp"
 

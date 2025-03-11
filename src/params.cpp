@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <fmt/core.h>
 #include "ini.h"
+#include "utils.hpp"
 #include "params.hpp"
 
 #define GENERAL_ADDR "addr"

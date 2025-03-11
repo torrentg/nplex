@@ -23,11 +23,11 @@ struct session_t
         CLOSED
     };
 
-    uv_tcp_t m_tcp;
+    uv_tcp_t m_tcp = {};
     uv_timer_t *m_timer_disconnect = nullptr;
     uv_timer_t *m_timer_keepalive = nullptr;
     addr_t m_addr;
-    state_e m_state;
+    state_e m_state = state_e::CLOSED;
     int m_error = 0;
     user_ptr m_user;
 
@@ -49,8 +49,10 @@ struct session_t
         std::size_t sent_bytes = 0;
     } stats;
 
-    session_t(uv_stream_t *stream);
+    explicit session_t(uv_stream_t *stream);
     ~session_t();
+    session_t(const session_t&) = delete;
+    session_t& operator=(const session_t&) = delete;
 
     void disconnect(int rc = 0);
     void send(flatbuffers::DetachedBuffer &&buf);
@@ -62,7 +64,5 @@ struct session_t
 };
 
 using session_ptr = std::shared_ptr<session_t>;
-
-void cb_close_session(uv_handle_t *handle);
 
 } // namespace nplex

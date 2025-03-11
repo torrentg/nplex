@@ -135,10 +135,7 @@ static void cb_close_handle(uv_handle_t *handle, void *arg)
             break;
         case UV_TCP:
             SPDLOG_DEBUG("Closing UV_TCP");
-            if (handle->data)   // connection
-                uv_close(handle, nplex::cb_close_session);
-            else                // listener
-                uv_close(handle, nullptr);
+            uv_close(handle, nullptr);
             break;
         case UV_TIMER:
             SPDLOG_DEBUG("Closing UV_TIMER");
@@ -308,10 +305,15 @@ void nplex::server_t::run()
     // stoping the thread writing to journal
     m_storage->close();
 
-    // stoping tasks in the thread-pool
-    if (m_num_running_tasks != 0)
+    // closing all sessions
+    for (auto &session : m_sessions)
+        session->disconnect(ERR_CLOSED_BY_LOCAL);
+
+    // awaiting until all tasks terminated and no sessions
+    while (m_num_running_tasks != 0 || !m_sessions.empty())
         uv_run(m_loop.get(), UV_RUN_DEFAULT);
 
+    // closing remaining objects
     uv_walk(m_loop.get(), ::cb_close_handle, NULL);
     while (uv_run(m_loop.get(), UV_RUN_NOWAIT));
     uv_loop_close(m_loop.get());
@@ -358,6 +360,9 @@ void nplex::server_t::release_session(session_t *session)
         session->m_user->num_connections--;
 
     m_sessions.erase(it);
+
+    if (!m_running && m_sessions.empty())
+        uv_stop(m_loop.get());
 }
 
 void nplex::server_t::on_msg_received(session_t *session, const msgs::Message *msg)
@@ -594,7 +599,7 @@ void nplex::server_t::release_task(task_t *)
     assert(m_num_running_tasks);
     m_num_running_tasks--;
 
-    if (!m_running)
+    if (!m_running && !m_num_running_tasks)
         uv_stop(m_loop.get());
 }
 

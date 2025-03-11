@@ -9,8 +9,7 @@
 * Replace user_t::num_connections by std::set<session_ptr> sessions
 * Create networking_t class
 * Create async_t class
-* replace uv_timers_t * malloc/free by new/delete
-* Move utilities from common.hpp to utils.hpp
+* Add log TRACE level
 
 ## Useful commands
 

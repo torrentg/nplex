@@ -4,6 +4,7 @@
 #include <cassert>
 #include <algorithm>
 #include "match.h"
+#include "utils.hpp"
 #include "exception.hpp"
 #include "repository.hpp"
 

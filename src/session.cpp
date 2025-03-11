@@ -189,12 +189,16 @@ static void cb_timer_keepalive(uv_timer_t *timer)
     }
 }
 
-// ==========================================================
-// nplex functions
-// ==========================================================
-
-void nplex::cb_close_session(uv_handle_t *handle)
+static void cb_close_timer(uv_handle_t *handle)
 {
+    SPDLOG_DEBUG("Closing timer");
+    delete reinterpret_cast<uv_timer_t *>(handle);
+}
+
+static void cb_close_session(uv_handle_t *handle)
+{
+    SPDLOG_DEBUG("Closing session");
+
     using namespace nplex;
 
     assert(handle->data);
@@ -203,8 +207,8 @@ void nplex::cb_close_session(uv_handle_t *handle)
     assert(handle->loop->data);
     auto *server = static_cast<server_t *>(handle->loop->data);
 
-    // On Ctrl-C, all objects are destroyed with no order.
-    // timers are ignored because there are no guarantees about its state
+    // There is no guarantee on timer destruction order
+    // In fact, they are destroyed after the session removal
 
     session->m_state = session_t::state_e::CLOSED;
     session->m_timer_disconnect = nullptr;
@@ -241,21 +245,27 @@ nplex::session_t::session_t(uv_stream_t *stream) : m_state{state_e::CLOSED}
     if ((rc = get_peeraddr(&m_tcp, addr_str, sizeof(addr_str))) != 0)
         goto CTOR_ERR;
 
-    if ((m_timer_disconnect = (uv_timer_t *) malloc(sizeof(uv_timer_t))) == nullptr) {
+    try {
+        m_timer_disconnect = new uv_timer_t{};
+    }
+    catch (const std::bad_alloc &) {
         rc = ENOMEM;
         goto CTOR_ERR;
     }
 
     if ((rc = uv_timer_init(stream->loop, m_timer_disconnect)) != 0) {
-        free(m_timer_disconnect);
+        delete m_timer_disconnect;
         m_timer_disconnect = nullptr;
         goto CTOR_ERR;
     }
 
     m_timer_disconnect->data = this;
 
-    if ((rc = uv_timer_start(m_timer_disconnect, ::cb_timer_disconnect, TIMEOUT_STEP_1, 0)) != 0)
+    if ((rc = uv_timer_start(m_timer_disconnect, ::cb_timer_disconnect, TIMEOUT_STEP_1, 0)) != 0) {
+        uv_close(get_handle(m_timer_disconnect), ::cb_close_timer);
+        m_timer_disconnect = nullptr;
         goto CTOR_ERR;
+    }
 
     m_tcp.data = this;
     m_addr = addr_t(addr_str);
@@ -265,7 +275,7 @@ nplex::session_t::session_t(uv_stream_t *stream) : m_state{state_e::CLOSED}
 CTOR_ERR:
     m_error = rc;
     m_tcp.data = this;
-    uv_close(get_handle(this), cb_close_session);
+    uv_close(get_handle(this), ::cb_close_session);
     SPDLOG_WARN(uv_strerror(rc));
 }
 
@@ -286,17 +296,17 @@ void nplex::session_t::disconnect(int rc)
 
     if (m_timer_disconnect && !uv_is_closing(get_handle(m_timer_disconnect))) {
         uv_timer_stop(m_timer_disconnect);
-        uv_close(get_handle(m_timer_disconnect), (uv_close_cb) free);
+        uv_close(get_handle(m_timer_disconnect), ::cb_close_timer);
         m_timer_disconnect = nullptr;
     }
 
     if (m_timer_keepalive && !uv_is_closing(get_handle(m_timer_keepalive))) {
         uv_timer_stop(m_timer_keepalive);
-        uv_close(get_handle(m_timer_keepalive), (uv_close_cb) free);
+        uv_close(get_handle(m_timer_keepalive), ::cb_close_timer);
         m_timer_keepalive = nullptr;
     }
 
-    uv_close(get_handle(&m_tcp), cb_close_session);
+    uv_close(get_handle(&m_tcp), ::cb_close_session);
 }
 
 void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
@@ -357,13 +367,10 @@ void nplex::session_t::do_step1(const user_ptr &user)
 
     assert(!m_timer_keepalive);
 
-    if ((m_timer_keepalive = (uv_timer_t *) malloc(sizeof(uv_timer_t))) == nullptr) {
-        disconnect(ENOMEM);
-        return;
-    }
+    m_timer_keepalive = new uv_timer_t{};
 
     if ((rc = uv_timer_init(m_tcp.loop, m_timer_keepalive)) != 0) {
-        free(m_timer_keepalive);
+        delete m_timer_keepalive;
         m_timer_keepalive = nullptr;
         disconnect(rc);
         return;
@@ -384,7 +391,7 @@ void nplex::session_t::do_step2()
 
     uint64_t keepalive_millis = m_user->keepalive_millis;
     if (keepalive_millis == 0) {
-        uv_close(get_handle(m_timer_disconnect), (uv_close_cb) free);
+        uv_close(get_handle(m_timer_disconnect), ::cb_close_timer);
         m_timer_disconnect = nullptr;
     }
     else {

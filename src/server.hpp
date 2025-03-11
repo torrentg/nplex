@@ -8,6 +8,7 @@
 #include "repository.hpp"
 #include "session.hpp"
 #include "storage.hpp"
+#include "utils.hpp"
 #include "tasks.hpp"
 #include "user.hpp"
 
