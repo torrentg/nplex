@@ -251,7 +251,7 @@ void nplex::storage_t::run_writer()
 
     std::unique_lock<std::mutex> lock(m_mutex);
 
-    SPDLOG_DEBUG("Writer thread started");
+    SPDLOG_TRACE("Writer thread started");
 
     m_running = true;
 
@@ -284,7 +284,7 @@ void nplex::storage_t::run_writer()
     m_entries.clear();
     m_queue.clear();
 
-    SPDLOG_DEBUG("Writer thread stopped");
+    SPDLOG_TRACE("Writer thread stopped");
 }
 
 void nplex::storage_t::process_write_commands()
@@ -324,10 +324,10 @@ void nplex::storage_t::process_write_commands()
     lock.unlock();
 
     assert(!m_entries.empty());
-    SPDLOG_DEBUG("Writing {}/{} entries to journal ...", m_entries.size(), m_queue.size());
+    SPDLOG_TRACE("Writing {}/{} entries to journal ...", m_entries.size(), m_queue.size());
 
     ldb_rc = m_journal.append(m_entries.data(), m_entries.size(), &num_writes);
-    SPDLOG_DEBUG("Journal write completed, writes = {}, result = {}", num_writes, ldb_strerror(ldb_rc));
+    SPDLOG_TRACE("Journal write completed, writes = {}, result = {}", num_writes, ldb_strerror(ldb_rc));
 
     lock.lock();
 
@@ -393,7 +393,8 @@ nplex::repo_t nplex::storage_t::get_repo(rev_t rev, const user_ptr &user)
         std::size_t len = std::min(READ_BATCH_SIZE, rev - repo.rev());
 
         int rc = m_journal.read(repo.rev() + 1, entries, len, &num_reads);
-        SPDLOG_DEBUG("Read journal entries, range = [r{}, r{}], rc = {}", 
+
+        SPDLOG_TRACE("Read journal entries, range = [r{}, r{}], rc = {}", 
             repo.rev() + 1, repo.rev() + num_reads, ldb_strerror(rc));
 
         if (rc != LDB_OK && rc != LDB_ERR_NOT_FOUND)

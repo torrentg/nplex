@@ -9,14 +9,6 @@
 #include "repository.hpp"
 
 // ==========================================================
-// Internal (static) functions
-// ==========================================================
-
-static gto::cstring create_cstring(const flatbuffers::Vector<std::uint8_t> *value) {
-    return gto::cstring{reinterpret_cast<const char *>(value->data()), static_cast<std::size_t>(value->size())};
-}
-
-// ==========================================================
 // repo_t methods
 // ==========================================================
 
@@ -216,7 +208,7 @@ bool nplex::repo_t::update(const msgs::Update *msg, const user_ptr &user)
             if (user && !user->is_authorized(NPLEX_READ, key))
                 continue;
 
-            gto::cstring data = ::create_cstring(keyval->value());
+            gto::cstring data = create_cstring(keyval->value());
             auto value = std::make_shared<value_t>(data, meta);
 
             upsert_entry(key, value);
@@ -326,7 +318,8 @@ nplex::msgs::SubmitCode nplex::repo_t::try_commit_inner(const user_t &user, cons
             }
 
             key_t key = (it != m_data.end() ? it->first : key_t{keyval->key()->c_str()});
-            auto value = std::make_shared<value_t>(::create_cstring(keyval->value()), meta);
+            auto data = create_cstring(keyval->value());
+            auto value = std::make_shared<value_t>(data, meta);
             update.upserts.emplace_back(key, value);
             keys.insert(key);
         }

@@ -35,9 +35,6 @@ struct task_t
     virtual void after() = 0;
 };
 
-void cb_task_run(uv_work_t *req);
-void cb_task_after(uv_work_t *req, int status);
-
 /**
  * Retrieve the repo at rev and sends it to the session as load response.
  */

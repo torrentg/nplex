@@ -126,29 +126,83 @@ static void cb_close_handle(uv_handle_t *handle, void *arg)
     switch(handle->type)
     {
         case UV_SIGNAL:
-            SPDLOG_DEBUG("Closing UV_SIGNAL");
+            SPDLOG_TRACE("Closing UV_SIGNAL");
             uv_close(handle, nullptr);
             break;
         case UV_ASYNC:
-            SPDLOG_DEBUG("Closing UV_ASYNC");
+            SPDLOG_TRACE("Closing UV_ASYNC");
             uv_close(handle, nullptr);
             break;
         case UV_TCP:
-            SPDLOG_DEBUG("Closing UV_TCP");
+            SPDLOG_TRACE("Closing UV_TCP");
             uv_close(handle, nullptr);
             break;
         case UV_TIMER:
-            SPDLOG_DEBUG("Closing UV_TIMER");
+            SPDLOG_TRACE("Closing UV_TIMER");
             uv_close(handle, (uv_close_cb) free);
             break;
         case UV_WORK:
-            assert(false);
+            SPDLOG_TRACE("Closing UV_WORK");
             uv_close(handle, nullptr);
+            assert(false);
             break;
         default:
-            SPDLOG_DEBUG("Closing OTHER");
+            SPDLOG_TRACE("Closing OTHER");
             uv_close(handle, (uv_close_cb) free);
     }
+}
+
+static void cb_task_run(uv_work_t *req)
+{
+    assert(req->data);
+    auto *task = static_cast<nplex::task_t *>(req->data);
+
+    try {
+        task->run();
+    }
+    catch (const std::exception &e) {
+        SPDLOG_ERROR("Task error: {}", e.what());
+        task->excpt = std::current_exception();
+    }
+}
+
+static void cb_task_after(uv_work_t *req, int status)
+{
+    assert(req->data);
+    auto *task = static_cast<nplex::task_t *>(req->data);
+
+    assert(req->loop->data);
+    auto *server = static_cast<nplex::server_t *>(req->loop->data);
+
+    if (status == UV_ECANCELED) {
+        SPDLOG_TRACE("Task cancelled");
+        goto END;
+    }
+
+    if (status != 0) {
+        SPDLOG_ERROR("Task error: {}", uv_strerror(status));
+        goto ERR;
+    }
+
+    if (task->excpt) {
+        // Error was already traced in cb_task_run()
+        goto ERR;
+    }
+
+    try {
+        task->after();
+        goto END;
+    }
+    catch (const std::exception &e) {
+        SPDLOG_ERROR("Task exception: {}", e.what());
+        goto ERR;
+    }
+
+ERR:
+    uv_stop(req->loop);
+END:
+    server->release_task(task);
+    delete task;
 }
 
 static void cb_tcp_connection(uv_stream_t *stream, int status)
@@ -195,6 +249,7 @@ static bool is_valid_user(const nplex::user_t &user)
 
 void nplex::server_t::init(const params_t &params)
 {
+    SPDLOG_INFO("Initializing Nplex server ...");
     init_users(params);
     init_data(params);
     init_event_loop(params);
@@ -240,14 +295,14 @@ void nplex::server_t::init_event_loop(const params_t &params)
 
     m_loop = std::make_unique<uv_loop_t>();
 
-    if (uv_loop_init(m_loop.get()) != 0)
-        throw nplex_exception("Error initializing the event loop (uv_loop_init)");
+    if ((rc = uv_loop_init(m_loop.get())) != 0)
+        throw nplex_exception(uv_strerror(rc));
 
     m_loop->data = this;
 
     m_async = std::make_unique<uv_async_t>();
 
-    if (uv_async_init(m_loop.get(), m_async.get(), ::cb_process_async) != 0)
+    if ((rc = uv_async_init(m_loop.get(), m_async.get(), ::cb_process_async)) != 0)
         throw nplex_exception(uv_strerror(rc));
 
     m_signal = std::make_unique<uv_signal_t>();
@@ -255,8 +310,8 @@ void nplex::server_t::init_event_loop(const params_t &params)
     if ((rc = uv_signal_init(m_loop.get(), m_signal.get())) != 0)
         throw nplex_exception(uv_strerror(rc));
 
-    if (uv_signal_start(m_signal.get(), ::cb_signal_handler, SIGINT) != 0)
-        throw nplex_exception("Error setting signal handler");
+    if ((rc = uv_signal_start(m_signal.get(), ::cb_signal_handler, SIGINT)) != 0)
+        throw nplex_exception(uv_strerror(rc));
 
     // TODO: Remove this testing code
     uv_timer_t *timer = (uv_timer_t *) malloc(sizeof(uv_timer_t));
@@ -293,7 +348,7 @@ void nplex::server_t::run()
 {
     try {
         m_running = true;
-        SPDLOG_DEBUG("Event loop started");
+        SPDLOG_INFO("Nplex server started");
         uv_run(m_loop.get(), UV_RUN_DEFAULT);
     }
     catch (const std::exception &e) {
@@ -317,7 +372,8 @@ void nplex::server_t::run()
     uv_walk(m_loop.get(), ::cb_close_handle, NULL);
     while (uv_run(m_loop.get(), UV_RUN_NOWAIT));
     uv_loop_close(m_loop.get());
-    SPDLOG_DEBUG("Event loop terminated");
+
+    SPDLOG_INFO("Nplex server terminated");
 }
 
 void nplex::server_t::stop()
@@ -334,12 +390,12 @@ void nplex::server_t::append_session(uv_stream_t *stream)
         return;
 
     if (m_sessions.size() >= m_max_connections) {
-        SPDLOG_WARN("Connection rejected (max clients reached)");
+        SPDLOG_WARN("Incomming connection rejected (max {} clients reached)", m_max_connections);
         return;
     }
 
     auto session = std::make_shared<session_t>(stream);
-    SPDLOG_DEBUG("New connection: {}", session->m_addr.str());
+    SPDLOG_DEBUG("New connection: {}", session->m_id);
 
     m_sessions.insert(session);
 }
@@ -354,7 +410,10 @@ void nplex::server_t::release_session(session_t *session)
     if (it == m_sessions.end())
         return;
 
-    SPDLOG_INFO("Connection {} closed ({})", session->m_addr.str(), session->strerror());
+    if (session->m_user)
+        SPDLOG_INFO("Session closed: {} ({})", session->m_id, session->strerror());
+    else
+        SPDLOG_DEBUG("Connection closed: {} ({})", session->m_id, session->strerror());
 
     if (session->m_user && session->m_user->num_connections > 0)
         session->m_user->num_connections--;
@@ -372,7 +431,7 @@ void nplex::server_t::on_msg_received(session_t *session, const msgs::Message *m
         return;
     }
 
-    SPDLOG_DEBUG("Received {} from {}", msgs::EnumNameMsgContent(msg->content_type()), session->m_addr.str());
+    SPDLOG_DEBUG("Received {} from {}", msgs::EnumNameMsgContent(msg->content_type()), session->m_id);
 
     switch (msg->content_type())
     {
@@ -455,7 +514,7 @@ void nplex::server_t::process_login_request(session_t *session, const nplex::msg
     session->do_step1(user);
     user->num_connections++;
 
-    SPDLOG_INFO("User {} logged from {}", user->name, session->m_addr.str());
+    SPDLOG_INFO("New session: {}", session->m_id);
 
     session->send(
         create_login_msg(
@@ -588,7 +647,7 @@ void nplex::server_t::submit_task(task_t *task)
     }
 
     int rc = 0;
-    if ((rc = uv_queue_work(m_loop.get(), &task->work, cb_task_run, cb_task_after)) != 0)
+    if ((rc = uv_queue_work(m_loop.get(), &task->work, ::cb_task_run, ::cb_task_after)) != 0)
         throw std::runtime_error(uv_strerror(rc));
 
     m_num_running_tasks++;

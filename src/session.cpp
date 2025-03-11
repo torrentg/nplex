@@ -191,13 +191,13 @@ static void cb_timer_keepalive(uv_timer_t *timer)
 
 static void cb_close_timer(uv_handle_t *handle)
 {
-    SPDLOG_DEBUG("Closing timer");
+    SPDLOG_TRACE("Closing timer");
     delete reinterpret_cast<uv_timer_t *>(handle);
 }
 
 static void cb_close_session(uv_handle_t *handle)
 {
-    SPDLOG_DEBUG("Closing session");
+    SPDLOG_TRACE("Closing session");
 
     using namespace nplex;
 
@@ -269,6 +269,7 @@ nplex::session_t::session_t(uv_stream_t *stream) : m_state{state_e::CLOSED}
 
     m_tcp.data = this;
     m_addr = addr_t(addr_str);
+    m_id = m_addr.str();
     m_state = session_t::state_e::CONNECTED;
     return;
 
@@ -276,7 +277,6 @@ CTOR_ERR:
     m_error = rc;
     m_tcp.data = this;
     uv_close(get_handle(this), ::cb_close_session);
-    SPDLOG_WARN(uv_strerror(rc));
 }
 
 nplex::session_t::~session_t()
@@ -329,7 +329,11 @@ void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
     stats.unack_bytes += static_cast<std::uint32_t>(len);
 
     auto aux = flatbuffers::GetRoot<nplex::msgs::Message>(msg->content.data());
-    SPDLOG_DEBUG("Sent {} to {}", msgs::EnumNameMsgContent(aux->content_type()), m_addr.str());
+
+    if (aux->content_type() == msgs::MsgContent::KEEPALIVE_PUSH)
+        SPDLOG_TRACE("Sent {} to {}", msgs::EnumNameMsgContent(aux->content_type()), m_id);
+    else
+        SPDLOG_DEBUG("Sent {} to {}", msgs::EnumNameMsgContent(aux->content_type()), m_id);
 
     if (m_timer_keepalive && uv_is_active(get_handle(m_timer_keepalive)))
         uv_timer_again(m_timer_keepalive);
@@ -353,6 +357,7 @@ void nplex::session_t::do_step1(const user_ptr &user)
 
     m_user = user;
     m_state = session_t::state_e::LOGGED;
+    m_id = fmt::format("{}@{}", user->name, m_addr.str());
     params.max_msg_bytes = user->max_msg_bytes;
     params.max_unack_bytes = user->max_unack_bytes;
     params.max_unack_msgs = user->max_unack_msgs;

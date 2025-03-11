@@ -25,6 +25,8 @@ nplex::log_level_e nplex::parse_log_level(const std::string_view &str)
 {
     using namespace std::string_literals;
 
+    if ("trace"s == str)
+        return log_level_e::TRACE;
     if ("debug"s == str)
         return log_level_e::DEBUG;
     if ("info"s == str)
@@ -41,10 +43,15 @@ std::string nplex::to_string(log_level_e level)
 {
     switch (level)
     {
+        case log_level_e::TRACE: return "trace";
         case log_level_e::DEBUG: return "debug";
         case log_level_e::INFO: return "info";
         case log_level_e::WARN: return "warning";
         case log_level_e::ERROR: return "error";
         default: return "unknown";
     }
+}
+
+gto::cstring nplex::create_cstring(const flatbuffers::Vector<std::uint8_t> *value) {
+    return gto::cstring{reinterpret_cast<const char *>(value->data()), static_cast<std::size_t>(value->size())};
 }

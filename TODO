@@ -9,7 +9,6 @@
 * Replace user_t::num_connections by std::set<session_ptr> sessions
 * Create networking_t class
 * Create async_t class
-* Add log TRACE level
 
 ## Useful commands
 

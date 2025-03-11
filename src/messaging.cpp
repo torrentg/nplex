@@ -271,10 +271,7 @@ nplex::update_t nplex::deserialize_update(const msgs::Update *msg, const user_pt
             update.upserts.push_back({
                 key_t{kv->key()->c_str()},
                 std::make_shared<value_t>(
-                    gto::cstring{
-                        reinterpret_cast<const char *>(kv->value()->data()), 
-                        kv->value()->size()
-                    },
+                    create_cstring(kv->value()),
                     update.meta
                 )
             });

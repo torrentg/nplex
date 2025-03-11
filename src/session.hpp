@@ -30,6 +30,7 @@ struct session_t
     state_e m_state = state_e::CLOSED;
     int m_error = 0;
     user_ptr m_user;
+    std::string m_id;
 
     char input_buffer[UINT16_MAX] = {0};
     std::string input_msg;

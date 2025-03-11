@@ -105,10 +105,11 @@ struct update_t {
 };
 
 enum log_level_e : std::uint8_t {
-    DEBUG,
-    INFO,
-    WARN,
-    ERROR
+    TRACE,    // developper messages
+    DEBUG,    // connection initiated/terminated, data update, sent/recv message (except KEEPALIVE_PUSH)
+    INFO,     // users login/disconnection, snapshots
+    WARN,     // signal SIGINT, threshold exceeded, unexpected events
+    ERROR     // critical errors
 };
 
 } // namespace nplex

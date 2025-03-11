@@ -99,19 +99,22 @@ static float parse_float(const std::string_view &str)
 
 static std::uint32_t parse_uint32(const std::string_view &str)
 {
-    for (const auto &c : str)
-        if (!isdigit(c))
-            throw std::invalid_argument(fmt::format("Invalid number ({})", str));
-
-    auto num = atol(str.data());
-
-    if (num == 0 && (str.size() != 1 || str[0] != '0'))
+    if (str.empty() || !isdigit(str[0]))
         throw std::invalid_argument(fmt::format("Invalid number ({})", str));
 
-    if (num < 0 || num > std::numeric_limits<std::uint32_t>::max())
-        throw std::invalid_argument(fmt::format("Number out of range ({})", str));
+    std::uint32_t num = 0;
 
-    return static_cast<std::uint32_t>(num);
+    auto [ptr, ec] = std::from_chars(str.begin(), str.end(), num);
+
+    if (ec != std::errc())
+        throw std::invalid_argument(fmt::format("Invalid number ({})", str));
+
+    while (ptr != str.end() && isspace(*ptr)) ptr++;
+
+    if (ptr != str.end())
+        throw std::invalid_argument(fmt::format("Invalid number ({})", str));
+
+    return num;
 }
 
 static std::uint32_t parse_bytes(const std::string_view &str)
@@ -119,7 +122,7 @@ static std::uint32_t parse_bytes(const std::string_view &str)
     if (str.empty() || !isdigit(str[0]))
         throw std::invalid_argument(fmt::format("Invalid bytes ({})", str));
 
-    float num = 0;
+    double num = 0;
 
     auto [ptr, ec] = std::from_chars(str.begin(), str.end(), num);
     if (ec != std::errc())
@@ -139,7 +142,10 @@ static std::uint32_t parse_bytes(const std::string_view &str)
     else
         throw std::invalid_argument(fmt::format("Invalid bytes ({})", str));
 
-    return static_cast<uint32_t>(num);
+    if (num > std::numeric_limits<std::uint32_t>::max())
+        throw std::invalid_argument(fmt::format("Bytes value out of range ({})", str));
+
+    return static_cast<std::uint32_t>(num);
 }
 
 static nplex::acl_t parse_acl(const std::string_view &str)

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include "flatbuffers/flatbuffers.h"
 #include "common.hpp"
 
 namespace nplex {
@@ -56,5 +57,8 @@ struct shared_ptr_compare
         return lhs.get() < rhs.get();
     }
 };
+
+// Create a cstring from a flatbuffers::Vector<uint8_t>
+gto::cstring create_cstring(const flatbuffers::Vector<std::uint8_t> *value);
 
 } // namespace nplex

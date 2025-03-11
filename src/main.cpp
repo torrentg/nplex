@@ -20,12 +20,13 @@ using namespace nplex;
 
 namespace fs = std::filesystem;
 
-server_t server;
+static server_t server;
 
-spdlog::level::level_enum to_spdlog(log_level_e level)
+static spdlog::level::level_enum to_spdlog(log_level_e level)
 {
     switch (level)
     {
+        case log_level_e::TRACE: return spdlog::level::trace;
         case log_level_e::DEBUG: return spdlog::level::debug;
         case log_level_e::INFO:  return spdlog::level::info;
         case log_level_e::WARN:  return spdlog::level::warn;
@@ -34,7 +35,7 @@ spdlog::level::level_enum to_spdlog(log_level_e level)
     }
 }
 
-void help()
+static void help()
 {
     std::cout <<
     "Nplex is a key-value stream database.\n"
@@ -45,7 +46,7 @@ void help()
     "Options:\n"
     "  -D DATADIR       Database directory.\n"
     "  -a HOST:PORT     Address to listen on (ex: localhost:14022).\n"
-    "  -l LOGLEVEL      Log level (debug, info, warning, error).\n"
+    "  -l LOGLEVEL      Log level (trace, debug, info, warning, error).\n"
     "  -c               Check journal files at startup.\n"
     "  -d               Run the program as a daemon.\n"
     "  -F               Turn fsync off.\n"
@@ -60,7 +61,7 @@ void help()
     << std::endl;
 }
 
-void version()
+static void version()
 {
     std::cout <<
     PROJECT_NAME << " " << PROJECT_VERSION << "\n"
@@ -69,12 +70,13 @@ void version()
     << std::endl;
 }
 
-void handle_sighup(int signal)
+static void handle_sighup(int signal)
 {
     if (signal != SIGHUP)
         return;
 
     try {
+        SPDLOG_TRACE("SIGHUP signal received. Recreating log file.");
         spdlog::drop(PROJECT_NAME);
         auto logger = spdlog::basic_logger_mt(PROJECT_NAME, LOG_FILENAME, true);
         spdlog::set_default_logger(logger);
@@ -83,7 +85,7 @@ void handle_sighup(int signal)
     }
 }
 
-void handle_sigterm(int signal)
+static void handle_sigterm(int signal)
 {
     if (signal != SIGTERM)
         return;
@@ -91,7 +93,7 @@ void handle_sigterm(int signal)
     server.stop();
 }
 
-void install_signal_handler(int signal, void (*handle)(int))
+static void install_signal_handler(int signal, void (*handle)(int))
 {
     struct sigaction sa;
     sa.sa_handler = handle;
@@ -258,8 +260,12 @@ int main(int argc, char *argv[])
 
         spdlog::flush_on(spdlog::level::debug);
         spdlog::set_level(to_spdlog(params.log_level));
+
         // @see https://github.com/gabime/spdlog/wiki/3.-Custom-formatting#pattern-flags
-        spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%t] [%s:%#] [%-5l] %v");
+        if (params.log_level <= log_level_e::DEBUG)
+            spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%t] [%s:%#] [%-5l] %v");
+        else
+            spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%-5l] %v");
     }
     catch (const spdlog::spdlog_ex &e) {
         std::cerr << e.what() << std::endl;
@@ -278,13 +284,13 @@ int main(int argc, char *argv[])
     }
 
     try {
-        install_signal_handler(SIGTERM, handle_sigterm);
         server.init(params);
+        install_signal_handler(SIGTERM, handle_sigterm);
         server.run();
         return EXIT_SUCCESS;
     }
     catch (const std::exception &e) {
-        SPDLOG_ERROR("Error: {}", e.what());
+        SPDLOG_ERROR("{}", e.what());
         return EXIT_FAILURE;
     }
 }

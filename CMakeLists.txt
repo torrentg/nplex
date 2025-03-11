@@ -67,6 +67,7 @@ add_compile_options(
     -Wnull-dereference
     -Wdisabled-optimization
     -Wundef
+    -fno-strict-aliasing
 )
 
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
@@ -105,7 +106,7 @@ set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
 #    # see https://clang.llvm.org/extra/clang-tidy/checks/list.html
 #    CMAKE_CXX_CLANG_TIDY
 #    clang-tidy
-#    -checks=-*,performance-*,portability-*,misc-*,clang-analyzer-*,bugprone-*,-misc-include-cleaner,-misc-const-correctness
+#    -checks=-*,performance-*,portability-*,misc-*,clang-analyzer-*,bugprone-*,-bugprone-assignment-in-if-condition,-performance-avoid-endl,-misc-use-anonymous-namespace,-misc-include-cleaner,-misc-const-correctness
 #)
 
 add_executable(
