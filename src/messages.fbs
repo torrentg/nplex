@@ -10,7 +10,6 @@ namespace nplex.msgs;
 // Enums
 
 enum LoginCode: byte {
-    UNKNOW,
     AUTHORIZED,
     INVALID_CREDENTIALS,
     TOO_MANY_CONNECTIONS,
@@ -18,7 +17,6 @@ enum LoginCode: byte {
 }
 
 enum SubmitCode : byte {
-    UNKNOW,
     ACCEPTED,
     NO_MODIFICATIONS,
     ERROR_INVALID_REVISION,
@@ -30,9 +28,7 @@ enum SubmitCode : byte {
     REJECTED_ENSURE
 }
 
-enum LoadMode: byte
-{
-    UNKNOW,
+enum LoadMode: byte {
     SNAPSHOT_AT_LAST_REV,
     SNAPSHOT_AT_FIXED_REV,
     ONLY_UPDATES_FROM_REV
@@ -43,14 +39,14 @@ enum LoadMode: byte
 
 table KeyValue
 {
-    key: string;                    // Key
-    value: [ubyte];                 // Value
+    key: string (required);         // Key
+    value: [ubyte] (required);      // Value
 }
 
 table Update
 {
     rev: uint64;                    // Commit revision
-    user: string;                   // Creator
+    user: string (required);        // Creator
     timestamp: uint64;              // Timestamp
     type: uint32;                   // Transaction type (user-defined value)
     upserts: [KeyValue];            // List of creates and updates
@@ -65,7 +61,7 @@ table Snapshot
 
 table Acl
 {
-    pattern: string;                // Pattern (glob)
+    pattern: string (required);     // Pattern (glob)
     mode: ubyte;                    // Mode (1=CREATE, 2=READ, 4=UPDATE, 8=DELETE)
 }
 
@@ -76,14 +72,14 @@ table LoginRequest
 {
     cid: uint64;                    // Correlation id (used to match responses to requests)
     api_version: uint32;            // API version
-    user: string;                   // User name
-    password: string;               // User password
+    user: string (required);        // User name
+    password: string (required);    // User password
 }
 
 table LoginResponse
 {
     cid: uint64;                    // Correlation id (loginRequest cid)
-    code: LoginCode = UNKNOW;       // Response code
+    code: LoginCode;                // Response code
     rev0: uint64;                   // Oldest revision available
     crev: uint64;                   // Current database revision
     can_force: bool;                // Can force transactions
@@ -107,7 +103,7 @@ table PingResponse
 table LoadRequest
 {
     cid: uint64;                    // Correlation id (used to match responses to requests)
-    mode: LoadMode = UNKNOW;        // Load mode
+    mode: LoadMode;                 // Load mode
     rev: uint64;                    // Requested revision
 }
 
@@ -141,7 +137,7 @@ table SubmitResponse
 {
     cid: uint64;                    // Correlation id (submitRequest cid)
     crev: uint64;                   // Server current revision
-    code: SubmitCode = UNKNOW;      // Response code
+    code: SubmitCode;               // Response code
     erev: uint64;                   // Expected commit revision (0 if not accepted)
 }
 

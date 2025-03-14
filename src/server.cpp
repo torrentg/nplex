@@ -648,14 +648,14 @@ void nplex::server_t::push_changes(const std::span<update_t> &updates)
         if (session->m_state != session_t::state_e::SYNCED)
             continue;
 
-        auto buf = create_changes_msg(0, m_repo.rev(), updates, session->m_user);
+        changes_builder_t builder{0}; // TODO: set CID from session
 
-        const auto *aux = ::flatbuffers::GetRoot<msgs::Message>(buf.data())->content_as_CHANGES_PUSH();
+        builder.append_updates(updates, session->m_user);
 
-        if (!aux->updates() || aux->updates()->size() == 0)
+        if (builder.empy())
             continue;
 
-        session->send(std::move(buf));
+        session->send(builder.finish(m_repo.rev(), false));
     }
 }
 

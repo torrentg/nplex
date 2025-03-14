@@ -56,20 +56,25 @@ struct changes_builder_t
 {
     uint64_t m_cid = 0;
     flatbuffers::FlatBufferBuilder m_builder;
-    std::vector<flatbuffers::Offset<msgs::Update>> updates;
+    std::vector<flatbuffers::Offset<msgs::Update>> m_updates;
+    struct { // meta info of the last update not set into updates due to user permissions
+        std::uint64_t rev = 0;
+        std::string user{};
+        std::uint64_t timestamp = 0;
+        std::uint32_t type = 0;
+    } last_meta;
 
-    changes_builder_t(std::size_t cid) : m_cid(cid) {}
+    changes_builder_t(std::size_t cid) : m_cid(cid) {} // TODO: append max-length, max-entries
     void append_updates(const std::span<update_t> &updates, const user_ptr &user = nullptr);
-    void append_update(const std::string_view &upd, const user_ptr &user = nullptr);
-    flatbuffers::DetachedBuffer finish(rev_t crev);
+    void append_update(const msgs::Update *update, const user_ptr &user = nullptr);
+    flatbuffers::DetachedBuffer finish(rev_t crev, bool ending_meta = true);
+    bool empy() const { return m_updates.empty(); }
 };
 
 flatbuffers::DetachedBuffer create_ping_msg(std::size_t cid, rev_t crev, const std::string &payload);
 flatbuffers::DetachedBuffer create_login_msg(std::size_t cid, msgs::LoginCode code, rev_t rev0 = 0, rev_t crev = 0, const user_t &user = {});
 flatbuffers::DetachedBuffer create_keepalive_msg(rev_t crev);
 flatbuffers::DetachedBuffer create_submit_msg(std::size_t cid, rev_t crev, msgs::SubmitCode code, rev_t erev = 0);
-flatbuffers::DetachedBuffer create_changes_msg(std::size_t cid, rev_t crev, const std::span<update_t> &updates, const user_ptr &user = nullptr);
-flatbuffers::DetachedBuffer create_load_err_msg(std::size_t cid, rev_t crev);
 
 flatbuffers::DetachedBuffer serialize_update(const update_t &update);
 flatbuffers::Offset<msgs::Update> serialize_update(flatbuffers::FlatBufferBuilder &builder, const update_t &update, const user_t *user = nullptr, bool force = false);
