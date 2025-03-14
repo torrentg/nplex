@@ -3,17 +3,10 @@
 #include "exception.hpp"
 #include "messaging.hpp"
 
-/**
- * Notes on this compilation unit:
- * 
- * When we use the libuv library we apply C conventions (instead of C++ ones):
- *   - When in Rome, do as the Romans do.
- *   - calloc/free are used instead of new/delete.
- *   - pointers to static functions.
- *   - C-style pointer casting.
- */
+using namespace nplex::msgs;
+using namespace flatbuffers;
 
-nplex::output_msg_t::output_msg_t(flatbuffers::DetachedBuffer &&msg) : content(std::move(msg))
+nplex::output_msg_t::output_msg_t(DetachedBuffer &&msg) : content(std::move(msg))
 {
     len = (std::uint32_t)(content.size() + sizeof(len) + sizeof(metadata) + sizeof(checksum));
     len = htonl(len);
@@ -33,13 +26,38 @@ nplex::output_msg_t::output_msg_t(flatbuffers::DetachedBuffer &&msg) : content(s
     buf[3] = uv_buf_init(reinterpret_cast<char *>(&checksum), sizeof(checksum));
 }
 
-flatbuffers::DetachedBuffer nplex::create_login_msg(std::size_t cid, msgs::LoginCode code, rev_t rev0, rev_t crev, const user_t &user)
+const nplex::msgs::Message * nplex::parse_network_msg(const char *ptr, size_t len)
 {
-    using namespace msgs;
-    using namespace flatbuffers;
+    if (len <= 3 * sizeof(std::uint32_t))
+        return nullptr;
 
+    if (len != ntohl_ptr(ptr))
+        return nullptr;
+
+    std::uint32_t metadata = ntohl_ptr(ptr + sizeof(std::uint32_t));
+    // TODO: uncompress if (metadata & LZ4)
+    UNUSED(metadata);
+
+    std::uint32_t checksum = ntohl_ptr(ptr + len - sizeof(std::uint32_t));
+
+    if (checksum != CRC32::CRC32::calc(reinterpret_cast<const std::uint8_t *>(ptr), len - sizeof(std::uint32_t)))
+        return nullptr;
+
+    ptr += 2 * sizeof(std::uint32_t);
+    len -= 3 * sizeof(std::uint32_t);
+
+    auto verifier = flatbuffers::Verifier(reinterpret_cast<const std::uint8_t *>(ptr), len);
+
+    if (!verifier.VerifyBuffer<Message>(nullptr))
+        return nullptr;
+
+    return flatbuffers::GetRoot<Message>(ptr);
+}
+
+DetachedBuffer nplex::create_login_msg(std::size_t cid, LoginCode code, rev_t rev0, rev_t crev, const user_t &user)
+{
     FlatBufferBuilder builder;
-    std::vector<flatbuffers::Offset<msgs::Acl>> permissions;
+    std::vector<Offset<Acl>> permissions;
 
     for (const auto &acl : user.permissions) {
         auto pattern = builder.CreateString(acl.pattern);
@@ -65,9 +83,6 @@ flatbuffers::DetachedBuffer nplex::create_login_msg(std::size_t cid, msgs::Login
 
 flatbuffers::DetachedBuffer nplex::create_keepalive_msg(rev_t crev)
 {
-    using namespace msgs;
-    using namespace flatbuffers;
-
     FlatBufferBuilder builder;
 
     auto msg = CreateMessage(builder, 
@@ -81,43 +96,8 @@ flatbuffers::DetachedBuffer nplex::create_keepalive_msg(rev_t crev)
     return builder.Release();
 }
 
-const nplex::msgs::Message * nplex::parse_network_msg(const char *ptr, size_t len)
-{
-    using namespace nplex;
-    using namespace nplex::msgs;
-    using namespace flatbuffers;
-
-    if (len <= 3 * sizeof(std::uint32_t))
-        return nullptr;
-
-    if (len != ntohl_ptr(ptr))
-        return nullptr;
-
-    std::uint32_t metadata = ntohl_ptr(ptr + sizeof(std::uint32_t));
-    // TODO: uncompress if (metadata & LZ4)
-    UNUSED(metadata);
-
-    std::uint32_t checksum = ntohl_ptr(ptr + len - sizeof(std::uint32_t));
-
-    if (checksum != CRC32::CRC32::calc(reinterpret_cast<const std::uint8_t *>(ptr), len - sizeof(std::uint32_t)))
-        return nullptr;
-
-    ptr += 2 * sizeof(std::uint32_t);
-    len -= 3 * sizeof(std::uint32_t);
-
-    auto verifier = flatbuffers::Verifier(reinterpret_cast<const std::uint8_t *>(ptr), len);
-
-    if (!verifier.VerifyBuffer<nplex::msgs::Message>(nullptr))
-        return nullptr;
-
-    return flatbuffers::GetRoot<nplex::msgs::Message>(ptr);
-}
-
 flatbuffers::DetachedBuffer nplex::create_ping_msg(std::size_t cid, rev_t crev, const std::string &payload)
 {
-    using namespace msgs;
-    using namespace flatbuffers;
-
     FlatBufferBuilder builder;
 
     auto msg = CreateMessage(builder, 
@@ -135,9 +115,6 @@ flatbuffers::DetachedBuffer nplex::create_ping_msg(std::size_t cid, rev_t crev, 
 
 flatbuffers::DetachedBuffer nplex::create_load_err_msg(std::size_t cid, rev_t crev)
 {
-    using namespace msgs;
-    using namespace flatbuffers;
-
     FlatBufferBuilder builder;
 
     auto msg = CreateMessage(builder, 
@@ -153,11 +130,8 @@ flatbuffers::DetachedBuffer nplex::create_load_err_msg(std::size_t cid, rev_t cr
     return builder.Release();
 }
 
-flatbuffers::DetachedBuffer nplex::create_submit_msg(std::size_t cid, rev_t crev, msgs::SubmitCode code, rev_t erev)
+flatbuffers::DetachedBuffer nplex::create_submit_msg(std::size_t cid, rev_t crev, SubmitCode code, rev_t erev)
 {
-    using namespace msgs;
-    using namespace flatbuffers;
-
     FlatBufferBuilder builder;
 
     auto msg = CreateMessage(builder, 
@@ -174,17 +148,24 @@ flatbuffers::DetachedBuffer nplex::create_submit_msg(std::size_t cid, rev_t crev
     return builder.Release();
 }
 
-flatbuffers::DetachedBuffer nplex::create_update_msg(flatbuffers::FlatBufferBuilder &builder, std::size_t cid, rev_t crev, flatbuffers::Offset<msgs::Update> upd)
+flatbuffers::DetachedBuffer nplex::create_changes_msg(std::size_t cid, rev_t crev, const std::span<update_t> &updates, const user_ptr &user)
 {
-    using namespace msgs;
-    using namespace flatbuffers;
+    FlatBufferBuilder builder;
+    std::vector<Offset<Update>> serialized_updates;
+
+    for (const auto &update : updates)
+    {
+        auto upd = serialize_update(builder, update, user.get(), false);
+        if (!upd.IsNull())
+            serialized_updates.push_back(upd);
+    }
 
     auto msg = CreateMessage(builder, 
-        MsgContent::UPDATE_PUSH,
-        CreateUpdatePush(builder, 
+        MsgContent::CHANGES_PUSH,
+        CreateChangesPush(builder, 
             cid, 
             crev,
-            upd
+            builder.CreateVector(serialized_updates)
         ).Union()
     );
 
@@ -194,15 +175,15 @@ flatbuffers::DetachedBuffer nplex::create_update_msg(flatbuffers::FlatBufferBuil
 
 flatbuffers::Offset<nplex::msgs::Update> nplex::serialize_update(flatbuffers::FlatBufferBuilder &builder, const update_t &update, const user_t *user, bool force)
 {
-    std::vector<flatbuffers::Offset<msgs::KeyValue>> upserts;
-    std::vector<flatbuffers::Offset<flatbuffers::String>> deletes;
+    std::vector<Offset<KeyValue>> upserts;
+    std::vector<Offset<String>> deletes;
 
     for (const auto &[key, value] : update.upserts)
     {
         if (user && !user->is_authorized(NPLEX_READ, key))
             continue;
 
-        auto kv = msgs::CreateKeyValue(
+        auto kv = CreateKeyValue(
             builder, 
             builder.CreateString(key.c_str()), 
             builder.CreateVector(
@@ -225,7 +206,7 @@ flatbuffers::Offset<nplex::msgs::Update> nplex::serialize_update(flatbuffers::Fl
     if (!force && upserts.empty() && deletes.empty())
         return 0;
 
-    return msgs::CreateUpdate(
+    return CreateUpdate(
         builder,
         update.meta->rev,
         builder.CreateString(update.meta->user.c_str()),
@@ -238,9 +219,6 @@ flatbuffers::Offset<nplex::msgs::Update> nplex::serialize_update(flatbuffers::Fl
 
 flatbuffers::DetachedBuffer nplex::serialize_update(const update_t &update)
 {
-    using namespace msgs;
-    using namespace flatbuffers;
-
     FlatBufferBuilder builder;
 
     auto msg = serialize_update(builder, update, nullptr, true);
@@ -249,7 +227,7 @@ flatbuffers::DetachedBuffer nplex::serialize_update(const update_t &update)
     return builder.Release();
 }
 
-nplex::update_t nplex::deserialize_update(const msgs::Update *msg, const user_ptr &user)
+nplex::update_t nplex::deserialize_update(const Update *msg, const user_ptr &user)
 {
     update_t update;
 
@@ -290,4 +268,25 @@ nplex::update_t nplex::deserialize_update(const msgs::Update *msg, const user_pt
     }
 
     return update;
+}
+
+void nplex::load_builder_t::set_snapshot(const repo_t &repo, const user_ptr &user)
+{ 
+    m_offset_snapshot = repo.serialize(m_builder, user);
+}
+
+flatbuffers::DetachedBuffer nplex::load_builder_t::finish(rev_t crev, bool accepted)
+{
+    auto msg = CreateMessage(m_builder, 
+        MsgContent::LOAD_RESPONSE,
+        CreateLoadResponse(m_builder, 
+            m_cid,
+            crev,
+            accepted,
+            (!accepted || m_offset_snapshot.IsNull() ? 0 : m_offset_snapshot)
+        ).Union()
+    );
+
+    m_builder.Finish(msg);
+    return m_builder.Release();
 }

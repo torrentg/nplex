@@ -5,12 +5,14 @@
 #include <uv.h>
 #include "common.hpp"
 #include "storage.hpp"
+#include "messaging.hpp"
 #include "repository.hpp"
 
 namespace nplex {
 
 // Forward declarations
 struct session_t;
+class server_t;
 
 /**
  * Wrapper for a uv_work_t to be executed in the event loop.
@@ -35,6 +37,10 @@ struct task_t
     virtual const char * name() const = 0;
     virtual void run() = 0;
     virtual void after() = 0;
+
+    // Never calls this method from run() because it is executed in the thread-pool.
+    // It is safe to call it in after() because it is executed in the event-loop thread.
+    server_t * get_server() const { return static_cast<server_t *>(work.loop->data); }
 };
 
 /**
@@ -45,12 +51,11 @@ struct repo_task_t : public task_t
     storage_ptr &m_storage;
     session_t *m_session;
     rev_t m_rev;
-    std::size_t m_cid;
-    flatbuffers::FlatBufferBuilder m_builder;
+    load_builder_t m_builder;
     flatbuffers::Offset<nplex::msgs::Snapshot>  m_offset;
 
     repo_task_t(storage_ptr &storage, session_t *session, nplex::rev_t rev, std::size_t cid)
-        : m_storage(storage), m_session(session), m_rev(rev), m_cid(cid) {}
+        : m_storage(storage), m_session(session), m_rev(rev), m_builder(cid) {}
 
     const char * name() const override { return "repo_task"; }
     void run() override;

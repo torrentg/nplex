@@ -289,6 +289,7 @@ void nplex::storage_t::run_writer()
 
 void nplex::storage_t::process_write_commands()
 {
+    auto start_time = uv_hrtime();
     std::unique_lock<std::mutex> lock(m_mutex);
     std::vector<update_t> updates;
     auto it = m_queue.rbegin();
@@ -327,7 +328,11 @@ void nplex::storage_t::process_write_commands()
     SPDLOG_TRACE("Writing {}/{} entries to journal ...", m_entries.size(), m_queue.size());
 
     ldb_rc = m_journal.append(m_entries.data(), m_entries.size(), &num_writes);
-    SPDLOG_TRACE("Journal write completed, writes = {}, result = {}", num_writes, ldb_strerror(ldb_rc));
+
+    uint64_t duration_us = (uv_hrtime() - start_time) / 1000;
+
+    SPDLOG_TRACE("Journal write completed, writes = {}, bytes = {}, result = {}, elapsed = {} μs", 
+        num_writes, bytes, ldb_strerror(ldb_rc), duration_us);
 
     lock.lock();
 

@@ -6,9 +6,7 @@
 * Add database-max-entries param
 * Add database-max-bytes param
 * Add buffer gto::cqueue<update_t>
-* Replace user_t::num_connections by std::set<session_ptr> sessions
-* Create networking_t class
-* Create async_t class
+* Writer cmd_t only contains update_t (buffer created at write time)
 
 ## Useful commands
 

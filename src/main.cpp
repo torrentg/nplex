@@ -26,11 +26,12 @@ static spdlog::level::level_enum to_spdlog(log_level_e level)
 {
     switch (level)
     {
-        case log_level_e::TRACE: return spdlog::level::trace;
-        case log_level_e::DEBUG: return spdlog::level::debug;
-        case log_level_e::INFO:  return spdlog::level::info;
-        case log_level_e::WARN:  return spdlog::level::warn;
-        case log_level_e::ERROR: return spdlog::level::err;
+        case log_level_e::TRACE:   return spdlog::level::trace;
+        case log_level_e::DEBUG:   return spdlog::level::debug;
+        case log_level_e::INFO:    return spdlog::level::info;
+        case log_level_e::DEFAULT: return spdlog::level::info;
+        case log_level_e::WARN:    return spdlog::level::warn;
+        case log_level_e::ERROR:   return spdlog::level::err;
         default: return spdlog::level::info;
     }
 }
@@ -239,7 +240,7 @@ int main(int argc, char *argv[])
         aux.datadir = params.datadir;
         aux.check_journal = params.check_journal;
         aux.addr = params.addr;
-        aux.log_level = params.log_level;
+        aux.log_level = (params.log_level != log_level_e::DEFAULT ? params.log_level : aux.log_level);
         aux.disable_fsync = params.disable_fsync;
         aux.daemonize = params.daemonize;
 
@@ -252,6 +253,9 @@ int main(int argc, char *argv[])
 
     try
     {
+        if (params.log_level == log_level_e::DEFAULT)
+            params.log_level = log_level_e::INFO;
+
         spdlog::set_default_logger(
             params.daemonize ?
                 spdlog::basic_logger_mt(PROJECT_NAME, LOG_FILENAME):

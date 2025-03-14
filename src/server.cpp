@@ -12,29 +12,11 @@
 #include "tasks.hpp"
 #include "server.hpp"
 
-/**
- * Notes on this compilation unit:
- * 
- * When we use the libuv library we apply C conventions (instead of C++ ones):
- *   - When in Rome, do as the Romans do.
- *   - calloc/free are used instead of new/delete.
- *   - pointers to static functions.
- *   - C-style pointer casting.
- */
-
 #define MAX_QUEUED_CONNECTIONS 128
 
 // ==========================================================
 // Internal (static) functions
 // ==========================================================
-
-// TODO: remove this test function
-static void cb_timer_test(uv_timer_t *timer)
-{
-    assert(timer->loop->data);
-    auto *server = static_cast<nplex::server_t *>(timer->loop->data);
-    server->simule_submit();
-}
 
 /**
  * Convert an string address to a sockaddr.
@@ -320,11 +302,10 @@ void nplex::server_t::init_event_loop(const params_t &params)
     // TODO: Remove this testing code
     uv_timer_t *timer = (uv_timer_t *) malloc(sizeof(uv_timer_t));
     uv_timer_init(m_loop.get(), timer);
-    uv_timer_start(timer, ::cb_timer_test, 4000, 4000);
     uv_timer_start(timer, [](uv_timer_t *x) {
         auto *server = (nplex::server_t *) x->loop->data;
         server->simule_submit();
-    }, 1000, 1000);
+    }, 4000, 4000);
 }
 
 void nplex::server_t::init_network(const params_t &params)
@@ -585,7 +566,7 @@ void nplex::server_t::process_submit_request(session_t *session, const nplex::ms
 
     // TODO: repo cleanup (purge)
 
-    push_update(update);
+    push_changes({&update, 1});
 }
 
 void nplex::server_t::process_ping_request(session_t *session, const nplex::msgs::PingRequest *req)
@@ -606,24 +587,13 @@ void nplex::server_t::process_ping_request(session_t *session, const nplex::msgs
 
 void nplex::server_t::send_last_snapshot(session_t *session, std::size_t cid)
 {
-    using namespace msgs;
-    using namespace flatbuffers;
+    load_builder_t builder(cid);
 
-    FlatBufferBuilder builder;
+    builder.set_snapshot(m_repo, session->m_user);
 
-    auto msg = CreateMessage(builder, 
-        MsgContent::LOAD_RESPONSE,
-        CreateLoadResponse(builder, 
-            cid, 
-            m_repo.rev(),
-            true,
-            m_repo.serialize(builder, session->m_user)
-        ).Union() 
-    );
+    auto buf = builder.finish(m_repo.rev(), true);
 
-    builder.Finish(msg);
-
-    session->send(builder.Release());
+    session->send(std::move(buf));
     session->do_step2();
     session->m_state = session_t::state_e::SYNCED;
 }
@@ -631,10 +601,13 @@ void nplex::server_t::send_last_snapshot(session_t *session, std::size_t cid)
 void nplex::server_t::send_fixed_snapshot(session_t *session, rev_t rev, std::size_t cid)
 {
     auto [min_rev, max_rev] = m_storage->get_range();
-    if (rev < min_rev || rev > max_rev) {
+
+    if (rev < min_rev || rev > max_rev)
+    {
         session->send(
-            create_load_err_msg(cid, m_repo.rev())
+            load_builder_t{cid}.finish(cid, m_repo.rev())
         );
+
         return;
     }
 
@@ -668,23 +641,21 @@ void nplex::server_t::release_task(task_t *)
         uv_stop(m_loop.get());
 }
 
-void nplex::server_t::push_update(const update_t &update)
+void nplex::server_t::push_changes(const std::span<update_t> &updates)
 {
     for (auto &session : m_sessions)
     {
         if (session->m_state != session_t::state_e::SYNCED)
             continue;
 
-        flatbuffers::FlatBufferBuilder builder;
+        auto buf = create_changes_msg(0, m_repo.rev(), updates, session->m_user);
 
-        auto off = serialize_update(builder, update, session->m_user.get());
+        const auto *aux = ::flatbuffers::GetRoot<msgs::Message>(buf.data())->content_as_CHANGES_PUSH();
 
-        if (off.IsNull())
+        if (!aux->updates() || aux->updates()->size() == 0)
             continue;
 
-        session->send(
-            create_update_msg(builder, 0, m_repo.rev(), off)
-        );
+        session->send(std::move(buf));
     }
 }
 
@@ -743,8 +714,9 @@ void nplex::server_t::simule_submit()
     auto rc = m_repo.try_commit(*user, submit_req, update);
 
     if (rc == msgs::SubmitCode::ACCEPTED) {
-        SPDLOG_DEBUG("Update rev = {}", m_repo.rev());
-        push_update(update);
+        assert(m_repo.rev() == update.meta->rev);
+        SPDLOG_DEBUG("Update rev={}, user={}, type={}", m_repo.rev(), update.meta->user.c_str(), update.meta->type);
+        push_changes({&update, 1});
     }
     else {
         SPDLOG_ERROR("Error try_commit = {}", static_cast<int>(rc));

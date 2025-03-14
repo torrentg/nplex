@@ -53,9 +53,7 @@ class server_t
     void send_last_snapshot(session_t *session, std::size_t cid);     // send last snapshot to a session
     void send_fixed_snapshot(session_t *session, rev_t rev, std::size_t cid);    // send a generic snapshot to a session
 
-    void push_update(const update_t &update);                         // push update to all synchronized sessions
-    void push_update(const update_t &update, const user_ptr &user);   // push update to all synchronized sessions of a user
-    void push_update(const update_t &update, session_t *session);     // push update to a specific session
+    void push_changes(const std::span<update_t> &updates);                         // push update to all synchronized sessions
 
     void init_users(const params_t &params);
     void init_data(const params_t &params);

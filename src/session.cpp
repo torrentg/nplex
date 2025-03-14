@@ -7,16 +7,6 @@
 #include "utils.hpp"
 #include "session.hpp"
 
-/**
- * Notes on this compilation unit:
- * 
- * When we use the libuv library we apply C conventions (instead of C++ ones):
- *   - When in Rome, do as the Romans do.
- *   - calloc/free are used instead of new/delete.
- *   - pointers to static functions.
- *   - C-style pointer casting.
- */
-
 // maximum time between connection established and the login message received
 #define TIMEOUT_STEP_1 5000
 // maximum time between login and load messages reception
@@ -311,7 +301,7 @@ void nplex::session_t::disconnect(int rc)
 
 void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
 {
-    auto len = get_msg_length(buf);
+    auto len = output_msg_t::length(buf);
 
     if (stats.unack_msgs >= params.max_unack_msgs)
         throw nplex_exception("Output message queue is full");

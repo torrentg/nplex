@@ -18,7 +18,7 @@ struct params_t
     bool daemonize = false;                             // Run as daemon.
 
     addr_t addr = DEFAULT_ADDR;                         // IP address to listen on.
-    log_level_e log_level = log_level_e::INFO;          // Log level.
+    log_level_e log_level = log_level_e::DEFAULT;       // Log level.
     std::uint32_t max_connections = MAX_CONNECTIONS;    // Maximum number of allowed connections.
     user_t default_user;                                // Default user.
     std::vector<user_t> users;                          // List of users.
