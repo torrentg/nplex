@@ -12,3 +12,24 @@
 
 * cloc --exclude-content="automatically generated" include src test
 * cppcheck --enable=all --inconclusive --std=c++20 --force --suppress=missingIncludeSystem --suppress=unusedFunction --suppress=noExplicitConstructor  --suppress=normalCheckLevelMaxBranches -Ideps -Isrc -Iinclude src &> removeme.txt
+
+
+STREAMING:
+-----------------
+
+#define STREAMING_MSG_SIZE (256*1024)
+#define STREAMING_FACTOR 0.25
+#define STREAMING_MAX_ENTRIES 1000
+#define STREAMING_MAX_BYTES (80*1024*1024)
+
+max_unack_msg
+max_unack_bytes
+
+max_streaming_entries
+max_streaming_bytes
+
+sync_task_t
+  session (includes user + max_unack_*)
+  from_rev (excluded)
+  default_msg_size (ex. 256KB)
+  max_revs_in_msg = 1000 // max number of revision in a msg

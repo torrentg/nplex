@@ -9,7 +9,8 @@
 #include "messaging.hpp"
 #include "storage.hpp"
 
-#define READ_BATCH_SIZE 100ul
+#define READ_BATCH_ENTRIES 100ul
+#define READ_BATCH_BYTES (5 * 1024 * 1024)
 
 namespace fs = std::filesystem;
 
@@ -172,21 +173,26 @@ std::vector<nplex::update_t> nplex::storage_t::read_entries(rev_t rev, std::size
     if (rev == 0 || num == 0)
         return {};
 
+    int rc = 0;
     std::vector<update_t> ret;
-    ldb_entry_t entries[READ_BATCH_SIZE] = {};
-    auto guard = std::experimental::scope_exit{[&] { 
-        ldb_free_entries(entries, READ_BATCH_SIZE);
-    }};
+    ldb_entry_t entries[READ_BATCH_ENTRIES] = {};
+    ldb_stats_t stats = {};
+    std::vector<char> buf;
+
+    if ((rc = m_journal.stats(rev, rev + std::min(num, READ_BATCH_ENTRIES) - 1, &stats)) != LDB_OK)
+        throw nplex_exception("{}", ldb_strerror(rc));
+
+    buf.resize(std::min(stats.data_size, static_cast<size_t>(READ_BATCH_BYTES)), 0);
 
     while (ret.size() < num)
     {
         std::size_t num_reads = 0;
-        std::size_t len = std::min(READ_BATCH_SIZE, num - ret.size());
+        std::size_t len = std::min(READ_BATCH_ENTRIES, num - ret.size());
 
-        int rc = m_journal.read(rev, entries, len, &num_reads);
+        rc = m_journal.read(rev, entries, len, buf.data(), buf.size(), &num_reads);
 
         if (rc != LDB_OK && rc != LDB_ERR_NOT_FOUND)
-            throw nplex_exception("Error reading journal entries ({})", ldb_strerror(rc));
+            throw nplex_exception("{}", ldb_strerror(rc));
 
         for (std::size_t i = 0; i < num_reads; i++)
         {
@@ -204,7 +210,15 @@ std::vector<nplex::update_t> nplex::storage_t::read_entries(rev_t rev, std::size
         }
 
         if (num_reads < len)
-            break;
+        {
+            // case: reached end of journal
+            if (entries[num_reads].seqnum == 0)
+                break;
+            
+            // case: buffer too short
+            if (buf.size() < 128 + entries[num_reads].data_len)
+                buf.resize(128 + entries[num_reads].data_len, 0);
+        }
     }
 
     return ret;
@@ -310,9 +324,7 @@ void nplex::storage_t::process_write_commands()
         ldb_entry_t entry = {
             .seqnum = it->update.meta->rev,
             .timestamp = static_cast<std::uint64_t>(it->update.meta->timestamp.count()),
-            .metadata_len = 0,
             .data_len = static_cast<std::uint32_t>(it->buffer.size()),
-            .metadata = nullptr,
             .data = reinterpret_cast<char *>(it->buffer.data())
         };
 
@@ -387,17 +399,23 @@ nplex::repo_t nplex::storage_t::get_repo(rev_t rev, const user_ptr &user)
     if (repo.rev() == rev)
         return repo;
 
-    ldb_entry_t entries[READ_BATCH_SIZE] = {};
-    auto guard = std::experimental::scope_exit{[&] { 
-        ldb_free_entries(entries, READ_BATCH_SIZE);
-    }};
+    int rc = 0;
+    size_t num = rev - repo.rev();
+    ldb_entry_t entries[READ_BATCH_ENTRIES] = {};
+    ldb_stats_t stats = {};
+    std::vector<char> buf;
+
+    if ((rc = m_journal.stats(rev, rev + std::min(num, READ_BATCH_ENTRIES) - 1, &stats)) != LDB_OK)
+        throw nplex_exception("{}", ldb_strerror(rc));
+
+    buf.resize(std::min(stats.data_size, static_cast<size_t>(READ_BATCH_BYTES)), 0);
 
     while (repo.rev() < rev)
     {
         std::size_t num_reads = 0;
-        std::size_t len = std::min(READ_BATCH_SIZE, rev - repo.rev());
+        std::size_t len = std::min(READ_BATCH_ENTRIES, rev - repo.rev());
 
-        int rc = m_journal.read(repo.rev() + 1, entries, len, &num_reads);
+        rc = m_journal.read(repo.rev() + 1, entries, len, buf.data(), buf.size(), &num_reads);
 
         SPDLOG_TRACE("Read journal entries, range = [r{}, r{}], rc = {}", 
             repo.rev() + 1, repo.rev() + num_reads, ldb_strerror(rc));
@@ -418,7 +436,15 @@ nplex::repo_t nplex::storage_t::get_repo(rev_t rev, const user_ptr &user)
         }
 
         if (num_reads < len)
-            break;
+        {
+            // case: reached end of journal
+            if (entries[num_reads].seqnum == 0)
+                break;
+            
+            // case: buffer too short
+            if (buf.size() < 128 + entries[num_reads].data_len)
+                buf.resize(128 + entries[num_reads].data_len, 0);
+        }
     }
 
     if (repo.rev() != rev)

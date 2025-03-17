@@ -34,8 +34,11 @@ struct task_t
 
     task_t() { work.data = this; }
     virtual ~task_t() = default;
+    //! Task name.
     virtual const char * name() const = 0;
+    //! Function executed in the thread-pool.
     virtual void run() = 0;
+    //! Function executed in the event-loop thread.
     virtual void after() = 0;
 
     // Never calls this method from run() because it is executed in the thread-pool.
@@ -44,7 +47,11 @@ struct task_t
 };
 
 /**
- * Retrieve the repo at rev and sends it to the session as load response.
+ * Create and sends a snapshot.
+ *   - Retrieve nearest snapshot from disk
+ *   - Apply updates until the given rev
+ *   - Creates the LoadResponse message
+ *   - Sends the message over the network
  */
 struct repo_task_t : public task_t
 {
@@ -58,6 +65,26 @@ struct repo_task_t : public task_t
         : m_storage(storage), m_session(session), m_rev(rev), m_builder(cid) {}
 
     const char * name() const override { return "repo_task"; }
+    void run() override;
+    void after() override;
+};
+
+/**
+ * Synchronize the session with the repo.
+ *   - Read journal entries from disk
+ *   - Create multiple ChangesPush messages
+ *   - Sends the messages over the network
+ */
+struct sync_task_t : public task_t
+{
+    storage_ptr &m_storage;
+    session_t *m_session;
+    changes_builder_t m_builder;
+
+    sync_task_t(storage_ptr &storage, session_t *session, std::size_t cid) 
+        : m_storage(storage), m_session(session), m_builder(cid) {}
+
+    const char * name() const override { return "sync_task"; }
     void run() override;
     void after() override;
 };

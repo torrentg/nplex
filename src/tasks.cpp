@@ -25,3 +25,26 @@ void nplex::repo_task_t::after()
     m_session->send(std::move(buf));
     m_session->do_step2();
 }
+
+// ==========================================================
+// sync_task_t methods
+// ==========================================================
+
+void nplex::sync_task_t::run()
+{
+    // rev_t rev = m_session->lrev;
+
+    // m_storage. read(uint64_t seqnum, ldb_entry_t *entries, size_t len, size_t *num)
+
+    // auto m_repo = m_storage->get_repo(m_rev, m_session->m_user);
+    // SPDLOG_TRACE("repo_task completed: r{}", m_repo.rev());
+    // m_builder.set_update(update);
+}
+
+void nplex::sync_task_t::after()
+{
+    // const auto *server = get_server();
+    // auto buf = m_builder.finish(server->rev(), true);
+    // m_session->send(std::move(buf));
+    // m_session->do_step2();
+}
