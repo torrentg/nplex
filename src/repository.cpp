@@ -343,15 +343,10 @@ nplex::msgs::SubmitCode nplex::repo_t::try_commit_inner(const user_t &user, cons
             auto it = m_data.find(key->c_str());
 
             if (it == m_data.end())
-            {
-                // No drama if trying to delete a non-existing key
                 continue;
-            }
-            else if (!forced)
-            {
-                if (it->second->m_meta->rev > crev)
-                    return msgs::SubmitCode::REJECTED_INTEGRITY;
-            }
+
+            if (!forced && it->second->m_meta->rev > crev)
+                return msgs::SubmitCode::REJECTED_INTEGRITY;
 
             update.deletes.emplace_back(it->first);
             keys.insert(it->first);

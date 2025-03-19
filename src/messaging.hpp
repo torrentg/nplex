@@ -20,7 +20,7 @@ namespace nplex {
  *                                |<-- length - 12 -->|
  * 
  * - length: Total message size in bytes (including all 4 fields)
- * - metadata: Message properties (0=uncompressed, 1=lz4 compressed)
+ * - metadata: Message properties (currently unused)
  * - content: FlatBuffer serialized data (content_length = msg_length - 12)
  * - checksum: CRC32 of [length + metadata + content]
  */
@@ -29,7 +29,7 @@ struct output_msg_t
     uv_write_t req;
     std::array<uv_buf_t, 4> buf;
     flatbuffers::DetachedBuffer content;
-    std::uint32_t metadata;     // 0=none, 1=lz4 (big-endian)
+    std::uint32_t metadata;     // Message metadata (ex. compression alg) -currently unused- (big-endian)
     std::uint32_t checksum;     // CRC32 of len + metadata + content (big-endian)
     std::uint32_t len;          // Total message length (including len, metadata, content, checksum) (big-endian)
 
@@ -40,6 +40,15 @@ struct output_msg_t
         return buf.size() + 3 * sizeof(std::uint32_t);
     }
 };
+
+/**
+ * Set the crev value in a serialized message.
+ * This is a hack to bypass the flatbuffers immutability.
+ * 
+ * @param buf Flatbuffer serialized data.
+ * @param crev Current revision to set.
+ */
+bool update_crev(flatbuffers::DetachedBuffer &buf, rev_t crev);
 
 struct load_builder_t
 {

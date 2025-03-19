@@ -55,14 +55,14 @@ struct task_t
  */
 struct repo_task_t : public task_t
 {
-    storage_ptr &m_storage;
-    session_t *m_session;
-    rev_t m_rev;
-    load_builder_t m_builder;
-    flatbuffers::Offset<nplex::msgs::Snapshot>  m_offset;
+    storage_ptr m_storage;              // storage object
+    session_t *m_session;               // session used to send messages
+    std::size_t m_cid;                  // correlation id
+    rev_t m_rev;                        // snapshot revision
+    flatbuffers::DetachedBuffer m_buf;  // serialized message
 
     repo_task_t(storage_ptr &storage, session_t *session, nplex::rev_t rev, std::size_t cid)
-        : m_storage(storage), m_session(session), m_rev(rev), m_builder(cid) {}
+        : m_storage(storage), m_session(session), m_cid(cid), m_rev(rev) {}
 
     const char * name() const override { return "repo_task"; }
     void run() override;
@@ -72,17 +72,20 @@ struct repo_task_t : public task_t
 /**
  * Synchronize the session with the repo.
  *   - Read journal entries from disk
- *   - Create multiple ChangesPush messages
+ *   - Create some ChangesPush messages
  *   - Sends the messages over the network
  */
 struct sync_task_t : public task_t
 {
-    storage_ptr &m_storage;
-    session_t *m_session;
-    changes_builder_t m_builder;
-
-    sync_task_t(storage_ptr &storage, session_t *session, std::size_t cid) 
-        : m_storage(storage), m_session(session), m_builder(cid) {}
+    storage_ptr m_storage;              // storage object
+    session_t *m_session;               // session used to send messages
+    std::size_t m_cid;                  // correlation id
+    rev_t m_rev;                        // last revision
+    std::uint32_t m_changes_max_revs;   // max num of revisions in a single Changes message
+    std::uint32_t m_changes_max_bytes;  // max bytes in a single Changes message
+    std::uint32_t m_max_msgs;           // max num of generated Changes messages
+    std::uint32_t m_max_bytes;          // max bytes of generated Changes messages
+    std::vector<flatbuffers::DetachedBuffer> m_buffers;  // Changes messages to send
 
     const char * name() const override { return "sync_task"; }
     void run() override;

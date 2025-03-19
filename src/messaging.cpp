@@ -35,7 +35,6 @@ const nplex::msgs::Message * nplex::parse_network_msg(const char *ptr, size_t le
         return nullptr;
 
     std::uint32_t metadata = ntohl_ptr(ptr + sizeof(std::uint32_t));
-    // TODO: uncompress if (metadata & LZ4)
     UNUSED(metadata);
 
     std::uint32_t checksum = ntohl_ptr(ptr + len - sizeof(std::uint32_t));
@@ -52,6 +51,46 @@ const nplex::msgs::Message * nplex::parse_network_msg(const char *ptr, size_t le
         return nullptr;
 
     return flatbuffers::GetRoot<Message>(ptr);
+}
+
+bool nplex::update_crev(flatbuffers::DetachedBuffer &buf, rev_t crev)
+{
+    using namespace msgs;
+    using namespace flatbuffers;
+
+    auto msg = GetRoot<Message>(buf.data());
+    if (!msg)
+        return false;
+
+    auto content = const_cast<void *>(msg->content());
+    if (!content)
+        return false;
+
+    auto table = static_cast<Table *>(content);
+
+    switch(msg->content_type())
+    {
+        case msgs::MsgContent::PING_RESPONSE:
+            table->SetField<uint64_t>(PingResponse::VT_CREV, crev);
+            return true;
+        case msgs::MsgContent::LOGIN_RESPONSE:  
+            table->SetField<uint64_t>(LoginResponse::VT_CREV, crev);
+            return true;
+        case msgs::MsgContent::LOAD_RESPONSE:
+            table->SetField<uint64_t>(LoadResponse::VT_CREV, crev);
+            return true;
+        case msgs::MsgContent::SUBMIT_RESPONSE: 
+            table->SetField<uint64_t>(SubmitResponse::VT_CREV, crev);
+            return true;
+        case msgs::MsgContent::CHANGES_PUSH:
+            table->SetField<uint64_t>(ChangesPush::VT_CREV, crev);
+            return true;
+        case msgs::MsgContent::KEEPALIVE_PUSH:
+            table->SetField<uint64_t>(KeepAlivePush::VT_CREV, crev);
+            return true;
+        default:
+            return false;
+    }
 }
 
 DetachedBuffer nplex::create_login_msg(std::size_t cid, LoginCode code, rev_t rev0, rev_t crev, const user_t &user)
@@ -241,7 +280,7 @@ flatbuffers::DetachedBuffer nplex::load_builder_t::finish(rev_t crev, bool accep
             m_cid,
             crev,
             accepted,
-            (!accepted || m_offset_snapshot.IsNull() ? 0 : m_offset_snapshot)
+            (!accepted ? 0 : m_offset_snapshot)
         ).Union()
     );
 
@@ -354,7 +393,7 @@ flatbuffers::DetachedBuffer nplex::changes_builder_t::finish(rev_t crev, bool en
             last_meta.timestamp,
             last_meta.type
         );
-    
+
         m_updates.push_back(off);
     }
 

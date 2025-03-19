@@ -13,16 +13,18 @@
 
 void nplex::repo_task_t::run()
 {
+    load_builder_t builder(m_cid);
     auto m_repo = m_storage->get_repo(m_rev, m_session->m_user);
     SPDLOG_TRACE("repo_task completed: r{}", m_repo.rev());
-    m_builder.set_snapshot(m_repo);
+    builder.set_snapshot(m_repo);
+    m_buf = builder.finish(0, true);
 }
 
 void nplex::repo_task_t::after()
 {
     const auto *server = get_server();
-    auto buf = m_builder.finish(server->rev(), true);
-    m_session->send(std::move(buf));
+    update_crev(m_buf, server->rev());
+    m_session->send(std::move(m_buf));
     m_session->do_step2();
 }
 

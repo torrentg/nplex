@@ -7,10 +7,12 @@
 #include "utils.hpp"
 #include "session.hpp"
 
-// maximum time between connection established and the login message received
+// maximum time (in millis) between connection established and the login message received
 #define TIMEOUT_STEP_1 5000
-// maximum time between login and load messages reception
+// maximum time (in millis) between login and load messages reception
 #define TIMEOUT_STEP_2 5000
+// maximum message size (in bytes) for a non logged user
+#define MAX_MSG_BYTES_FROM_NO_USER 1024
 
 // ==========================================================
 // Internal (static) functions
@@ -61,6 +63,14 @@ static void cb_tcp_alloc(uv_handle_t *handle, size_t suggested_size, uv_buf_t *b
     buf->len = sizeof(obj->input_buffer);
 }
 
+static bool is_valid_msg_length(const nplex::user_ptr &user, size_t len)
+{
+    if (!user)
+        return (len <= MAX_MSG_BYTES_FROM_NO_USER);
+    else
+        return (user->max_msg_bytes == 0 || len <= user->max_msg_bytes);
+}
+
 static void cb_tcp_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
 {
     using namespace nplex;
@@ -87,13 +97,16 @@ static void cb_tcp_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
         const char *ptr = obj->input_msg.c_str();
         std::uint32_t len = ntohl_ptr(ptr);
 
-        if (len > obj->params.max_msg_bytes) {
+        if (!is_valid_msg_length(obj->m_user, len)) {
             obj->disconnect(ERR_MSG_SIZE);
             return;
         }
 
         if (obj->input_msg.size() < len)
             break;
+
+        obj->stats.recv_msgs++;
+        obj->stats.recv_bytes += len;
 
         auto msg = parse_network_msg(ptr, len);
 
@@ -133,8 +146,7 @@ static void cb_tcp_write(uv_write_t *req, int status)
     auto *ptr = flatbuffers::GetRoot<nplex::msgs::Message>(msg->content.data());
     assert(ptr);
 
-    // TODO: notify server delivered message
-    //obj->server()->on_msg_delivered(obj, ptr);
+    // TODO: check if syncing + required to submit a new sync_task
 }
 
 static void cb_timer_disconnect(uv_timer_t *timer)
@@ -171,6 +183,7 @@ static void cb_timer_keepalive(uv_timer_t *timer)
         case nplex::session_t::state_e::SYNCING:
         case nplex::session_t::state_e::SYNCED:
             session->send_keepalive();
+            uv_timer_again(timer);
             break;
         default:
             uv_timer_stop(timer);
@@ -303,10 +316,10 @@ void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
 {
     auto len = output_msg_t::length(buf);
 
-    if (stats.unack_msgs >= params.max_unack_msgs)
+    if (m_user && m_user->max_unack_msgs && stats.unack_msgs > m_user->max_unack_msgs)
         throw nplex_exception("Output message queue is full");
 
-    if (stats.unack_bytes + len >= params.max_unack_bytes)
+    if (m_user && m_user->max_unack_bytes && stats.unack_bytes + len > m_user->max_unack_bytes)
         throw nplex_exception("Too many output unacked bytes");
 
     auto *msg = new output_msg_t(std::move(buf));
@@ -331,14 +344,14 @@ void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
 
 void nplex::session_t::send_keepalive()
 {
+    if (stats.unack_msgs)
+        return;
+
     assert(m_tcp.loop->data);
     const auto *server = reinterpret_cast<nplex::server_t *>(m_tcp.loop->data);
     rev_t crev = server->rev();
 
     send(create_keepalive_msg(crev));
-
-    if (m_timer_keepalive && uv_is_active(get_handle(m_timer_keepalive)))
-        uv_timer_again(m_timer_keepalive);
 }
 
 void nplex::session_t::do_step1(const user_ptr &user)
@@ -348,9 +361,6 @@ void nplex::session_t::do_step1(const user_ptr &user)
     m_user = user;
     m_state = session_t::state_e::LOGGED;
     m_id = fmt::format("{}@{}", user->name, m_addr.str());
-    params.max_msg_bytes = user->max_msg_bytes;
-    params.max_unack_bytes = user->max_unack_bytes;
-    params.max_unack_msgs = user->max_unack_msgs;
 
     assert(m_timer_disconnect);
     uv_timer_stop(m_timer_disconnect);

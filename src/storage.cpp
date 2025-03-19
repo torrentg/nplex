@@ -214,7 +214,7 @@ std::vector<nplex::update_t> nplex::storage_t::read_entries(rev_t rev, std::size
             // case: reached end of journal
             if (entries[num_reads].seqnum == 0)
                 break;
-            
+
             // case: buffer too short
             if (buf.size() < 128 + entries[num_reads].data_len)
                 buf.resize(128 + entries[num_reads].data_len, 0);
@@ -400,12 +400,11 @@ nplex::repo_t nplex::storage_t::get_repo(rev_t rev, const user_ptr &user)
         return repo;
 
     int rc = 0;
-    size_t num = rev - repo.rev();
     ldb_entry_t entries[READ_BATCH_ENTRIES] = {};
     ldb_stats_t stats = {};
     std::vector<char> buf;
 
-    if ((rc = m_journal.stats(rev, rev + std::min(num, READ_BATCH_ENTRIES) - 1, &stats)) != LDB_OK)
+    if ((rc = m_journal.stats(repo.rev() + 1, std::min(repo.rev() + READ_BATCH_ENTRIES, rev), &stats)) != LDB_OK)
         throw nplex_exception("{}", ldb_strerror(rc));
 
     buf.resize(std::min(stats.data_size, static_cast<size_t>(READ_BATCH_BYTES)), 0);
@@ -440,7 +439,7 @@ nplex::repo_t nplex::storage_t::get_repo(rev_t rev, const user_ptr &user)
             // case: reached end of journal
             if (entries[num_reads].seqnum == 0)
                 break;
-            
+
             // case: buffer too short
             if (buf.size() < 128 + entries[num_reads].data_len)
                 buf.resize(128 + entries[num_reads].data_len, 0);
