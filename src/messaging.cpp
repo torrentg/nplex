@@ -144,7 +144,7 @@ flatbuffers::DetachedBuffer nplex::create_ping_msg(std::size_t cid, rev_t crev, 
         CreatePingResponse(builder,
             cid, 
             crev,
-            builder.CreateString(payload.c_str())
+            builder.CreateString(payload)
         ).Union()
     );
 
@@ -182,7 +182,7 @@ flatbuffers::Offset<nplex::msgs::Update> nplex::serialize_update(flatbuffers::Fl
 
         auto kv = CreateKeyValue(
             builder, 
-            builder.CreateString(key.c_str()), 
+            builder.CreateString(key),
             builder.CreateVector(
                 reinterpret_cast<const uint8_t *>(value->data().c_str()), 
                 value->data().size()
@@ -197,7 +197,7 @@ flatbuffers::Offset<nplex::msgs::Update> nplex::serialize_update(flatbuffers::Fl
         if (user && !user->is_authorized(NPLEX_READ, key))
             continue;
 
-        deletes.push_back(builder.CreateString(key.c_str()));
+        deletes.push_back(builder.CreateString(key));
     }
 
     if (!force && upserts.empty() && deletes.empty())
@@ -206,7 +206,7 @@ flatbuffers::Offset<nplex::msgs::Update> nplex::serialize_update(flatbuffers::Fl
     return CreateUpdate(
         builder,
         update.meta->rev,
-        builder.CreateString(update.meta->user.c_str()),
+        builder.CreateString(update.meta->user),
         static_cast<std::uint64_t>(update.meta->timestamp.count()),
         update.meta->type,
         builder.CreateVector(upserts),
@@ -288,58 +288,57 @@ flatbuffers::DetachedBuffer nplex::load_builder_t::finish(rev_t crev, bool accep
     return m_builder.Release();
 }
 
-void nplex::changes_builder_t::append_updates(const std::span<update_t> &updates, const user_ptr &user)
+bool nplex::changes_builder_t::append_updates(const std::span<update_t> &updates)
 {
     for (const auto &update : updates)
     {
-        last_meta.rev = 0;
-        last_meta.user = "";
-        last_meta.timestamp = 0;
-        last_meta.type = 0;
+        if (m_num_revs >= m_max_revs || m_builder.GetSize() >= m_max_bytes)
+            return false;
 
-        auto off = serialize_update(m_builder, update, user.get(), false);
+        auto off = serialize_update(m_builder, update, m_user.get(), false);
 
-        if (!off.IsNull()) {
+        m_last_meta.rev = update.meta->rev;
+        m_last_meta.user = update.meta->user;
+        m_last_meta.timestamp = static_cast<std::uint64_t>(update.meta->timestamp.count());
+        m_last_meta.type = update.meta->type;
+        m_num_revs++;
+
+        if (!off.IsNull())
             m_updates.push_back(off);
-        }
-        else {
-            last_meta.rev = update.meta->rev;
-            last_meta.user = update.meta->user;
-            last_meta.timestamp = static_cast<std::uint64_t>(update.meta->timestamp.count());
-            last_meta.type = update.meta->type;
-        }
     }
+
+    return (m_num_revs < m_max_revs && m_builder.GetSize() < m_max_bytes);
 }
 
 /**
  * This method is equivalent to:
  * 
  *   auto upd = deserialize_update(buf, user)
- *   auto off = serialize_update(m_builder, upd)
- *   if (!off.IsNull()) m_updates.push_back(off);
+ *   if (has_changes(upd)) {
+ *       auto off = serialize_update(m_builder, upd)
+ *       m_updates.push_back(off);
+ *   }
  * 
  * The main difference is that this method avoids intermediary memory allocations.
  */
-void nplex::changes_builder_t::append_update(const Update *update, const user_ptr &user)
+bool nplex::changes_builder_t::append_update(const Update *update)
 {
     std::vector<Offset<KeyValue>> upserts;
     std::vector<Offset<String>> deletes;
 
-    last_meta.rev = 0;
-    last_meta.user = "";
-    last_meta.timestamp = 0;
-    last_meta.type = 0;
+    if (m_num_revs >= m_max_revs || m_builder.GetSize() >= m_max_bytes)
+        return false;
 
     if (update->upserts())
     {
         for (const auto &kv : *update->upserts())
         {
-            if (user && !user->is_authorized(NPLEX_READ, kv->key()->c_str()))
+            if (m_user && !m_user->is_authorized(NPLEX_READ, kv->key()->c_str()))
                 continue;
 
             auto off = CreateKeyValue(
                 m_builder, 
-                m_builder.CreateString(kv->key()->c_str()), 
+                m_builder.CreateString(kv->key()), 
                 m_builder.CreateVector(
                     kv->value()->data(), 
                     kv->value()->size()
@@ -354,44 +353,47 @@ void nplex::changes_builder_t::append_update(const Update *update, const user_pt
     {
         for (const auto &key : *update->deletes())
         {
-            if (user && !user->is_authorized(NPLEX_READ, key->c_str()))
+            if (m_user && !m_user->is_authorized(NPLEX_READ, key->c_str()))
                 continue;
 
-            deletes.push_back(m_builder.CreateString(key->c_str()));
+            deletes.push_back(m_builder.CreateString(key));
         }
     }
 
-    if (upserts.empty() && deletes.empty()) {
-        last_meta.rev = update->rev();
-        last_meta.user = update->user()->c_str();
-        last_meta.timestamp = update->timestamp();
-        last_meta.type = update->type();
-        return;
+    m_last_meta.rev = update->rev();
+    m_last_meta.user = update->user()->c_str();
+    m_last_meta.timestamp = update->timestamp();
+    m_last_meta.type = update->type();
+    m_num_revs++;
+
+    if (!upserts.empty() || !deletes.empty())
+    {
+        auto off = CreateUpdate(
+            m_builder,
+            update->rev(),
+            m_builder.CreateString(update->user()),
+            update->timestamp(),
+            update->type(),
+            m_builder.CreateVector(upserts),
+            m_builder.CreateVector(deletes)
+        );
+
+        m_updates.push_back(off);
     }
 
-    auto off = CreateUpdate(
-        m_builder,
-        update->rev(),
-        m_builder.CreateString(update->user()->c_str()),
-        update->timestamp(),
-        update->type(),
-        m_builder.CreateVector(upserts),
-        m_builder.CreateVector(deletes)
-    );
-
-    m_updates.push_back(off);
+    return (m_num_revs < m_max_revs && m_builder.GetSize() < m_max_bytes);
 }
 
 flatbuffers::DetachedBuffer nplex::changes_builder_t::finish(rev_t crev, bool ending_meta)
 {
-    if (ending_meta && last_meta.rev != 0)
+    if (ending_meta && m_last_meta.rev != 0)
     {
         auto off = CreateUpdate(
             m_builder,
-            last_meta.rev,
-            m_builder.CreateString(last_meta.user.c_str()),
-            last_meta.timestamp,
-            last_meta.type
+            m_last_meta.rev,
+            m_builder.CreateString(m_last_meta.user),
+            m_last_meta.timestamp,
+            m_last_meta.type
         );
 
         m_updates.push_back(off);

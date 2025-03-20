@@ -18,8 +18,8 @@
 #define USER_MAX_CONNECTIONS "max-connections"
 #define USER_KEEPALIVE_MILLIS "keepalive-millis"
 #define USER_MAX_MSG_BYTES "max-msg-bytes"
-#define USER_MAX_UNACK_MSGS "max-unack-msgs"
-#define USER_MAX_UNACK_BYTES "max-unack-bytes"
+#define USER_MAX_QUEUE_LENGTH "max-queue-length"
+#define USER_MAX_QUEUE_BYTES "max-queue-bytes"
 #define USER_TIMEOUT_FACTOR "timeout-factor"
 #define USER_ACL "acl"
 
@@ -227,10 +227,10 @@ static int cb_inih_inner(void *obj, const char *section, const char *name, const
             params->default_user.keepalive_millis = parse_uint32(value);
         } else if (strcmp(name, USER_MAX_MSG_BYTES) == 0) {
             params->default_user.max_msg_bytes = parse_bytes(value);
-        } else if (strcmp(name, USER_MAX_UNACK_MSGS) == 0) {
-            params->default_user.max_unack_msgs = parse_uint32(value);
-        } else if (strcmp(name, USER_MAX_UNACK_BYTES) == 0) {
-            params->default_user.max_unack_bytes = parse_bytes(value);
+        } else if (strcmp(name, USER_MAX_QUEUE_LENGTH) == 0) {
+            params->default_user.max_queue_length = parse_uint32(value);
+        } else if (strcmp(name, USER_MAX_QUEUE_BYTES) == 0) {
+            params->default_user.max_queue_bytes = parse_bytes(value);
         } else if (strcmp(name, USER_TIMEOUT_FACTOR) == 0) {
             params->default_user.timeout_factor = parse_float(value);
             if (params->default_user.timeout_factor <= 1.0)
@@ -245,6 +245,9 @@ static int cb_inih_inner(void *obj, const char *section, const char *name, const
     auto it = std::find_if(params->users.begin(), params->users.end(), [section](const user_t &usr) { 
         return (usr.name == section); 
     });
+
+    // TODO: trap duplicated users (=section)
+    // TODO: save section in params_t and check it here
 
     if (it == params->users.end()) {
         params->users.push_back(params->default_user);
@@ -264,10 +267,10 @@ static int cb_inih_inner(void *obj, const char *section, const char *name, const
         it->keepalive_millis = parse_uint32(value);
     } else if (strcmp(name, USER_MAX_MSG_BYTES) == 0) {
         it->max_msg_bytes = parse_bytes(value);
-    } else if (strcmp(name, USER_MAX_UNACK_MSGS) == 0) {
-        it->max_unack_msgs = parse_uint32(value);
-    } else if (strcmp(name, USER_MAX_UNACK_BYTES) == 0) {
-        it->max_unack_bytes = parse_bytes(value);
+    } else if (strcmp(name, USER_MAX_QUEUE_LENGTH) == 0) {
+        it->max_queue_length = parse_uint32(value);
+    } else if (strcmp(name, USER_MAX_QUEUE_BYTES) == 0) {
+        it->max_queue_bytes = parse_bytes(value);
     } else if (strcmp(name, USER_TIMEOUT_FACTOR) == 0) {
         it->timeout_factor = parse_float(value);
         if (params->default_user.timeout_factor <= 1.0)
@@ -332,8 +335,8 @@ void nplex::params_t::save(const fs::path &path) const
     ofs << USER_KEEPALIVE_MILLIS << " = " << default_user.keepalive_millis << std::endl;
     ofs << USER_TIMEOUT_FACTOR << " = " << fmt::format("{:.1f}", default_user.timeout_factor) << std::endl;
     ofs << USER_MAX_MSG_BYTES << " = " << ::bytes_to_string(default_user.max_msg_bytes) << std::endl;
-    ofs << USER_MAX_UNACK_MSGS << " = " << default_user.max_unack_msgs << std::endl;
-    ofs << USER_MAX_UNACK_BYTES << " = " << ::bytes_to_string(default_user.max_unack_bytes) << std::endl;
+    ofs << USER_MAX_QUEUE_LENGTH << " = " << default_user.max_queue_length << std::endl;
+    ofs << USER_MAX_QUEUE_BYTES << " = " << ::bytes_to_string(default_user.max_queue_bytes) << std::endl;
     ofs << std::endl;
 
     for (const auto &user : users)
@@ -355,10 +358,10 @@ void nplex::params_t::save(const fs::path &path) const
             ofs << USER_TIMEOUT_FACTOR << " = " << fmt::format("{:.1f}", user.timeout_factor) << std::endl;
         if (user.max_msg_bytes != default_user.max_msg_bytes)
             ofs << USER_MAX_MSG_BYTES << " = " << ::bytes_to_string(user.max_msg_bytes) << std::endl;
-        if (user.max_unack_msgs != default_user.max_unack_msgs)
-            ofs << USER_MAX_UNACK_MSGS << " = " << user.max_unack_msgs << std::endl;
-        if (user.max_unack_bytes != default_user.max_unack_bytes)
-            ofs << USER_MAX_UNACK_BYTES << " = " << ::bytes_to_string(user.max_unack_bytes) << std::endl;
+        if (user.max_queue_length != default_user.max_queue_length)
+            ofs << USER_MAX_QUEUE_LENGTH << " = " << user.max_queue_length << std::endl;
+        if (user.max_queue_bytes != default_user.max_queue_bytes)
+            ofs << USER_MAX_QUEUE_BYTES << " = " << ::bytes_to_string(user.max_queue_bytes) << std::endl;
 
         for (const auto &acl : user.permissions)
             if (!acl.pattern.empty())

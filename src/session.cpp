@@ -128,11 +128,11 @@ static void cb_tcp_write(uv_write_t *req, int status)
     auto msg = std::unique_ptr<output_msg_t>(reinterpret_cast<output_msg_t *>(req));
     auto *obj = reinterpret_cast<session_t *>(req->handle);
 
-    assert(obj->stats.unack_msgs > 0);
-    assert(obj->stats.unack_bytes >= msg->length());
+    assert(obj->stats.queue_msgs > 0);
+    assert(obj->stats.queue_bytes >= msg->length());
 
-    obj->stats.unack_msgs--;
-    obj->stats.unack_bytes -= msg->length();
+    obj->stats.queue_msgs--;
+    obj->stats.queue_bytes -= msg->length();
     obj->stats.sent_msgs++;
     obj->stats.sent_bytes += msg->length();
 
@@ -316,11 +316,14 @@ void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
 {
     auto len = output_msg_t::length(buf);
 
-    if (m_user && m_user->max_unack_msgs && stats.unack_msgs > m_user->max_unack_msgs)
-        throw nplex_exception("Output message queue is full");
+    if (m_user && m_state == state_e::SYNCED)
+    {
+        if (m_user->max_queue_length && stats.queue_msgs > m_user->max_queue_length)
+            disconnect(ERR_QUEUE_LENGTH);
 
-    if (m_user && m_user->max_unack_bytes && stats.unack_bytes + len > m_user->max_unack_bytes)
-        throw nplex_exception("Too many output unacked bytes");
+        if (m_user->max_queue_bytes && stats.queue_bytes + len > m_user->max_queue_bytes)
+            disconnect(ERR_QUEUE_BYTES);
+    }
 
     auto *msg = new output_msg_t(std::move(buf));
 
@@ -328,8 +331,8 @@ void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
 
     uv_write(&msg->req, get_stream(&m_tcp), msg->buf.data(), static_cast<unsigned int>(msg->buf.size()), ::cb_tcp_write);
 
-    stats.unack_msgs++;
-    stats.unack_bytes += static_cast<std::uint32_t>(len);
+    stats.queue_msgs++;
+    stats.queue_bytes += static_cast<std::uint32_t>(len);
 
     auto aux = flatbuffers::GetRoot<nplex::msgs::Message>(msg->content.data());
 
@@ -344,7 +347,7 @@ void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
 
 void nplex::session_t::send_keepalive()
 {
-    if (stats.unack_msgs)
+    if (stats.queue_msgs)
         return;
 
     assert(m_tcp.loop->data);
@@ -434,6 +437,8 @@ std::string nplex::session_t::strerror() const
         case ERR_TIMEOUT_STEP_1: return "login request timeout";
         case ERR_TIMEOUT_STEP_2: return "load request timeout";
         case ERR_CONNECTION_LOST: return "connection lost";
+        case ERR_QUEUE_LENGTH: return "max queue length exceeded";
+        case ERR_QUEUE_BYTES: return "max queue bytes exceeded";
         default: return fmt::format("unknow error -{}-", m_error);
     }
 }

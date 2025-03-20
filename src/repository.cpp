@@ -475,7 +475,7 @@ flatbuffers::Offset<nplex::msgs::Snapshot> nplex::repo_t::serialize(flatbuffers:
 
             auto kv = msgs::CreateKeyValue(
                 builder, 
-                builder.CreateString(key.c_str()), 
+                builder.CreateString(key), 
                 builder.CreateVector(
                     reinterpret_cast<const uint8_t *>(it->second->data().c_str()), 
                     it->second->data().size()
@@ -491,7 +491,7 @@ flatbuffers::Offset<nplex::msgs::Snapshot> nplex::repo_t::serialize(flatbuffers:
         auto upd = msgs::CreateUpdate(
             builder,
             static_cast<std::uint64_t>(mrev),
-            builder.CreateString(meta->user.c_str()),
+            builder.CreateString(meta->user),
             static_cast<std::uint64_t>(meta->timestamp.count()),
             static_cast<std::uint32_t>(meta->type),
             builder.CreateVector(upserts)

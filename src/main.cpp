@@ -227,13 +227,7 @@ int main(int argc, char *argv[])
     try
     {
         if (!fs::exists(config_file))
-        {
-            params.default_user.keepalive_millis = 3000;
-            params.default_user.max_msg_bytes = 50 * 1024 * 1024;
-            params.default_user.max_unack_bytes = 100 * 1024 * 1024;
-            params.default_user.max_unack_msgs = 100;
             params.save(config_file);
-        }
 
         params_t aux(config_file);
 

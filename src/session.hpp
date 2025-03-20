@@ -39,8 +39,8 @@ struct session_t
     std::string input_msg;                      // current incoming message
 
     struct {
-        std::uint32_t unack_msgs = 0;           // number of unacknowledged messages
-        std::uint32_t unack_bytes = 0;          // number of unacknowledged bytes
+        std::uint32_t queue_msgs = 0;           // number of messages in output queue
+        std::uint32_t queue_bytes = 0;          // number of bytes in output queue
         std::size_t recv_msgs = 0;              // number of received messages
         std::size_t recv_bytes = 0;             // number of received bytes
         std::size_t sent_msgs = 0;              // number of sent messages (acknowledged)

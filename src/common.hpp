@@ -20,9 +20,6 @@
 #define INDEX_FILENAME "entries.idx"
 #define SNAPSHOT_FILENAME "snapshot-{}.dat"
 
-#define DEFAULT_ADDR "localhost:14022"
-#define MAX_CONNECTIONS 256
-
 #define NPLEX_CREATE 1
 #define NPLEX_READ   2
 #define NPLEX_UPDATE 4
@@ -42,6 +39,8 @@
 #define ERR_TIMEOUT_STEP_1 1010
 #define ERR_TIMEOUT_STEP_2 1011
 #define ERR_CONNECTION_LOST 1012
+#define ERR_QUEUE_LENGTH 1013
+#define ERR_QUEUE_BYTES 1014
 
 #define UNUSED(x) (void)(x)
 

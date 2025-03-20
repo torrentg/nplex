@@ -23,8 +23,8 @@
  * 
  * This is a blocking function.
  * 
- * @param loop Event loop.
- * @param addr Address to convert.
+ * @param[in] loop Event loop.
+ * @param[in] addr Address to convert.
  * 
  * @return The sockaddr.
  * 
@@ -209,22 +209,25 @@ static bool is_valid_user(const nplex::user_t &user)
     if (!user.active)
         return false;
 
-    if (user.password.empty())
+    if (user.password.empty()) {
+        SPDLOG_WARN("User {} discarded (no password)", user.name);
         return false;
+    }
 
-    if (user.max_connections == 0)
+    if (user.timeout_factor <= 1.0) {
+        SPDLOG_WARN("User {} discarded (invalid timeout factor)", user.name);
         return false;
-
-    if (user.timeout_factor <= 1.0)
-        return false;
+    }
 
     int sum = 0;
 
     for (const auto &perm : user.permissions)
         sum += perm.mode;
 
-    if (sum == 0)
+    if (sum == 0) {
+        SPDLOG_WARN("User {} discarded (no acls)", user.name);
         return false;
+    }
 
     return true;
 }
@@ -250,9 +253,6 @@ void nplex::server_t::init_users(const params_t &params)
     {
         if (!is_valid_user(user))
             continue;
-
-        if (m_users.contains(user.name))
-            throw nplex_exception(fmt::format("Duplicated user ({})", user.name));
 
         m_users[user.name] = std::make_shared<user_t>(user);
         valid_users.push_back(user.name);
@@ -374,7 +374,7 @@ void nplex::server_t::append_session(uv_stream_t *stream)
     if (!m_running)
         return;
 
-    if (m_sessions.size() >= m_max_connections) {
+    if (m_max_connections && m_sessions.size() >= m_max_connections) {
         SPDLOG_WARN("Incomming connection rejected (max {} clients reached)", m_max_connections);
         return;
     }
@@ -486,7 +486,7 @@ void nplex::server_t::process_login_request(session_t *session, const nplex::msg
         return;
     }
 
-    if (user->num_connections >= user->max_connections) {
+    if (user->max_connections && user->num_connections >= user->max_connections) {
         session->send(
             create_login_msg(
                 req->cid(), 
@@ -648,14 +648,17 @@ void nplex::server_t::push_changes(const std::span<update_t> &updates)
         if (session->m_state != session_t::state_e::SYNCED)
             continue;
 
-        changes_builder_t builder{0}; // TODO: set CID from session
+        // TODO: set max_rev and max_bytes
+        changes_builder_t builder{session->m_load_cid, session->m_user, 1, 1};
 
-        builder.append_updates(updates, session->m_user);
+        builder.append_updates(updates);
 
-        if (builder.empy())
+        if (builder.empty())
             continue;
 
         session->send(builder.finish(m_repo.rev(), false));
+
+        // TODO: loop until updates length exhausted or session thresholds reached
     }
 }
 
