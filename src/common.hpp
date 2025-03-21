@@ -16,8 +16,7 @@
 
 #define CONFIG_FILENAME "nplex.ini"
 #define LOG_FILENAME "nplex.log"
-#define DATA_FILENAME "entries.dat"
-#define INDEX_FILENAME "entries.idx"
+#define JOURNAL_NAME "journal"
 #define SNAPSHOT_FILENAME "snapshot-{}.dat"
 
 #define NPLEX_CREATE 1

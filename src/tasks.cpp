@@ -34,31 +34,38 @@ void nplex::repo_task_t::after()
 
 void nplex::sync_task_t::run()
 {
-    changes_builder_t builder(m_cid, m_session->m_user, m_max_msgs, m_max_bytes);
-
-    // builder.append_update(update);
-
-    // rev_t rev = m_session->lrev;
-
-    // m_storage. read(uint64_t seqnum, ldb_entry_t *entries, size_t len, size_t *num)
-
-    // auto m_repo = m_storage->get_repo(m_rev, m_session->m_user);
-    // SPDLOG_TRACE("repo_task completed: r{}", m_repo.rev());
-    // m_builder.set_update(update);
+    m_storage->read_entries(m_rev + 1, [this](const msgs::Update *update) -> bool {
+        return append_update(update);
+    });
 }
 
 void nplex::sync_task_t::after()
 {
-    // const auto *server = get_server();
-    // auto buf = m_builder.finish(server->rev(), true);
-    // m_session->send(std::move(buf));
-    // m_session->do_step2();
+    const auto *server = get_server();
+
+    for (auto &buf : m_buffers) {
+        update_crev(buf, server->rev());
+        m_session->send(std::move(buf));
+    }
+
+    SPDLOG_INFO("sync_task completed: r{}, {} msgs, {} bytes", m_rev, m_buffers.size(), m_bytes);
 }
 
-bool nplex::sync_task_t::operator()(const nplex::msgs::Update *update)
+void nplex::sync_task_t::config_builder(std::size_t cid, std::uint32_t changes_max_revs, std::uint32_t changes_max_bytes)
 {
-    UNUSED(update);
-    //TODO: implement this method
-    changes_builder_t builder(m_cid, m_session->m_user, m_max_msgs, m_max_bytes);
-    return false;
+    m_builder = changes_builder_t(cid, m_session->m_user, changes_max_revs, changes_max_bytes);
+}
+
+bool nplex::sync_task_t::append_update(const nplex::msgs::Update *update)
+{
+    auto rc = m_builder.append_update(update);
+
+    if (!rc || m_bytes + m_builder.m_builder.GetSize() >= m_max_bytes)
+    {
+        auto buf = m_builder.finish(m_rev, true);
+        m_bytes += buf.size();
+        m_buffers.push_back(std::move(buf));
+    }
+
+    return (m_bytes < m_max_bytes && m_buffers.size() < m_max_msgs);
 }

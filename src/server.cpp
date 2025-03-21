@@ -533,7 +533,7 @@ void nplex::server_t::process_load_request(session_t *session, const nplex::msgs
             break;
 
         case msgs::LoadMode::ONLY_UPDATES_FROM_REV:
-            //TODO: pending
+            sync_session(session, req->rev(), req->cid());
             break;
 
         default:
@@ -605,7 +605,7 @@ void nplex::server_t::send_fixed_snapshot(session_t *session, rev_t rev, std::si
     if (rev < min_rev || rev > max_rev)
     {
         session->send(
-            load_builder_t{cid}.finish(cid, m_repo.rev())
+            load_builder_t{cid}.finish(m_repo.rev(), false)
         );
 
         return;
@@ -726,4 +726,26 @@ void nplex::server_t::simule_submit()
     }
 
     m_storage->write_entry(std::move(update));
+}
+
+void nplex::server_t::sync_session(session_t *session, rev_t rev, std::size_t cid)
+{
+    auto [min_rev, max_rev] = m_storage->get_range();
+
+    if (rev < min_rev || rev > max_rev)
+    {
+        session->send(
+            load_builder_t{cid}.finish(m_repo.rev(), false)
+        );
+
+        return;
+    }
+
+    std::uint32_t max_msgs = session->m_user->max_queue_length - session->stats.queue_msgs;
+    std::uint32_t max_bytes = session->m_user->max_queue_bytes - session->stats.queue_bytes;
+    sync_task_t *task = new sync_task_t(m_storage, session, rev, max_msgs, max_bytes);
+
+    task->config_builder(cid, 1000, 2048);
+
+    submit_task(task);
 }

@@ -61,4 +61,7 @@ struct shared_ptr_compare
 // Create a cstring from a flatbuffers::Vector<uint8_t>
 gto::cstring create_cstring(const flatbuffers::Vector<std::uint8_t> *value);
 
+// Convert bytes to a human readable string (ex. 13.34MB)
+std::string bytes_to_string(std::size_t bytes);
+
 } // namespace nplex

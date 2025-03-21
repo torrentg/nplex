@@ -8,7 +8,9 @@
           "args": [ "-D", "test", "-l", "debug" ],
           "stopAtEntry": false,
           "cwd": "${workspaceFolder}/build",
-          "environment": [],
+          "environment": [
+            { "name": "UV_DEBUG", "value": "1" }
+          ],
           "externalConsole": false,
           "MIMode": "gdb",
           "miDebuggerPath": "/usr/bin/gdb",
@@ -21,7 +23,7 @@
               {
                   "description": "Ignore SIGPIPE",
                   "text": "handle SIGPIPE nostop noprint pass",
-                  "ignoreFailures": true
+                  "ignoreFailures": false
               },
               {
                   "text": "set print object on",

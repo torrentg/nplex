@@ -283,6 +283,7 @@ int main(int argc, char *argv[])
 
     try {
         server.init(params);
+        signal(SIGPIPE, SIG_IGN);
         install_signal_handler(SIGTERM, handle_sigterm);
         server.run();
         return EXIT_SUCCESS;

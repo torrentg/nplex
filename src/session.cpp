@@ -297,6 +297,9 @@ void nplex::session_t::disconnect(int rc)
     if (!m_error)
         m_error = rc;
 
+    if (uv_is_closing(get_handle(&m_tcp)))
+        return;
+
     if (m_timer_disconnect && !uv_is_closing(get_handle(m_timer_disconnect))) {
         uv_timer_stop(m_timer_disconnect);
         uv_close(get_handle(m_timer_disconnect), ::cb_close_timer);
@@ -314,6 +317,7 @@ void nplex::session_t::disconnect(int rc)
 
 void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
 {
+    int rc = 0;
     auto len = output_msg_t::length(buf);
 
     if (m_user && m_state == state_e::SYNCED)
@@ -329,7 +333,11 @@ void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
 
     assert(len == msg->length());
 
-    uv_write(&msg->req, get_stream(&m_tcp), msg->buf.data(), static_cast<unsigned int>(msg->buf.size()), ::cb_tcp_write);
+    if ((rc = uv_write(&msg->req, get_stream(&m_tcp), msg->buf.data(), static_cast<unsigned int>(msg->buf.size()), ::cb_tcp_write)) != 0) {
+        delete msg;
+        disconnect(rc);
+        return;
+    }
 
     stats.queue_msgs++;
     stats.queue_bytes += static_cast<std::uint32_t>(len);

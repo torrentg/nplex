@@ -79,22 +79,23 @@ struct sync_task_t : public task_t
 {
     storage_ptr m_storage;              // storage object
     session_t *m_session;               // session used to send messages
-    std::size_t m_cid;                  // correlation id
     rev_t m_rev;                        // last revision
-    std::uint32_t m_changes_max_revs;   // max number of revisions in a single Changes message
-    std::uint32_t m_changes_max_bytes;  // max bytes in a single Changes message
     std::uint32_t m_max_msgs;           // max number of Changes messages
     std::uint32_t m_max_bytes;          // max bytes of generated Changes messages
-
+    
     changes_builder_t m_builder;        // Changes messages builder
     std::vector<flatbuffers::DetachedBuffer> m_buffers;  // Changes messages to send
+    std::size_t m_bytes = 0;            // bytes of generated Changes messages
+
+    sync_task_t(storage_ptr &storage, session_t *session, nplex::rev_t rev, std::uint32_t max_msgs, std::uint32_t max_bytes)
+        : m_storage(storage), m_session(session), m_rev(rev), m_max_msgs(max_msgs), m_max_bytes(max_bytes) {}
 
     const char * name() const override { return "sync_task"; }
     void run() override;
     void after() override;
 
-    // Functor used in storage_t::read_entries()
-    bool operator()(const nplex::msgs::Update *update);
+    void config_builder(std::size_t cid, std::uint32_t changes_max_revs, std::uint32_t changes_max_bytes);
+    bool append_update(const nplex::msgs::Update *update);
 };
 
 } // namespace nplex

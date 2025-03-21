@@ -7,6 +7,7 @@
 #include <spdlog/spdlog.h>
 #include "exception.hpp"
 #include "messaging.hpp"
+#include "utils.hpp"
 #include "storage.hpp"
 
 #define READ_BATCH_ENTRIES 100ul
@@ -63,7 +64,7 @@ nplex::storage_t::storage_t(const nplex::params_t &params) : m_path{params.datad
     m_flush_max_entries = params.flush_max_entries;
     m_flush_max_bytes = params.flush_max_bytes;
 
-    m_journal = ldb::journal_t(m_path, "entries", params.check_journal);
+    m_journal = ldb::journal_t(m_path, JOURNAL_NAME, params.check_journal);
     m_journal.set_fsync(!params.disable_fsync);
 
     int rc = 0;
@@ -175,6 +176,8 @@ std::size_t nplex::storage_t::read_entries(rev_t rev, const std::function<bool(c
 
     int rc = 0;
     std::size_t count = 0;
+    std::size_t bytes = 0;
+    auto start_time = uv_hrtime();
     ldb_entry_t entries[READ_BATCH_ENTRIES] = {};
     ldb_stats_t stats = {};
     std::vector<char> buf;
@@ -191,7 +194,8 @@ std::size_t nplex::storage_t::read_entries(rev_t rev, const std::function<bool(c
 
         rc = m_journal.read(rev, entries, len, buf.data(), buf.size(), &num_reads);
 
-        SPDLOG_TRACE("Read journal entries, range = [r{}, r{}], rc = {}",  rev, rev + num_reads, ldb_strerror(rc));
+        SPDLOG_TRACE("Read journal entries, range = [r{}, r{}], rc = {}",  
+            rev, rev + num_reads - (num_reads ? 1 : 0), ldb_strerror(rc));
 
         if (rc != LDB_OK && rc != LDB_ERR_NOT_FOUND)
             throw nplex_exception("{}", ldb_strerror(rc));
@@ -207,11 +211,12 @@ std::size_t nplex::storage_t::read_entries(rev_t rev, const std::function<bool(c
 
             assert(update->rev() == rev);
 
-            if (!func(update))
-                break;
-
+            bytes += entries[i].data_len;
             count++;
             rev++;
+
+            if (!func(update))
+                goto READ_END;
         }
 
         if (num_reads < len)
@@ -225,6 +230,13 @@ std::size_t nplex::storage_t::read_entries(rev_t rev, const std::function<bool(c
                 buf.resize(128 + entries[num_reads].data_len, 0);
         }
     }
+
+READ_END:
+
+    uint64_t duration_us = (uv_hrtime() - start_time) / 1000;
+
+    SPDLOG_TRACE("Journal read completed, revs={}, bytes={}, elapsed={}μs", 
+        count, bytes_to_string(bytes), duration_us);
 
     return count;
 }
@@ -346,10 +358,13 @@ void nplex::storage_t::process_write_commands()
 
     ldb_rc = m_journal.append(m_entries.data(), m_entries.size(), &num_writes);
 
+    if (ldb_rc != LDB_OK)
+        throw nplex_exception("{}", ldb_strerror(ldb_rc));
+
     uint64_t duration_us = (uv_hrtime() - start_time) / 1000;
 
-    SPDLOG_TRACE("Journal write completed, writes = {}, bytes = {}, result = {}, elapsed = {} μs", 
-        num_writes, bytes, ldb_strerror(ldb_rc), duration_us);
+    SPDLOG_TRACE("Journal write completed, revs={}, bytes={}, elapsed={}μs", 
+        num_writes, bytes_to_string(bytes), duration_us);
 
     lock.lock();
 

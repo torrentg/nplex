@@ -159,31 +159,6 @@ static nplex::acl_t parse_acl(const std::string_view &str)
     return nplex::acl_t{mode, pattern};
 }
 
-static std::string format_double(double value)
-{
-    std::ostringstream oss;
-    oss << std::fixed << std::setprecision(2) << value;
-    std::string str = oss.str();
-
-    str.erase(str.find_last_not_of('0') + 1, std::string::npos);
-    if (str.back() == '.')
-        str.pop_back();
-
-    return str;
-}
-
-static std::string bytes_to_string(std::uint32_t bytes)
-{
-    if (bytes < 1024)
-        return format_double(bytes);
-    else if (bytes < 1024 * 1024)
-        return fmt::format("{}KB", format_double(bytes / 1024.0));
-    else if (bytes < 1024 * 1024 * 1024)
-        return fmt::format("{}MB", format_double(bytes / (1024.0 * 1024)));
-    else
-        return fmt::format("{}GB", format_double(bytes / (1024.0 * 1024 * 1024)));
-}
-
 static int cb_inih_inner(void *obj, const char *section, const char *name, const char *value)
 {
     using namespace nplex;
@@ -323,9 +298,9 @@ void nplex::params_t::save(const fs::path &path) const
 
     ofs << GENERAL_MAX_CLIENTS << " = " << max_connections << std::endl;
     ofs << WRITE_QUEUE_MAX_LENGTH << " = " << write_queue_max_length << std::endl;
-    ofs << WRITE_QUEUE_MAX_BYTES << " = " << ::bytes_to_string(write_queue_max_bytes) << std::endl;
+    ofs << WRITE_QUEUE_MAX_BYTES << " = " << bytes_to_string(write_queue_max_bytes) << std::endl;
     ofs << FLUSH_MAX_ENTRIES << " = " << flush_max_entries << std::endl;
-    ofs << FLUSH_MAX_BYTES << " = " << ::bytes_to_string(flush_max_bytes) << std::endl;
+    ofs << FLUSH_MAX_BYTES << " = " << bytes_to_string(flush_max_bytes) << std::endl;
     ofs << std::endl;
 
     ofs << "[" << SECTION_DEFAULTS << "]" << std::endl;
@@ -334,9 +309,9 @@ void nplex::params_t::save(const fs::path &path) const
     ofs << USER_MAX_CONNECTIONS << " = " << default_user.max_connections << std::endl;
     ofs << USER_KEEPALIVE_MILLIS << " = " << default_user.keepalive_millis << std::endl;
     ofs << USER_TIMEOUT_FACTOR << " = " << fmt::format("{:.1f}", default_user.timeout_factor) << std::endl;
-    ofs << USER_MAX_MSG_BYTES << " = " << ::bytes_to_string(default_user.max_msg_bytes) << std::endl;
+    ofs << USER_MAX_MSG_BYTES << " = " << bytes_to_string(default_user.max_msg_bytes) << std::endl;
     ofs << USER_MAX_QUEUE_LENGTH << " = " << default_user.max_queue_length << std::endl;
-    ofs << USER_MAX_QUEUE_BYTES << " = " << ::bytes_to_string(default_user.max_queue_bytes) << std::endl;
+    ofs << USER_MAX_QUEUE_BYTES << " = " << bytes_to_string(default_user.max_queue_bytes) << std::endl;
     ofs << std::endl;
 
     for (const auto &user : users)
@@ -357,11 +332,11 @@ void nplex::params_t::save(const fs::path &path) const
         if (user.timeout_factor != default_user.timeout_factor)
             ofs << USER_TIMEOUT_FACTOR << " = " << fmt::format("{:.1f}", user.timeout_factor) << std::endl;
         if (user.max_msg_bytes != default_user.max_msg_bytes)
-            ofs << USER_MAX_MSG_BYTES << " = " << ::bytes_to_string(user.max_msg_bytes) << std::endl;
+            ofs << USER_MAX_MSG_BYTES << " = " << bytes_to_string(user.max_msg_bytes) << std::endl;
         if (user.max_queue_length != default_user.max_queue_length)
             ofs << USER_MAX_QUEUE_LENGTH << " = " << user.max_queue_length << std::endl;
         if (user.max_queue_bytes != default_user.max_queue_bytes)
-            ofs << USER_MAX_QUEUE_BYTES << " = " << ::bytes_to_string(user.max_queue_bytes) << std::endl;
+            ofs << USER_MAX_QUEUE_BYTES << " = " << bytes_to_string(user.max_queue_bytes) << std::endl;
 
         for (const auto &acl : user.permissions)
             if (!acl.pattern.empty())

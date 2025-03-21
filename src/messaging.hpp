@@ -86,7 +86,7 @@ struct load_builder_t
  */
 struct changes_builder_t
 {
-    uint64_t m_cid;
+    uint64_t m_cid = 0;
     user_ptr m_user;
     flatbuffers::FlatBufferBuilder m_builder;
     std::vector<flatbuffers::Offset<msgs::Update>> m_updates;
@@ -100,6 +100,7 @@ struct changes_builder_t
         std::uint32_t type = 0;
     } m_last_meta;
 
+    changes_builder_t() = default;
     changes_builder_t(std::size_t cid, const user_ptr &user, std::uint32_t max_revs, std::uint32_t max_bytes) : 
         m_cid(cid), m_user(user), m_max_revs(max_revs), m_max_bytes(max_bytes) {}
 

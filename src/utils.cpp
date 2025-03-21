@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <fmt/core.h>
 #include "utf8.h"
 #include "utils.hpp"
 
@@ -55,4 +56,29 @@ std::string nplex::to_string(log_level_e level)
 
 gto::cstring nplex::create_cstring(const flatbuffers::Vector<std::uint8_t> *value) {
     return gto::cstring{reinterpret_cast<const char *>(value->data()), static_cast<std::size_t>(value->size())};
+}
+
+static std::string format_double(double value)
+{
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(2) << value;
+    std::string str = oss.str();
+
+    str.erase(str.find_last_not_of('0') + 1, std::string::npos);
+    if (str.back() == '.')
+        str.pop_back();
+
+    return str;
+}
+
+std::string nplex::bytes_to_string(std::size_t bytes)
+{
+    if (bytes < 1024)
+        return std::to_string(bytes);
+    else if (bytes < 1024 * 1024)
+        return fmt::format("{}KB", format_double(static_cast<double>(bytes) / 1024.0));
+    else if (bytes < 1024 * 1024 * 1024)
+        return fmt::format("{}MB", format_double(static_cast<double>(bytes) / (1024.0 * 1024)));
+    else
+        return fmt::format("{}GB", format_double(static_cast<double>(bytes) / (1024.0 * 1024 * 1024)));
 }
