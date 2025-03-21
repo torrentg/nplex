@@ -81,15 +81,20 @@ struct sync_task_t : public task_t
     session_t *m_session;               // session used to send messages
     std::size_t m_cid;                  // correlation id
     rev_t m_rev;                        // last revision
-    std::uint32_t m_changes_max_revs;   // max num of revisions in a single Changes message
+    std::uint32_t m_changes_max_revs;   // max number of revisions in a single Changes message
     std::uint32_t m_changes_max_bytes;  // max bytes in a single Changes message
-    std::uint32_t m_max_msgs;           // max num of generated Changes messages
+    std::uint32_t m_max_msgs;           // max number of Changes messages
     std::uint32_t m_max_bytes;          // max bytes of generated Changes messages
+
+    changes_builder_t m_builder;        // Changes messages builder
     std::vector<flatbuffers::DetachedBuffer> m_buffers;  // Changes messages to send
 
     const char * name() const override { return "sync_task"; }
     void run() override;
     void after() override;
+
+    // Functor used in storage_t::read_entries()
+    bool operator()(const nplex::msgs::Update *update);
 };
 
 } // namespace nplex

@@ -107,6 +107,7 @@ struct changes_builder_t
     bool append_updates(const std::span<update_t> &updates);
     flatbuffers::DetachedBuffer finish(rev_t crev, bool ending_meta = true);
     rev_t last_rev() const { return rev_t{m_last_meta.rev}; }
+    std::uint32_t num_revs() const { return m_num_revs; }
     bool empty() const { return m_updates.empty(); }
 };
 

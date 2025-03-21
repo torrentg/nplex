@@ -285,6 +285,9 @@ flatbuffers::DetachedBuffer nplex::load_builder_t::finish(rev_t crev, bool accep
     );
 
     m_builder.Finish(msg);
+
+    m_offset_snapshot = 0;
+
     return m_builder.Release();
 }
 
@@ -408,6 +411,15 @@ flatbuffers::DetachedBuffer nplex::changes_builder_t::finish(rev_t crev, bool en
         ).Union()
     );
 
+
     m_builder.Finish(msg);
+
+    m_num_revs = 0;
+    m_last_meta.rev = 0;
+    m_last_meta.user = "";
+    m_last_meta.timestamp = 0;
+    m_last_meta.type = 0;
+    m_updates.clear();
+
     return m_builder.Release();
 }

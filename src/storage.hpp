@@ -6,9 +6,10 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <functional>
 #include <filesystem>
 #include <condition_variable>
-#include <flatbuffers/flatbuffers.h>
+#include "messages.hpp"
 #include "common.hpp"
 #include "params.hpp"
 #include "cqueue.hpp"
@@ -77,20 +78,17 @@ class storage_t
     void write_entry(update_t &&upd);
 
     /**
-     * Reads num entries starting from rev (included).
-     * 
-     * Updates are filtered according to user visibility.
-     * Even if an update has no visible content, it is still returned.
+     * Reads entries from rev until func returns false or last entry read.
      * 
      * @param[in] rev Initial revision (included).
+     * @param[in] func Function to execute on every entry.
      * @param[in] num Number of entries to read.
-     * @param[in] user User used to filter content (nullptr means no filter).
      * 
-     * @return Array of entries (can be empty or have less than num records when no data).
+     * @return Number of entries read.
      * 
      * @exception nplex_exception Error reading entries.
      */
-    std::vector<update_t> read_entries(rev_t rev, std::size_t num, const user_ptr &user = nullptr);
+    std::size_t read_entries(rev_t rev, const std::function<bool(const msgs::Update *)> &func, std::size_t num = UINT64_MAX);
 
     /**
      * Reads a snapshot from disk.

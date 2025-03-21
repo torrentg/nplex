@@ -168,13 +168,13 @@ nplex::rev_t nplex::storage_t::write_snapshot(const std::string_view &data) cons
     return rev;
 }
 
-std::vector<nplex::update_t> nplex::storage_t::read_entries(rev_t rev, std::size_t num, const user_ptr &user)
+std::size_t nplex::storage_t::read_entries(rev_t rev, const std::function<bool(const msgs::Update *)> &func, std::size_t num)
 {
     if (rev == 0 || num == 0)
-        return {};
+        return 0;
 
     int rc = 0;
-    std::vector<update_t> ret;
+    std::size_t count = 0;
     ldb_entry_t entries[READ_BATCH_ENTRIES] = {};
     ldb_stats_t stats = {};
     std::vector<char> buf;
@@ -184,12 +184,14 @@ std::vector<nplex::update_t> nplex::storage_t::read_entries(rev_t rev, std::size
 
     buf.resize(std::min(stats.data_size, static_cast<size_t>(READ_BATCH_BYTES)), 0);
 
-    while (ret.size() < num)
+    while (count < num)
     {
         std::size_t num_reads = 0;
-        std::size_t len = std::min(READ_BATCH_ENTRIES, num - ret.size());
+        std::size_t len = std::min(READ_BATCH_ENTRIES, num - count);
 
         rc = m_journal.read(rev, entries, len, buf.data(), buf.size(), &num_reads);
+
+        SPDLOG_TRACE("Read journal entries, range = [r{}, r{}], rc = {}",  rev, rev + num_reads, ldb_strerror(rc));
 
         if (rc != LDB_OK && rc != LDB_ERR_NOT_FOUND)
             throw nplex_exception("{}", ldb_strerror(rc));
@@ -199,13 +201,16 @@ std::vector<nplex::update_t> nplex::storage_t::read_entries(rev_t rev, std::size
             auto verifier = flatbuffers::Verifier(as_uint8_ptr(entries[i].data), entries[i].data_len);
 
             if (!verifier.VerifyBuffer<nplex::msgs::Update>(nullptr))
-                throw nplex_exception("Invalid update entry ({})", rev);
+                throw nplex_exception("Invalid journal entry (r{})", rev);
 
             auto update = flatbuffers::GetRoot<nplex::msgs::Update>(entries[i].data);
-            auto entry = deserialize_update(update, user);
-            ret.push_back(std::move(entry));
 
             assert(update->rev() == rev);
+
+            if (!func(update))
+                break;
+
+            count++;
             rev++;
         }
 
@@ -221,7 +226,7 @@ std::vector<nplex::update_t> nplex::storage_t::read_entries(rev_t rev, std::size
         }
     }
 
-    return ret;
+    return count;
 }
 
 void nplex::storage_t::write_entry(update_t &&upd)
@@ -399,52 +404,12 @@ nplex::repo_t nplex::storage_t::get_repo(rev_t rev, const user_ptr &user)
     if (repo.rev() == rev)
         return repo;
 
-    int rc = 0;
-    ldb_entry_t entries[READ_BATCH_ENTRIES] = {};
-    ldb_stats_t stats = {};
-    std::vector<char> buf;
+    auto func = [&repo, rev, user](const nplex::msgs::Update *update) -> bool {
+        repo.update(update, user);
+        return (repo.rev() < rev);
+    };
 
-    if ((rc = m_journal.stats(repo.rev() + 1, std::min(repo.rev() + READ_BATCH_ENTRIES, rev), &stats)) != LDB_OK)
-        throw nplex_exception("{}", ldb_strerror(rc));
-
-    buf.resize(std::min(stats.data_size, static_cast<size_t>(READ_BATCH_BYTES)), 0);
-
-    while (repo.rev() < rev)
-    {
-        std::size_t num_reads = 0;
-        std::size_t len = std::min(READ_BATCH_ENTRIES, rev - repo.rev());
-
-        rc = m_journal.read(repo.rev() + 1, entries, len, buf.data(), buf.size(), &num_reads);
-
-        SPDLOG_TRACE("Read journal entries, range = [r{}, r{}], rc = {}", 
-            repo.rev() + 1, repo.rev() + num_reads, ldb_strerror(rc));
-
-        if (rc != LDB_OK && rc != LDB_ERR_NOT_FOUND)
-            throw nplex_exception("Error reading journal entries ({})", ldb_strerror(rc));
-
-        for (std::size_t i = 0; i < num_reads; i++)
-        {
-            auto verifier = flatbuffers::Verifier(as_uint8_ptr(entries[i].data), entries[i].data_len);
-
-            if (!verifier.VerifyBuffer<nplex::msgs::Update>(nullptr))
-                throw nplex_exception("Invalid update entry ({})", rev);
-
-            auto update = flatbuffers::GetRoot<nplex::msgs::Update>(entries[i].data);
-
-            repo.update(update, user);
-        }
-
-        if (num_reads < len)
-        {
-            // case: reached end of journal
-            if (entries[num_reads].seqnum == 0)
-                break;
-
-            // case: buffer too short
-            if (buf.size() < 128 + entries[num_reads].data_len)
-                buf.resize(128 + entries[num_reads].data_len, 0);
-        }
-    }
+    read_entries(repo.rev() + 1, func);
 
     if (repo.rev() != rev)
         throw nplex_exception("Failed to load repository at revision {}", rev);

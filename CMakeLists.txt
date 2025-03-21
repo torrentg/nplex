@@ -41,7 +41,7 @@ find_package(
 flatbuffers_generate_headers(
     TARGET flatbuffers_generated
     SCHEMAS ${PROJECT_SOURCE_DIR}/src/messages.fbs
-    FLAGS --cpp --filename-ext hpp --cpp-std c++17 --scoped-enums --gen-object-api
+    FLAGS --cpp --filename-ext hpp --cpp-std c++17 --scoped-enums
 )
 
 # Copy messages_generated.hpp to src/messages.hpp

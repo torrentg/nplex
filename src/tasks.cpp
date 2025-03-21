@@ -34,6 +34,10 @@ void nplex::repo_task_t::after()
 
 void nplex::sync_task_t::run()
 {
+    changes_builder_t builder(m_cid, m_session->m_user, m_max_msgs, m_max_bytes);
+
+    // builder.append_update(update);
+
     // rev_t rev = m_session->lrev;
 
     // m_storage. read(uint64_t seqnum, ldb_entry_t *entries, size_t len, size_t *num)
@@ -49,4 +53,12 @@ void nplex::sync_task_t::after()
     // auto buf = m_builder.finish(server->rev(), true);
     // m_session->send(std::move(buf));
     // m_session->do_step2();
+}
+
+bool nplex::sync_task_t::operator()(const nplex::msgs::Update *update)
+{
+    UNUSED(update);
+    //TODO: implement this method
+    changes_builder_t builder(m_cid, m_session->m_user, m_max_msgs, m_max_bytes);
+    return false;
 }

@@ -1,7 +1,7 @@
 // ========================================================
 // Nplex flatbuffers schema file.
 // @see https://github.com/google/flatbuffers
-// > flatc --cpp --filename-suffix "" --filename-ext hpp --cpp-std c++17 --scoped-enums --gen-object-api messages.fbs
+// > flatc --cpp --filename-suffix "" --filename-ext hpp --cpp-std c++17 --scoped-enums messages.fbs
 // ========================================================
 
 namespace nplex.msgs;
