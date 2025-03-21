@@ -109,7 +109,12 @@ static void install_signal_handler(int signal, void (*handle)(int))
 
 int main(int argc, char *argv[])
 {
-    params_t params;
+    fs::path datadir_arg;
+    addr_t addr_arg;
+    log_level_e log_level_arg = log_level_e::DEFAULT;
+    bool check_journal_arg = false;
+    bool disable_fsync_arg = false;
+    bool daemonize_arg = false;
 
     // short options
     const char* const options1 = "cdVhFD:l:a:";
@@ -145,12 +150,12 @@ int main(int argc, char *argv[])
                 return EXIT_SUCCESS;
 
             case 'D': // -D datadir (set data directory)
-                params.datadir = optarg;
+                datadir_arg = optarg;
                 break;
 
             case 'l': // -l loglevel (set log level)
                 try {
-                    params.log_level = parse_log_level(optarg);
+                    log_level_arg = parse_log_level(optarg);
                 }
                 catch (const std::invalid_argument &e) {
                     std::cerr << "Error: Invalid log level (" << optarg << ")." << std::endl;
@@ -160,7 +165,7 @@ int main(int argc, char *argv[])
 
             case 'a': // -a host:port (set address to listen on)
                 try {
-                    params.addr = addr_t{optarg};
+                    addr_arg = addr_t{optarg};
                 }
                 catch (const std::exception &e) {
                     std::cerr << "Error: " << e.what() << std::endl;
@@ -169,15 +174,15 @@ int main(int argc, char *argv[])
                 break;
 
             case 'c': // -c (check journal at startup)
-                params.check_journal = true;
+                check_journal_arg = true;
                 break;
 
             case 'd': // -d (run as daemon)
-                params.daemonize = true;
+                daemonize_arg = true;
                 break;
 
             case 'F': // -F (turn fsync off)
-                params.disable_fsync = true;
+                disable_fsync_arg = true;
                 break;
 
             default: // '?' (unexpected argument)
@@ -193,65 +198,74 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    if (params.datadir.empty()) {
+    if (datadir_arg.empty()) {
         std::cerr << "Error: Missing required argument -D <datadir>." << std::endl;
         return EXIT_FAILURE;
     }
 
-    if (!fs::exists(params.datadir))
+    if (!fs::exists(datadir_arg))
     {
         std::error_code ec;
-        fs::create_directories(params.datadir, ec);
+        fs::create_directories(datadir_arg, ec);
         if (ec) {
-            std::cerr << "Error: Unable to create directory " << params.datadir << " (" << ec.message() << ")" << std::endl;
+            std::cerr << "Error: Unable to create directory " << datadir_arg << " (" << ec.message() << ")" << std::endl;
             return EXIT_FAILURE;
         }
     }
 
-    if (!fs::is_directory(params.datadir)) {
-        std::cerr << "Error: Path " << params.datadir << " is not a directory." << std::endl;
+    if (!fs::is_directory(datadir_arg)) {
+        std::cerr << "Error: Path " << datadir_arg << " is not a directory." << std::endl;
         return EXIT_FAILURE;
     }
 
     try {
-        std::filesystem::current_path(params.datadir);
-        params.datadir = fs::current_path();
+        std::filesystem::current_path(datadir_arg);
     }
     catch (const std::exception &) {
-        std::cerr << "Error: Unable to change to directory " << params.datadir << std::endl;
+        std::cerr << "Error: Unable to change to directory " << datadir_arg << std::endl;
         return EXIT_FAILURE;
     }
 
-    fs::path config_file = CONFIG_FILENAME;
+    params_t params;
 
     try
     {
+        fs::path config_file = CONFIG_FILENAME;
+
         if (!fs::exists(config_file))
+        {
+            if (addr_arg.port())
+                params.addr = addr_arg;
+
+            if (log_level_arg != log_level_e::DEFAULT)
+                params.log_level = log_level_arg;
+
+            params.disable_fsync = disable_fsync_arg;
+
             params.save(config_file);
+        }
 
-        params_t aux(config_file);
+        params.load(config_file);
 
-        aux.datadir = params.datadir;
-        aux.check_journal = params.check_journal;
-        aux.addr = params.addr;
-        aux.log_level = (params.log_level != log_level_e::DEFAULT ? params.log_level : aux.log_level);
-        aux.disable_fsync = params.disable_fsync;
-        aux.daemonize = params.daemonize;
+        if (addr_arg.port())
+            params.addr = addr_arg;
 
-        params = aux;
+        if (log_level_arg != log_level_e::DEFAULT)
+            params.log_level = log_level_arg;
+
+        params.datadir = fs::absolute(datadir_arg);
+        params.check_journal = check_journal_arg;
+        params.disable_fsync = disable_fsync_arg;
     }
     catch(const std::exception &e) {
-        std::cerr << "Error accessing " << fs::absolute(config_file) << ": " << e.what() << std::endl;
+        std::cerr << "Error accessing " << datadir_arg / CONFIG_FILENAME << ": " << e.what() << std::endl;
         return EXIT_FAILURE;
     }
 
     try
     {
-        if (params.log_level == log_level_e::DEFAULT)
-            params.log_level = log_level_e::INFO;
-
         spdlog::set_default_logger(
-            params.daemonize ?
+            daemonize_arg ?
                 spdlog::basic_logger_mt(PROJECT_NAME, LOG_FILENAME):
                 spdlog::stdout_color_mt(PROJECT_NAME)
         );
@@ -270,7 +284,7 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    if (params.daemonize)
+    if (daemonize_arg)
     {
         if (daemon(1, 0) == -1) {
             std::cerr << "Error: Failed to daemonize the process." << std::endl;

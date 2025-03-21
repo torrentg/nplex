@@ -23,7 +23,6 @@ struct params_t
 {
     fs::path datadir;                                           // Database directory.
     bool check_journal = false;                                 // Check journal files at startup.
-    bool daemonize = false;                                     // Run as daemon.
 
     addr_t addr = DEFAULT_ADDR;                                 // IP address to listen on.
     log_level_e log_level = log_level_e::DEFAULT;               // Log level.
