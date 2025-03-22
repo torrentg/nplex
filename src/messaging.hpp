@@ -98,6 +98,7 @@ struct changes_builder_t
         std::string user{};
         std::uint64_t timestamp = 0;
         std::uint32_t type = 0;
+        bool reported = false;
     } m_last_meta;
 
     changes_builder_t() = default;

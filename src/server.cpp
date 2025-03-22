@@ -519,6 +519,8 @@ void nplex::server_t::process_load_request(session_t *session, const nplex::msgs
         return;
     }
 
+    session->m_load_cid = req->cid();
+
     switch (req->mode())
     {
         case msgs::LoadMode::SNAPSHOT_AT_FIXED_REV:

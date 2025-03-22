@@ -57,6 +57,7 @@ struct session_t
     void send_keepalive();
     void do_step1(const user_ptr &user);
     void do_step2();
+    void do_sync();
     void report_peer_activity();
     std::string strerror() const;
 };

@@ -253,7 +253,7 @@ int main(int argc, char *argv[])
         if (log_level_arg != log_level_e::DEFAULT)
             params.log_level = log_level_arg;
 
-        params.datadir = fs::absolute(datadir_arg);
+        params.datadir = std::filesystem::current_path();
         params.check_journal = check_journal_arg;
         params.disable_fsync = disable_fsync_arg;
     }

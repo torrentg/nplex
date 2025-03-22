@@ -417,6 +417,11 @@ void nplex::session_t::do_step2()
     }
 }
 
+void nplex::session_t::do_sync()
+{
+    //TODO: implement this method
+}
+
 void nplex::session_t::report_peer_activity()
 {
     auto handle = get_handle(m_timer_disconnect);

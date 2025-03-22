@@ -1,3 +1,4 @@
+#include <spdlog/spdlog.h>
 #include "cppcrc.h"
 #include "utils.hpp"
 #include "exception.hpp"
@@ -304,10 +305,13 @@ bool nplex::changes_builder_t::append_updates(const std::span<update_t> &updates
         m_last_meta.user = update.meta->user;
         m_last_meta.timestamp = static_cast<std::uint64_t>(update.meta->timestamp.count());
         m_last_meta.type = update.meta->type;
+        m_last_meta.reported = false;
         m_num_revs++;
 
-        if (!off.IsNull())
+        if (!off.IsNull()) {
             m_updates.push_back(off);
+            m_last_meta.reported = true;
+        }
     }
 
     return (m_num_revs < m_max_revs && m_builder.GetSize() < m_max_bytes);
@@ -367,6 +371,7 @@ bool nplex::changes_builder_t::append_update(const Update *update)
     m_last_meta.user = update->user()->c_str();
     m_last_meta.timestamp = update->timestamp();
     m_last_meta.type = update->type();
+    m_last_meta.reported = false;
     m_num_revs++;
 
     if (!upserts.empty() || !deletes.empty())
@@ -382,6 +387,7 @@ bool nplex::changes_builder_t::append_update(const Update *update)
         );
 
         m_updates.push_back(off);
+        m_last_meta.reported = true;
     }
 
     return (m_num_revs < m_max_revs && m_builder.GetSize() < m_max_bytes);
@@ -389,7 +395,7 @@ bool nplex::changes_builder_t::append_update(const Update *update)
 
 flatbuffers::DetachedBuffer nplex::changes_builder_t::finish(rev_t crev, bool ending_meta)
 {
-    if (ending_meta && m_last_meta.rev != 0)
+    if (ending_meta && m_last_meta.rev != 0 && !m_last_meta.reported)
     {
         auto off = CreateUpdate(
             m_builder,
