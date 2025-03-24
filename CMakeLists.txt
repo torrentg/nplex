@@ -121,9 +121,11 @@ target_sources(
     ${CMAKE_CURRENT_LIST_DIR}/deps/journal.c
     ${CMAKE_CURRENT_LIST_DIR}/src/addr.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/common.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/context.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/messages.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/messaging.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/repository.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/connection.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/session.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/storage.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/params.cpp

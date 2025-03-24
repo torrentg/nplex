@@ -5,437 +5,91 @@
 #include "messaging.hpp"
 #include "server.hpp"
 #include "utils.hpp"
+#include "user.hpp"
+#include "context.hpp"
 #include "session.hpp"
 
-// maximum time (in millis) between connection established and the login message received
-#define TIMEOUT_STEP_1 5000
-// maximum time (in millis) between login and load messages reception
-#define TIMEOUT_STEP_2 5000
 // maximum message size (in bytes) for a non logged user
 #define MAX_MSG_BYTES_FROM_NO_USER 1024
+// maximum time (in millis) between login and load messages reception
+#define TIMEOUT_NO_USER 5000
 
 // ==========================================================
-// Internal (static) functions
+// session_t methods
 // ==========================================================
 
-template <typename T>
-static uv_handle_t * get_handle(T *obj) {
-    return reinterpret_cast<uv_handle_t *>(obj);
-}
-
-template <typename T>
-static uv_stream_t * get_stream(T *obj) {
-    return reinterpret_cast<uv_stream_t *>(obj);
-}
-
-static int get_peeraddr(const uv_tcp_t *con, char *str, size_t len)
-{
-    int rc = 0;
-    sockaddr_storage sa;
-    int sa_len = sizeof(sa);
-    sockaddr_in *addr_in = reinterpret_cast<sockaddr_in *>(&sa);
-    uint16_t port = 0;
-    char ip[128] = {0};
-
-    if ((rc = uv_tcp_getpeername(con, reinterpret_cast<sockaddr *>(&sa), &sa_len)) != 0)
-        return rc;
-
-    if ((rc = uv_ip_name(reinterpret_cast<sockaddr *>(&sa), ip, sizeof(ip))) != 0)
-        return rc;
-
-    port = ntohs(addr_in->sin_port);
-
-    if (addr_in->sin_family == AF_INET6)
-        snprintf(str, len, "[%s]:%hu", ip, port);
-    else
-        snprintf(str, len, "%s:%hu", ip, port);
-
-    return 0;
-}
-
-static void cb_tcp_alloc(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf)
-{
-    UNUSED(suggested_size);
-
-    auto *obj = reinterpret_cast<nplex::session_t *>(handle);
-
-    buf->base = obj->input_buffer;
-    buf->len = sizeof(obj->input_buffer);
-}
-
-static bool is_valid_msg_length(const nplex::user_ptr &user, size_t len)
-{
-    if (!user)
-        return (len <= MAX_MSG_BYTES_FROM_NO_USER);
-    else
-        return (user->max_msg_bytes == 0 || len <= user->max_msg_bytes);
-}
-
-static void cb_tcp_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
-{
-    using namespace nplex;
-
-    auto *obj = reinterpret_cast<nplex::session_t *>(stream);
-    auto *server = reinterpret_cast<nplex::server_t *>(stream->loop->data);
-
-    if (nread == UV_EOF || buf->base == NULL) {
-        obj->disconnect(ERR_CLOSED_BY_PEER);
-        return;
-    }
-
-    if (nread < 0) {
-        obj->disconnect((int) nread);
-        return;
-    }
-
-    obj->report_peer_activity();
-
-    obj->input_msg.append(buf->base, static_cast<std::size_t>(nread));
-
-    while (obj->input_msg.size() >= sizeof(output_msg_t::len))
-    {
-        const char *ptr = obj->input_msg.c_str();
-        std::uint32_t len = ntohl_ptr(ptr);
-
-        if (!is_valid_msg_length(obj->m_user, len)) {
-            obj->disconnect(ERR_MSG_SIZE);
-            return;
-        }
-
-        if (obj->input_msg.size() < len)
-            break;
-
-        obj->stats.recv_msgs++;
-        obj->stats.recv_bytes += len;
-
-        auto msg = parse_network_msg(ptr, len);
-
-        if (!msg) {
-            obj->disconnect(ERR_MSG_ERROR);
-            return;
-        }
-
-        server->on_msg_received(obj, msg);
-
-        obj->input_msg.erase(0, len);
-    }
-}
-
-static void cb_tcp_write(uv_write_t *req, int status)
-{
-    using namespace nplex;
-
-    auto msg = std::unique_ptr<output_msg_t>(reinterpret_cast<output_msg_t *>(req));
-    auto *obj = reinterpret_cast<session_t *>(req->handle);
-
-    assert(obj->stats.queue_msgs > 0);
-    assert(obj->stats.queue_bytes >= msg->length());
-
-    obj->stats.queue_msgs--;
-    obj->stats.queue_bytes -= msg->length();
-    obj->stats.sent_msgs++;
-    obj->stats.sent_bytes += msg->length();
-
-    if (status < 0) {
-        obj->disconnect(status);
-        return;
-    }
-
-    obj->report_peer_activity();
-
-    auto *ptr = flatbuffers::GetRoot<nplex::msgs::Message>(msg->content.data());
-    assert(ptr);
-
-    // TODO: check if syncing + required to submit a new sync_task
-}
-
-static void cb_timer_disconnect(uv_timer_t *timer)
-{
-    assert(timer->data);
-    auto *session = static_cast<nplex::session_t *>(timer->data);
-
-    switch (session->m_state)
-    {
-        case nplex::session_t::state_e::CLOSED:
-            uv_timer_stop(timer);
-            assert(false);
-            break;
-        case nplex::session_t::state_e::CONNECTED:
-            session->disconnect(ERR_TIMEOUT_STEP_1);
-            break;
-        case nplex::session_t::state_e::LOGGED:
-            session->disconnect(ERR_TIMEOUT_STEP_2);
-            break;
-        default:
-            session->disconnect(ERR_CONNECTION_LOST);
-            break;
-    }
-}
-
-static void cb_timer_keepalive(uv_timer_t *timer)
-{
-    assert(timer->data);
-    auto *session = static_cast<nplex::session_t *>(timer->data);
-
-    switch (session->m_state)
-    {
-        case nplex::session_t::state_e::LOGGED:
-        case nplex::session_t::state_e::SYNCING:
-        case nplex::session_t::state_e::SYNCED:
-            session->send_keepalive();
-            uv_timer_again(timer);
-            break;
-        default:
-            uv_timer_stop(timer);
-            assert(false);
-            break;
-    }
-}
-
-static void cb_close_timer(uv_handle_t *handle)
-{
-    SPDLOG_TRACE("Closing timer");
-    delete reinterpret_cast<uv_timer_t *>(handle);
-}
-
-static void cb_close_session(uv_handle_t *handle)
-{
-    SPDLOG_TRACE("Closing session");
-
-    using namespace nplex;
-
-    assert(handle->data);
-    auto *session = static_cast<session_t *>(handle->data);
-
-    assert(handle->loop->data);
-    auto *server = static_cast<server_t *>(handle->loop->data);
-
-    // There is no guarantee on timer destruction order
-    // In fact, they are destroyed after the session removal
-
-    session->m_state = session_t::state_e::CLOSED;
-    session->m_timer_disconnect = nullptr;
-    session->m_timer_keepalive = nullptr;
-
-    server->release_session(session);
-}
-
-// ==========================================================
-// server_t methods
-// ==========================================================
-
-nplex::session_t::session_t(uv_stream_t *stream) : m_state{state_e::CLOSED}
+nplex::session_t::session_t(const context_ptr &context, uv_stream_t *stream) : 
+    m_context{context}, 
+    m_con{this, stream}
 {
     assert(stream);
     assert(stream->loop);
     assert(stream->loop->data);
 
-    // We cannot throw an exception in this constructor because we need 
-    // to close properly (in the event loop) the uv_tcp_t object.
-
-    char addr_str[256] = {0};
-    int rc = 0;
-
-    if ((rc = uv_tcp_init(stream->loop, &m_tcp)) != 0)
-        goto CTOR_ERR;
-
-    if ((rc = uv_accept(stream, get_stream(&m_tcp))) != 0)
-        goto CTOR_ERR;
-
-    if ((rc = uv_read_start(get_stream(&m_tcp), ::cb_tcp_alloc, ::cb_tcp_read)) != 0)
-        goto CTOR_ERR;
-
-    if ((rc = get_peeraddr(&m_tcp, addr_str, sizeof(addr_str))) != 0)
-        goto CTOR_ERR;
-
-    try {
-        m_timer_disconnect = new uv_timer_t{};
-    }
-    catch (const std::bad_alloc &) {
-        rc = ENOMEM;
-        goto CTOR_ERR;
-    }
-
-    if ((rc = uv_timer_init(stream->loop, m_timer_disconnect)) != 0) {
-        delete m_timer_disconnect;
-        m_timer_disconnect = nullptr;
-        goto CTOR_ERR;
-    }
-
-    m_timer_disconnect->data = this;
-
-    if ((rc = uv_timer_start(m_timer_disconnect, ::cb_timer_disconnect, TIMEOUT_STEP_1, 0)) != 0) {
-        uv_close(get_handle(m_timer_disconnect), ::cb_close_timer);
-        m_timer_disconnect = nullptr;
-        goto CTOR_ERR;
-    }
-
-    m_tcp.data = this;
-    m_addr = addr_t(addr_str);
-    m_id = m_addr.str();
-    m_state = session_t::state_e::CONNECTED;
-    return;
-
-CTOR_ERR:
-    m_error = rc;
-    m_tcp.data = this;
-    uv_close(get_handle(this), ::cb_close_session);
-}
-
-nplex::session_t::~session_t()
-{
-    assert(m_state == state_e::CLOSED);
-    assert(m_timer_keepalive == nullptr);
-    assert(m_timer_disconnect == nullptr);
-}
-
-void nplex::session_t::disconnect(int rc)
-{
-    if (m_state == state_e::CLOSED)
-        return;
-
-    if (!m_error)
-        m_error = rc;
-
-    if (uv_is_closing(get_handle(&m_tcp)))
-        return;
-
-    if (m_timer_disconnect && !uv_is_closing(get_handle(m_timer_disconnect))) {
-        uv_timer_stop(m_timer_disconnect);
-        uv_close(get_handle(m_timer_disconnect), ::cb_close_timer);
-        m_timer_disconnect = nullptr;
-    }
-
-    if (m_timer_keepalive && !uv_is_closing(get_handle(m_timer_keepalive))) {
-        uv_timer_stop(m_timer_keepalive);
-        uv_close(get_handle(m_timer_keepalive), ::cb_close_timer);
-        m_timer_keepalive = nullptr;
-    }
-
-    uv_close(get_handle(&m_tcp), ::cb_close_session);
+    m_con.config(MAX_MSG_BYTES_FROM_NO_USER, 0, 0);
+    m_con.set_connection_lost(TIMEOUT_NO_USER);
+    m_id = m_con.addr().str();
 }
 
 void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
 {
-    int rc = 0;
-    auto len = output_msg_t::length(buf);
+    auto msg = flatbuffers::GetRoot<nplex::msgs::Message>(buf.data());
 
-    if (m_user && m_state == state_e::SYNCED)
-    {
-        if (m_user->max_queue_length && stats.queue_msgs > m_user->max_queue_length)
-            disconnect(ERR_QUEUE_LENGTH);
-
-        if (m_user->max_queue_bytes && stats.queue_bytes + len > m_user->max_queue_bytes)
-            disconnect(ERR_QUEUE_BYTES);
-    }
-
-    auto *msg = new output_msg_t(std::move(buf));
-
-    assert(len == msg->length());
-
-    if ((rc = uv_write(&msg->req, get_stream(&m_tcp), msg->buf.data(), static_cast<unsigned int>(msg->buf.size()), ::cb_tcp_write)) != 0) {
-        delete msg;
-        disconnect(rc);
-        return;
-    }
-
-    stats.queue_msgs++;
-    stats.queue_bytes += static_cast<std::uint32_t>(len);
-
-    auto aux = flatbuffers::GetRoot<nplex::msgs::Message>(msg->content.data());
-
-    if (aux->content_type() == msgs::MsgContent::KEEPALIVE_PUSH)
-        SPDLOG_TRACE("Sent {} to {}", msgs::EnumNameMsgContent(aux->content_type()), m_id);
+    if (msg->content_type() == msgs::MsgContent::KEEPALIVE_PUSH)
+        SPDLOG_TRACE("Sent {} to {}", msgs::EnumNameMsgContent(msg->content_type()), m_id);
     else
-        SPDLOG_DEBUG("Sent {} to {}", msgs::EnumNameMsgContent(aux->content_type()), m_id);
+        SPDLOG_DEBUG("Sent {} to {}", msgs::EnumNameMsgContent(msg->content_type()), m_id);
 
-    if (m_timer_keepalive && uv_is_active(get_handle(m_timer_keepalive)))
-        uv_timer_again(m_timer_keepalive);
+    m_con.send(std::move(buf));
 }
 
-void nplex::session_t::send_keepalive()
+void nplex::session_t::set_user(const user_ptr &user)
 {
-    if (stats.queue_msgs)
-        return;
-
-    assert(m_tcp.loop->data);
-    const auto *server = reinterpret_cast<nplex::server_t *>(m_tcp.loop->data);
-    rev_t crev = server->rev();
-
-    send(create_keepalive_msg(crev));
-}
-
-void nplex::session_t::do_step1(const user_ptr &user)
-{
-    int rc = 0;
+    assert(user);
 
     m_user = user;
-    m_state = session_t::state_e::LOGGED;
-    m_id = fmt::format("{}@{}", user->name, m_addr.str());
-
-    assert(m_timer_disconnect);
-    uv_timer_stop(m_timer_disconnect);
-    uv_timer_start(m_timer_disconnect, ::cb_timer_disconnect, TIMEOUT_STEP_2, 0);
-
-    auto keepalive_millis = user->keepalive_millis;
-    if (keepalive_millis == 0)
-        return;
-
-    assert(!m_timer_keepalive);
-
-    m_timer_keepalive = new uv_timer_t{};
-
-    if ((rc = uv_timer_init(m_tcp.loop, m_timer_keepalive)) != 0) {
-        delete m_timer_keepalive;
-        m_timer_keepalive = nullptr;
-        disconnect(rc);
-        return;
-    }
-
-    m_timer_keepalive->data = this;
-
-    if ((rc = uv_timer_start(m_timer_keepalive, ::cb_timer_keepalive, keepalive_millis, keepalive_millis)) != 0)
-        disconnect(rc);
-}
-
-void nplex::session_t::do_step2()
-{
-    m_state = session_t::state_e::SYNCING;
-
-    assert(m_timer_disconnect);
-    uv_timer_stop(m_timer_disconnect);
-
-    uint64_t keepalive_millis = m_user->keepalive_millis;
-    if (keepalive_millis == 0) {
-        uv_close(get_handle(m_timer_disconnect), ::cb_close_timer);
-        m_timer_disconnect = nullptr;
-    }
-    else {
-        assert(m_user->timeout_factor > 1.0);
-        uint64_t millis = static_cast<uint64_t>(static_cast<double>(keepalive_millis) * m_user->timeout_factor);
-        uv_timer_start(m_timer_disconnect, ::cb_timer_disconnect, millis, millis);
-    }
+    m_id = fmt::format("{}@{}", user->name, m_con.addr().str());
+    m_con.set_keepalive(user->keepalive_millis);
+    m_con.state(conn_state_e::LOGGED);
 }
 
 void nplex::session_t::do_sync()
 {
-    //TODO: implement this method
+    switch (m_con.state())
+    {
+        case conn_state_e::LOGGED: {
+            auto keepalive_millis = static_cast<double>(m_user->keepalive_millis);
+            auto millis = static_cast<std::uint32_t>(keepalive_millis * m_user->timeout_factor);
+            m_con.set_connection_lost(millis);
+            break;
+        }
+        case conn_state_e::SYNCING:
+            break;
+
+        case conn_state_e::SYNCED: {
+            auto rev = m_context->repo.rev();
+            if (m_lrev == rev)
+                return;
+            if (m_lrev < rev)
+                break;
+            [[fallthrough]];
+        }
+        default:
+            assert(false);
+            return;
+    }
+
+    m_con.state(conn_state_e::SYNCING);
 }
 
-void nplex::session_t::report_peer_activity()
+const char * nplex::session_t::strerror() const
 {
-    auto handle = get_handle(m_timer_disconnect);
+    auto error = m_con.error();
 
-    if (handle && uv_is_active(handle) && !uv_is_closing(handle) && uv_timer_get_repeat(m_timer_disconnect))
-        uv_timer_again(m_timer_disconnect);
-}
+    if (error < 0)
+        return uv_strerror(error);
 
-std::string nplex::session_t::strerror() const
-{
-    if (m_error < 0)
-        return uv_strerror(m_error);
-
-    switch (m_error)
+    switch (error)
     {
         case ERR_CLOSED_BY_LOCAL: return "closed by server";
         case ERR_CLOSED_BY_PEER: return "closed by peer";
@@ -452,6 +106,6 @@ std::string nplex::session_t::strerror() const
         case ERR_CONNECTION_LOST: return "connection lost";
         case ERR_QUEUE_LENGTH: return "max queue length exceeded";
         case ERR_QUEUE_BYTES: return "max queue bytes exceeded";
-        default: return fmt::format("unknow error -{}-", m_error);
+        default: return "unknow error";
     }
 }

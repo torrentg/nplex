@@ -2,64 +2,54 @@
 
 #include <uv.h>
 #include <flatbuffers/flatbuffers.h>
-#include "addr.hpp"
-#include "user.hpp"
-#include "params.hpp"
+#include "connection.hpp"
 
 namespace nplex {
+
+// Forward declarations
+struct user_t;
+struct context_t;
+using user_ptr = std::shared_ptr<user_t>;
+using context_ptr = std::shared_ptr<context_t>;
 
 /**
  * Class representing a client session.
  * 
  * server_t is accessed via tcp.loop->data.
  */
-struct session_t
+class session_t
 {
-    enum class state_e : std::uint8_t {
-        CONNECTED,
-        LOGGED,
-        SYNCING,
-        SYNCED,
-        CLOSED
-    };
+  public:
 
-    uv_tcp_t m_tcp = {};
-    uv_timer_t *m_timer_disconnect = nullptr;
-    uv_timer_t *m_timer_keepalive = nullptr;
-    addr_t m_addr;                              // peer address
-    state_e m_state = state_e::CLOSED;          // session state
-    int m_error = 0;                            // disconnection cause
-    user_ptr m_user;                            // session user
-    std::string m_id;                           // session identifier (user@addr)
-    rev_t m_lrev = 0;                           // last revision (maybe unacked, maybe not sent because no data)
-    std::size_t m_load_cid = 0;                 // load correlation id
-    bool m_ongoing_sync_task = false;           // true if a sync task is running
-
-    char input_buffer[UINT16_MAX] = {0};        // input buffer used by read()
-    std::string input_msg;                      // current incoming message
-
-    struct {
-        std::uint32_t queue_msgs = 0;           // number of messages in output queue
-        std::uint32_t queue_bytes = 0;          // number of bytes in output queue
-        std::size_t recv_msgs = 0;              // number of received messages
-        std::size_t recv_bytes = 0;             // number of received bytes
-        std::size_t sent_msgs = 0;              // number of sent messages (acknowledged)
-        std::size_t sent_bytes = 0;             // number of sent bytes (acknowledged)
-    } stats;
-
-    explicit session_t(uv_stream_t *stream);
-    ~session_t();
+    // constructor and destructor
+    session_t(const context_ptr &context, uv_stream_t *stream);
+    ~session_t() = default;
     session_t(const session_t&) = delete;
     session_t& operator=(const session_t&) = delete;
 
-    void disconnect(int rc = 0);
+    // const methods
+    conn_state_e state() const { return m_con.state(); }
+    const std::string & id() const { return m_id; }
+    user_ptr user() const { return m_user; }
+    const char * strerror() const;
+
+    // rest of methods
+    void disconnect(int rc = 0) { m_con.disconnect(rc); }
     void send(flatbuffers::DetachedBuffer &&buf);
-    void send_keepalive();
-    void do_step1(const user_ptr &user);
-    void do_step2();
+    void set_user(const user_ptr &user);
     void do_sync();
-    void report_peer_activity();
-    std::string strerror() const;
+
+    // TODO: move to private
+    std::size_t m_load_cid = 0;                 // load correlation id
+
+  private:
+
+    user_ptr m_user;                            // session user
+    context_ptr m_context;                      // server context
+    connection_t m_con;                         // connection object
+    std::string m_id;                           // session identifier (user@addr)
+    rev_t m_lrev = 0;                           // last revision (maybe unacked, maybe not sent because no data)
+    bool m_ongoing_sync_task = false;           // true if a sync task is running
 };
 
 using session_ptr = std::shared_ptr<session_t>;

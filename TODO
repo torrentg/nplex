@@ -7,8 +7,9 @@
 * Add database-max-bytes param
 * Add buffer gto::cqueue<update_t>
 * Writer cmd_t only contains update_t (buffer created at write time)
+* Create 2 uv_async (stop + journal_write_completed) ?
 
 ## Useful commands
 
 * cloc --exclude-content="automatically generated" include src test
-* cppcheck --enable=all --inconclusive --std=c++20 --force --suppress=missingIncludeSystem --suppress=unusedFunction --suppress=noExplicitConstructor  --suppress=normalCheckLevelMaxBranches -Ideps -Isrc -Iinclude src &> removeme.txt
+* cppcheck --enable=all --inconclusive --std=c++20 --force --suppress=missingIncludeSystem --suppress=unusedFunction --suppress=noExplicitConstructor --suppress=normalCheckLevelMaxBranches -Ideps -Isrc src &> removeme.txt

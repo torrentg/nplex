@@ -14,7 +14,7 @@
 void nplex::repo_task_t::run()
 {
     load_builder_t builder(m_cid);
-    auto m_repo = m_storage->get_repo(m_rev, m_session->m_user);
+    auto m_repo = m_storage->get_repo(m_rev, m_session->user());
     SPDLOG_TRACE("repo_task completed: r{}", m_repo.rev());
     builder.set_snapshot(m_repo);
     m_buf = builder.finish(0, true);
@@ -22,10 +22,10 @@ void nplex::repo_task_t::run()
 
 void nplex::repo_task_t::after()
 {
-    const auto *server = get_server();
+    const auto server = get_server();
     update_crev(m_buf, server->rev());
     m_session->send(std::move(m_buf));
-    m_session->do_step2();
+    m_session->do_sync();
 }
 
 // ==========================================================
@@ -41,7 +41,7 @@ void nplex::sync_task_t::run()
 
 void nplex::sync_task_t::after()
 {
-    const auto *server = get_server();
+    const auto server = get_server();
 
     for (auto &buf : m_buffers) {
         update_crev(buf, server->rev());
@@ -53,7 +53,7 @@ void nplex::sync_task_t::after()
 
 void nplex::sync_task_t::config_builder(std::size_t cid, std::uint32_t changes_max_revs, std::uint32_t changes_max_bytes)
 {
-    m_builder = changes_builder_t(cid, m_session->m_user, changes_max_revs, changes_max_bytes);
+    m_builder = changes_builder_t(cid, m_session->user(), changes_max_revs, changes_max_bytes);
 }
 
 bool nplex::sync_task_t::append_update(const nplex::msgs::Update *update)

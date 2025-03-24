@@ -411,7 +411,7 @@ nplex::repo_t nplex::storage_t::get_repo(rev_t rev, const user_ptr &user)
     std::string str = read_snapshot(rev);
     if (!str.empty())
     {
-        auto *snapshot = flatbuffers::GetRoot<nplex::msgs::Snapshot>(str.c_str());
+        auto snapshot = flatbuffers::GetRoot<nplex::msgs::Snapshot>(str.c_str());
         repo.load(snapshot, user);
         str = std::string{};
     }

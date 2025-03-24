@@ -3,8 +3,6 @@
 #include <cassert>
 #include <stdexcept>
 #include <filesystem>
-#include <fmt/core.h>
-#include <fmt/ranges.h>
 #include <sys/socket.h>
 #include <spdlog/spdlog.h>
 #include "messaging.hpp"
@@ -137,7 +135,7 @@ static void cb_close_handle(uv_handle_t *handle, void *arg)
 static void cb_task_run(uv_work_t *req)
 {
     assert(req->data);
-    auto *task = static_cast<nplex::task_t *>(req->data);
+    auto task = static_cast<nplex::task_t *>(req->data);
 
     try {
         task->run();
@@ -151,10 +149,10 @@ static void cb_task_run(uv_work_t *req)
 static void cb_task_after(uv_work_t *req, int status)
 {
     assert(req->data);
-    auto *task = static_cast<nplex::task_t *>(req->data);
+    auto task = static_cast<nplex::task_t *>(req->data);
 
     assert(req->loop->data);
-    auto *server = static_cast<nplex::server_t *>(req->loop->data);
+    auto server = static_cast<nplex::server_t *>(req->loop->data);
 
     uint64_t duration_us = (uv_hrtime() - task->start_time) / 1000;
 
@@ -198,38 +196,10 @@ static void cb_tcp_connection(uv_stream_t *stream, int status)
         return;
     }
 
-    auto *server = static_cast<nplex::server_t *>(stream->loop->data);
+    auto server = static_cast<nplex::server_t *>(stream->loop->data);
     assert(server);
 
     server->append_session(stream);
-}
-
-static bool is_valid_user(const nplex::user_t &user)
-{
-    if (!user.active)
-        return false;
-
-    if (user.password.empty()) {
-        SPDLOG_WARN("User {} discarded (no password)", user.name);
-        return false;
-    }
-
-    if (user.timeout_factor <= 1.0) {
-        SPDLOG_WARN("User {} discarded (invalid timeout factor)", user.name);
-        return false;
-    }
-
-    int sum = 0;
-
-    for (const auto &perm : user.permissions)
-        sum += perm.mode;
-
-    if (sum == 0) {
-        SPDLOG_WARN("User {} discarded (no acls)", user.name);
-        return false;
-    }
-
-    return true;
 }
 
 // ==========================================================
@@ -239,44 +209,15 @@ static bool is_valid_user(const nplex::user_t &user)
 void nplex::server_t::init(const params_t &params)
 {
     SPDLOG_INFO("Initializing Nplex server ...");
-    init_users(params);
-    init_data(params);
+
     init_event_loop(params);
+    init_context(params);
+    init_async(params);
     init_network(params);
 }
 
-void nplex::server_t::init_users(const params_t &params)
+void nplex::server_t::init_event_loop(const params_t &)
 {
-    std::vector<std::string> valid_users;
-
-    for (const auto &user : params.users)
-    {
-        if (!is_valid_user(user))
-            continue;
-
-        m_users[user.name] = std::make_shared<user_t>(user);
-        valid_users.push_back(user.name);
-    }
-
-    if (m_users.empty())
-        throw nplex_exception("No valid users found");
-
-    SPDLOG_INFO("Users: [{}]", fmt::join(valid_users, ", "));
-}
-
-void nplex::server_t::init_data(const params_t &params)
-{
-    m_storage = std::make_shared<storage_t>(params);
-
-    auto [min_rev, max_rev] = m_storage->get_range();
-
-    m_repo = m_storage->get_repo(max_rev);
-}
-
-void nplex::server_t::init_event_loop(const params_t &params)
-{
-    UNUSED(params);
-
     int rc = 0;
 
     m_loop = std::make_unique<uv_loop_t>();
@@ -285,6 +226,16 @@ void nplex::server_t::init_event_loop(const params_t &params)
         throw nplex_exception(uv_strerror(rc));
 
     m_loop->data = this;
+}
+
+void nplex::server_t::init_context(const params_t &params)
+{
+    m_context = std::make_shared<context_t>(m_loop.get(), params);
+}
+
+void nplex::server_t::init_async(const params_t &)
+{
+    int rc = 0;
 
     m_async = std::make_unique<uv_async_t>();
 
@@ -303,7 +254,7 @@ void nplex::server_t::init_event_loop(const params_t &params)
     uv_timer_t *timer = (uv_timer_t *) malloc(sizeof(uv_timer_t));
     uv_timer_init(m_loop.get(), timer);
     uv_timer_start(timer, [](uv_timer_t *x) {
-        auto *server = (nplex::server_t *) x->loop->data;
+        auto server = (nplex::server_t *) x->loop->data;
         server->simule_submit();
     }, 4000, 4000);
 }
@@ -342,15 +293,15 @@ void nplex::server_t::run()
 
     m_running = false;
 
-    // stoping the thread writing to journal
-    m_storage->close();
+    // stoping the journal writing thread
+    m_context->storage->close();
 
     // closing all sessions
-    for (auto &session : m_sessions)
+    for (auto &session : m_context->sessions)
         session->disconnect(ERR_CLOSED_BY_LOCAL);
 
-    // awaiting until all tasks terminated and no sessions
-    while (m_num_running_tasks != 0 || !m_sessions.empty())
+    // awaiting until all tasks terminated and all sessions closed
+    while (m_num_running_tasks != 0 || !m_context->sessions.empty())
         uv_run(m_loop.get(), UV_RUN_DEFAULT);
 
     // closing remaining objects
@@ -374,15 +325,15 @@ void nplex::server_t::append_session(uv_stream_t *stream)
     if (!m_running)
         return;
 
-    if (m_max_connections && m_sessions.size() >= m_max_connections) {
+    if (m_max_connections && m_context->sessions.size() >= m_max_connections) {
         SPDLOG_WARN("Incomming connection rejected (max {} clients reached)", m_max_connections);
         return;
     }
 
-    auto session = std::make_shared<session_t>(stream);
-    SPDLOG_DEBUG("New connection: {}", session->m_id);
+    auto session = std::make_shared<session_t>(m_context, stream);
+    SPDLOG_DEBUG("New connection: {}", session->id());
 
-    m_sessions.insert(session);
+    m_context->sessions.insert(session);
 }
 
 void nplex::server_t::release_session(session_t *session)
@@ -390,22 +341,22 @@ void nplex::server_t::release_session(session_t *session)
     if (!session)
         return;
 
-    auto it = m_sessions.find(session);
+    auto it = m_context->sessions.find(session);
 
-    if (it == m_sessions.end())
+    if (it == m_context->sessions.end())
         return;
 
-    if (session->m_user)
-        SPDLOG_INFO("Session closed: {} ({})", session->m_id, session->strerror());
+    if (session->user())
+        SPDLOG_INFO("Session closed: {} ({})", session->id(), session->strerror());
     else
-        SPDLOG_DEBUG("Connection closed: {} ({})", session->m_id, session->strerror());
+        SPDLOG_DEBUG("Connection closed: {} ({})", session->id(), session->strerror());
 
-    if (session->m_user && session->m_user->num_connections > 0)
-        session->m_user->num_connections--;
+    if (session->user() && session->user()->num_connections > 0)
+        session->user()->num_connections--;
 
-    m_sessions.erase(it);
+    m_context->sessions.erase(it);
 
-    if (!m_running && m_sessions.empty())
+    if (!m_running && m_context->sessions.empty())
         uv_stop(m_loop.get());
 }
 
@@ -416,7 +367,7 @@ void nplex::server_t::on_msg_received(session_t *session, const msgs::Message *m
         return;
     }
 
-    SPDLOG_DEBUG("Received {} from {}", msgs::EnumNameMsgContent(msg->content_type()), session->m_id);
+    SPDLOG_DEBUG("Received {} from {}", msgs::EnumNameMsgContent(msg->content_type()), session->id());
 
     switch (msg->content_type())
     {
@@ -443,7 +394,7 @@ void nplex::server_t::on_msg_received(session_t *session, const msgs::Message *m
 
 void nplex::server_t::process_login_request(session_t *session, const nplex::msgs::LoginRequest *req)
 {
-    if (session->m_state != session_t::state_e::CONNECTED) {
+    if (session->state() != conn_state_e::CONNECTED) {
         session->disconnect(ERR_MSG_UNEXPECTED);
         return;
     }
@@ -463,8 +414,8 @@ void nplex::server_t::process_login_request(session_t *session, const nplex::msg
         return;
     }
 
-    auto it = m_users.find(req->user()->str());
-    if (it == m_users.end()) {
+    auto it = m_context->users.find(req->user()->str());
+    if (it == m_context->users.end()) {
         session->send(
             create_login_msg(
                 req->cid(), 
@@ -496,17 +447,17 @@ void nplex::server_t::process_login_request(session_t *session, const nplex::msg
         return;
     }
 
-    session->do_step1(user);
+    session->set_user(user);
     user->num_connections++;
 
-    SPDLOG_INFO("New session: {}", session->m_id);
+    SPDLOG_INFO("New session: {}", session->id());
 
     session->send(
         create_login_msg(
             req->cid(), 
             msgs::LoginCode::AUTHORIZED,
-            0, //rev0,
-            m_repo.rev(),
+            0, // TODO: set rev0 from storage,
+            m_context->repo.rev(),
             *user
         ) 
     );
@@ -514,7 +465,7 @@ void nplex::server_t::process_login_request(session_t *session, const nplex::msg
 
 void nplex::server_t::process_load_request(session_t *session, const nplex::msgs::LoadRequest *req)
 {
-    if (session->m_state != session_t::state_e::LOGGED) {
+    if (session->state() != conn_state_e::LOGGED) {
         session->disconnect(ERR_MSG_UNEXPECTED);
         return;
     }
@@ -524,7 +475,7 @@ void nplex::server_t::process_load_request(session_t *session, const nplex::msgs
     switch (req->mode())
     {
         case msgs::LoadMode::SNAPSHOT_AT_FIXED_REV:
-            if (req->rev() == m_repo.rev())
+            if (req->rev() == m_context->repo.rev())
                 send_last_snapshot(session, req->cid());
             else
                 send_fixed_snapshot(session, req->rev(), req->cid());
@@ -545,21 +496,21 @@ void nplex::server_t::process_load_request(session_t *session, const nplex::msgs
 
 void nplex::server_t::process_submit_request(session_t *session, const nplex::msgs::SubmitRequest *req)
 {
-    if (session->m_state == session_t::state_e::CONNECTED) {
+    if (session->state() == conn_state_e::CONNECTED) {
         session->disconnect(ERR_MSG_UNEXPECTED);
         return;
     }
 
     update_t update;
 
-    auto rc = m_repo.try_commit(*session->m_user, req, update);
+    auto rc = m_context->repo.try_commit(*session->user(), req, update);
 
     session->send(
         create_submit_msg(
             req->cid(), 
-            m_repo.rev(),
+            m_context->repo.rev(),
             rc,
-            (rc == msgs::SubmitCode::ACCEPTED ? m_repo.rev() : 0)
+            (rc == msgs::SubmitCode::ACCEPTED ? m_context->repo.rev() : 0)
         )
     );
 
@@ -573,7 +524,7 @@ void nplex::server_t::process_submit_request(session_t *session, const nplex::ms
 
 void nplex::server_t::process_ping_request(session_t *session, const nplex::msgs::PingRequest *req)
 {
-    if (session->m_state == session_t::state_e::CONNECTED) {
+    if (session->state() == conn_state_e::CONNECTED) {
         session->disconnect(ERR_MSG_UNEXPECTED);
         return;
     }
@@ -581,7 +532,7 @@ void nplex::server_t::process_ping_request(session_t *session, const nplex::msgs
     session->send(
         create_ping_msg(
             req->cid(), 
-            m_repo.rev(),
+            m_context->repo.rev(),
             (req->payload() ? req->payload()->str() : "")
         )
     );
@@ -591,29 +542,28 @@ void nplex::server_t::send_last_snapshot(session_t *session, std::size_t cid)
 {
     load_builder_t builder(cid);
 
-    builder.set_snapshot(m_repo, session->m_user);
+    builder.set_snapshot(m_context->repo, session->user());
 
-    auto buf = builder.finish(m_repo.rev(), true);
+    auto buf = builder.finish(m_context->repo.rev(), true);
 
     session->send(std::move(buf));
-    session->do_step2();
-    session->m_state = session_t::state_e::SYNCED;
+    session->do_sync();
 }
 
 void nplex::server_t::send_fixed_snapshot(session_t *session, rev_t rev, std::size_t cid)
 {
-    auto [min_rev, max_rev] = m_storage->get_range();
+    auto [min_rev, max_rev] = m_context->storage->get_range();
 
     if (rev < min_rev || rev > max_rev)
     {
         session->send(
-            load_builder_t{cid}.finish(m_repo.rev(), false)
+            load_builder_t{cid}.finish(m_context->repo.rev(), false)
         );
 
         return;
     }
 
-    submit_task(new repo_task_t(m_storage, session, rev, cid));
+    submit_task(new repo_task_t(m_context->storage, session, rev, cid));
 }
 
 void nplex::server_t::submit_task(task_t *task)
@@ -645,20 +595,20 @@ void nplex::server_t::release_task(task_t *)
 
 void nplex::server_t::push_changes(const std::span<update_t> &updates)
 {
-    for (auto &session : m_sessions)
+    for (auto &session : m_context->sessions)
     {
-        if (session->m_state != session_t::state_e::SYNCED)
+        if (session->state() != conn_state_e::SYNCED)
             continue;
 
         // TODO: set max_rev and max_bytes
-        changes_builder_t builder{session->m_load_cid, session->m_user, 1, 1};
+        changes_builder_t builder{session->m_load_cid, session->user(), 1, 1};
 
         builder.append_updates(updates);
 
         if (builder.empty())
             continue;
 
-        session->send(builder.finish(m_repo.rev(), false));
+        session->send(builder.finish(m_context->repo.rev(), false));
 
         // TODO: loop until updates length exhausted or session thresholds reached
     }
@@ -667,8 +617,8 @@ void nplex::server_t::push_changes(const std::span<update_t> &updates)
 // TODO: remove this test function
 void nplex::server_t::simule_submit()
 {
-    auto it = m_users.find("admin");
-    if (it == m_users.end()) {
+    auto it = m_context->users.find("admin");
+    if (it == m_context->users.end()) {
         SPDLOG_WARN("Admin user not found");
         return;
     }
@@ -702,7 +652,7 @@ void nplex::server_t::simule_submit()
         MsgContent::SUBMIT_REQUEST, 
         CreateSubmitRequest(builder, 
             4,              // cid
-            m_repo.rev(),   // crev
+            m_context->repo.rev(),   // crev
             1,              // type
             builder.CreateVector(upserts),
             builder.CreateVector(deletes),
@@ -716,36 +666,39 @@ void nplex::server_t::simule_submit()
     auto submit_req = flatbuffers::GetRoot<msgs::Message>(builder.GetBufferPointer())->content_as_SUBMIT_REQUEST();
 
     update_t update;
-    auto rc = m_repo.try_commit(*user, submit_req, update);
+    auto rc = m_context->repo.try_commit(*user, submit_req, update);
 
     if (rc == msgs::SubmitCode::ACCEPTED) {
-        assert(m_repo.rev() == update.meta->rev);
-        SPDLOG_DEBUG("Update rev={}, user={}, type={}", m_repo.rev(), update.meta->user.c_str(), update.meta->type);
+        assert(m_context->repo.rev() == update.meta->rev);
+        SPDLOG_DEBUG("Update rev={}, user={}, type={}", m_context->repo.rev(), update.meta->user.c_str(), update.meta->type);
         push_changes({&update, 1});
     }
     else {
         SPDLOG_ERROR("Error try_commit = {}", static_cast<int>(rc));
     }
 
-    m_storage->write_entry(std::move(update));
+    m_context->storage->write_entry(std::move(update));
 }
 
 void nplex::server_t::sync_session(session_t *session, rev_t rev, std::size_t cid)
 {
-    auto [min_rev, max_rev] = m_storage->get_range();
+    auto [min_rev, max_rev] = m_context->storage->get_range();
 
     if (rev < min_rev || rev > max_rev)
     {
         session->send(
-            load_builder_t{cid}.finish(m_repo.rev(), false)
+            load_builder_t{cid}.finish(m_context->repo.rev(), false)
         );
 
         return;
     }
 
-    std::uint32_t max_msgs = session->m_user->max_queue_length - session->stats.queue_msgs;
-    std::uint32_t max_bytes = session->m_user->max_queue_bytes - session->stats.queue_bytes;
-    sync_task_t *task = new sync_task_t(m_storage, session, rev, max_msgs, max_bytes);
+    // TODO: set values using session.connection.stats
+    // std::uint32_t max_msgs = session->user()->max_queue_length - session->stats.queue_msgs;
+    // std::uint32_t max_bytes = session->user()->max_queue_bytes - session->stats.queue_bytes;
+    std::uint32_t max_msgs = 1000;
+    std::uint32_t max_bytes = 10 * 1024 * 1024;
+    sync_task_t *task = new sync_task_t(m_context->storage, session, rev, max_msgs, max_bytes);
 
     task->config_builder(cid, 1000, 2048);
 

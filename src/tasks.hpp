@@ -11,7 +11,7 @@
 namespace nplex {
 
 // Forward declarations
-struct session_t;
+class session_t;
 class server_t;
 
 /**
@@ -82,7 +82,7 @@ struct sync_task_t : public task_t
     rev_t m_rev;                        // last revision
     std::uint32_t m_max_msgs;           // max number of Changes messages
     std::uint32_t m_max_bytes;          // max bytes of generated Changes messages
-    
+
     changes_builder_t m_builder;        // Changes messages builder
     std::vector<flatbuffers::DetachedBuffer> m_buffers;  // Changes messages to send
     std::size_t m_bytes = 0;            // bytes of generated Changes messages
