@@ -79,7 +79,7 @@ struct sync_task_t : public task_t
 {
     storage_ptr m_storage;              // storage object
     session_t *m_session;               // session used to send messages
-    rev_t m_rev;                        // last revision
+    rev_t m_rev;                        // last revision sent to the session
     std::uint32_t m_max_msgs;           // max number of Changes messages
     std::uint32_t m_max_bytes;          // max bytes of generated Changes messages
 

@@ -2,6 +2,8 @@
 
 #include <uv.h>
 #include <flatbuffers/flatbuffers.h>
+#include "common.hpp"
+#include "messages.hpp"
 #include "connection.hpp"
 
 namespace nplex {
@@ -21,26 +23,32 @@ class session_t
 {
   public:
 
+    enum class state_e : std::uint8_t {
+      CONNECTED,
+      LOGGED,
+      SYNCING,
+      SYNCED,
+      CLOSED
+    };
+
     // constructor and destructor
     session_t(const context_ptr &context, uv_stream_t *stream);
     ~session_t() = default;
-    session_t(const session_t&) = delete;
-    session_t& operator=(const session_t&) = delete;
+    session_t(const session_t &) = delete;
+    session_t & operator=(const session_t &) = delete;
 
     // const methods
-    conn_state_e state() const { return m_con.state(); }
+    state_e state() const { return m_state; }
     const std::string & id() const { return m_id; }
-    user_ptr user() const { return m_user; }
+    const user_ptr & user() const { return m_user; }
     const char * strerror() const;
 
     // rest of methods
-    void disconnect(int rc = 0) { m_con.disconnect(rc); }
+    void disconnect(int rc);
+    void process_request(const msgs::Message *msg);
+    void push_changes(const std::span<update_t> &updates);
     void send(flatbuffers::DetachedBuffer &&buf);
-    void set_user(const user_ptr &user);
     void do_sync();
-
-    // TODO: move to private
-    std::size_t m_load_cid = 0;                 // load correlation id
 
   private:
 
@@ -49,7 +57,18 @@ class session_t
     connection_t m_con;                         // connection object
     std::string m_id;                           // session identifier (user@addr)
     rev_t m_lrev = 0;                           // last revision (maybe unacked, maybe not sent because no data)
+    std::size_t m_load_cid = 0;                 // load correlation id
+    state_e m_state = state_e::CLOSED;          // connection state
     bool m_ongoing_sync_task = false;           // true if a sync task is running
+
+    void process_login_request(const nplex::msgs::LoginRequest *req);
+    void process_load_request(const nplex::msgs::LoadRequest *req);
+    void process_submit_request(const nplex::msgs::SubmitRequest *req);
+    void process_ping_request(const nplex::msgs::PingRequest *req);
+
+    void send_last_snapshot(std::size_t cid);
+    void send_fixed_snapshot(std::size_t cid, rev_t rev);
+    void send_only_updates(std::size_t cid, rev_t rev);
 };
 
 using session_ptr = std::shared_ptr<session_t>;

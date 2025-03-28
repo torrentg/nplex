@@ -22,8 +22,6 @@ void nplex::repo_task_t::run()
 
 void nplex::repo_task_t::after()
 {
-    const auto server = get_server();
-    update_crev(m_buf, server->rev());
     m_session->send(std::move(m_buf));
     m_session->do_sync();
 }
@@ -41,12 +39,8 @@ void nplex::sync_task_t::run()
 
 void nplex::sync_task_t::after()
 {
-    const auto server = get_server();
-
-    for (auto &buf : m_buffers) {
-        update_crev(buf, server->rev());
+    for (auto &buf : m_buffers)
         m_session->send(std::move(buf));
-    }
 
     SPDLOG_INFO("sync_task completed: r{}, {} msgs, {} bytes", m_rev, m_buffers.size(), m_bytes);
 }

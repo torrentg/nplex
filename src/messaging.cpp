@@ -268,6 +268,10 @@ nplex::update_t nplex::deserialize_update(const Update *msg, const user_ptr &use
     return update;
 }
 
+// ==========================================================
+// load_builder_t methods
+// ==========================================================
+
 void nplex::load_builder_t::set_snapshot(const repo_t &repo, const user_ptr &user)
 { 
     m_offset_snapshot = repo.serialize(m_builder, user);
@@ -291,6 +295,10 @@ flatbuffers::DetachedBuffer nplex::load_builder_t::finish(rev_t crev, bool accep
 
     return m_builder.Release();
 }
+
+// ==========================================================
+// changes_builder_t methods
+// ==========================================================
 
 bool nplex::changes_builder_t::append_updates(const std::span<update_t> &updates)
 {

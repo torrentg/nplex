@@ -8,17 +8,14 @@ namespace nplex {
 
 // Forward declarations
 class session_t;
-class server_t;
+struct context_t;
 
-/**
- * Connection states.
- */
-enum class conn_state_e : std::uint8_t {
-    CONNECTED,
-    LOGGED,
-    SYNCING,
-    SYNCED,
-    CLOSED
+struct queue_stats_t
+{
+    std::size_t max_msgs = 0;                       // maximum number of messages in the queue (0 = unlimited)
+    std::size_t max_bytes = 0;                      // maximum number of bytes in the queue (0 = unlimited)
+    std::size_t num_msgs = 0;                       // current number of messages in the queue
+    std::size_t num_bytes = 0;                      // current number of bytes in the queue
 };
 
 /**
@@ -28,7 +25,7 @@ enum class conn_state_e : std::uint8_t {
  * accessed by public libuv callbacks.
  * 
  * m_tcp.data points to the session.
- * m_tcp.loop->data points to the server.
+ * m_tcp.loop->data points to the context.
  */
 struct connection_s
 {
@@ -37,37 +34,25 @@ struct connection_s
     uv_timer_t *m_timer_keepalive = nullptr;        // keepalive timer
     addr_t m_addr;                                  // peer address
     int m_error = 0;                                // disconnection cause
-    conn_state_e m_state = conn_state_e::CLOSED;    // session state
 
+    std::uint32_t input_max_msg_bytes = 0;          // maximum incomming message size (0 = unlimited)
     char input_buffer[UINT16_MAX] = {0};            // input buffer used by read()
     std::string input_msg;                          // current incoming message
 
-    struct {
-        std::uint32_t max_msg_bytes = 0;            // maximum message size
-        std::uint32_t max_queue_length = 0;         // maximum number of messages in output queue
-        std::uint32_t max_queue_bytes = 0;          // maximum number of bytes in output queue
-    } settings;
-
-    struct {
-        std::uint32_t queue_msgs = 0;               // number of messages in output queue
-        std::uint32_t queue_bytes = 0;              // number of bytes in output queue
-        std::size_t recv_msgs = 0;                  // number of received messages
-        std::size_t recv_bytes = 0;                 // number of received bytes
-        std::size_t sent_msgs = 0;                  // number of sent messages (acknowledged)
-        std::size_t sent_bytes = 0;                 // number of sent bytes (acknowledged)
-    } stats;
+    queue_stats_t m_queue_stats;                    // output queue stats
 
     connection_s(session_t *session, uv_stream_t *stream);
     ~connection_s();
     connection_s(const connection_s &) = delete;
     connection_s & operator=(const connection_s &) = delete;
 
-    void disconnect(int rc = 0);
+    void disconnect(int rc);
+    bool try_send(flatbuffers::DetachedBuffer &&buf);
     void send(flatbuffers::DetachedBuffer &&buf);
     void report_peer_activity();
     void send_keepalive();
 
-    server_t * server() const { return reinterpret_cast<server_t *>(m_tcp.loop->data); }
+    context_t * context() const { return reinterpret_cast<context_t *>(m_tcp.loop->data); }
     session_t * session() const { return reinterpret_cast<session_t *>(m_tcp.data); }
 };
 
@@ -96,14 +81,12 @@ class connection_t : private connection_s
 
     const addr_t & addr() const { return m_addr; }
     int error() const { return m_error; }
-    conn_state_e state() const { return m_state; }
-
-    void state(conn_state_e val) { m_state = val; }
+    const queue_stats_t & queue_stats() const { return m_queue_stats; }
 
     void config(std::uint32_t max_msg_bytes, std::uint32_t max_queue_length, std::uint32_t max_queue_bytes) {
-        settings.max_msg_bytes = max_msg_bytes;
-        settings.max_queue_length = max_queue_length;
-        settings.max_queue_bytes = max_queue_bytes;
+        input_max_msg_bytes = max_msg_bytes;
+        m_queue_stats.max_msgs = max_queue_length;
+        m_queue_stats.max_bytes = max_queue_bytes;
     }
 
     /**
@@ -130,6 +113,7 @@ class connection_t : private connection_s
     void set_connection_lost(std::uint32_t millis);
 
     using connection_s::disconnect;
+    using connection_s::try_send;
     using connection_s::send;
 
   private:

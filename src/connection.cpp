@@ -2,7 +2,8 @@
 #include <arpa/inet.h>
 #include <spdlog/spdlog.h>
 #include "messaging.hpp"
-#include "server.hpp"
+#include "context.hpp"
+#include "session.hpp"
 #include "connection.hpp"
 
 // ==========================================================
@@ -79,16 +80,13 @@ static void cb_tcp_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
         const char *ptr = obj->input_msg.c_str();
         std::uint32_t len = ntohl_ptr(ptr);
 
-        if (obj->settings.max_msg_bytes && len > obj->settings.max_msg_bytes) {
+        if (obj->input_max_msg_bytes && len > obj->input_max_msg_bytes) {
             obj->disconnect(ERR_MSG_SIZE);
             return;
         }
 
         if (obj->input_msg.size() < len)
             break;
-
-        obj->stats.recv_msgs++;
-        obj->stats.recv_bytes += len;
 
         auto msg = parse_network_msg(ptr, len);
 
@@ -97,7 +95,7 @@ static void cb_tcp_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
             return;
         }
 
-        obj->server()->on_msg_received(obj->session(), msg);
+        obj->session()->process_request(msg);
 
         obj->input_msg.erase(0, len);
     }
@@ -110,13 +108,11 @@ static void cb_tcp_write(uv_write_t *req, int status)
     auto msg = std::unique_ptr<output_msg_t>(reinterpret_cast<output_msg_t *>(req));
     auto obj = reinterpret_cast<connection_s *>(req->handle);
 
-    assert(obj->stats.queue_msgs > 0);
-    assert(obj->stats.queue_bytes >= msg->length());
+    assert(obj->m_queue_stats.num_msgs > 0);
+    assert(obj->m_queue_stats.num_bytes >= msg->length());
 
-    obj->stats.queue_msgs--;
-    obj->stats.queue_bytes -= msg->length();
-    obj->stats.sent_msgs++;
-    obj->stats.sent_bytes += msg->length();
+    obj->m_queue_stats.num_msgs--;
+    obj->m_queue_stats.num_bytes -= msg->length();
 
     if (status < 0) {
         obj->disconnect(status);
@@ -148,11 +144,10 @@ static void cb_close_connection(uv_handle_t *handle)
     // There is no guarantee on timer destruction order
     // In fact, they are destroyed after the session removal
 
-    obj->m_state = conn_state_e::CLOSED;
     obj->m_timer_disconnect = nullptr;
     obj->m_timer_keepalive = nullptr;
 
-    obj->server()->release_session(obj->session());
+    obj->context()->release_session(obj->session());
 }
 
 // ==========================================================
@@ -185,7 +180,6 @@ nplex::connection_s::connection_s(session_t *session, uv_stream_t *stream)
 
     m_tcp.data = session;
     m_addr = addr_t(addr_str);
-    m_state = conn_state_e::CONNECTED;
     return;
 
 CTOR_ERR:
@@ -195,16 +189,12 @@ CTOR_ERR:
 
 nplex::connection_s::~connection_s()
 {
-    assert(m_state == conn_state_e::CLOSED);
     assert(m_timer_keepalive == nullptr);
     assert(m_timer_disconnect == nullptr);
 }
 
 void nplex::connection_s::disconnect(int rc)
 {
-    if (m_state == conn_state_e::CLOSED)
-        return;
-
     if (!m_error)
         m_error = rc;
 
@@ -226,23 +216,29 @@ void nplex::connection_s::disconnect(int rc)
     uv_close(get_handle(&m_tcp), ::cb_close_connection);
 }
 
+bool nplex::connection_s::try_send(flatbuffers::DetachedBuffer &&buf)
+{
+    auto len = output_msg_t::length(buf);
+
+    if (m_queue_stats.num_msgs > 0) // always there is room for the first message
+    {
+        if (m_queue_stats.max_msgs && m_queue_stats.num_msgs + 1 > m_queue_stats.max_msgs)
+            return false;
+
+        if (m_queue_stats.max_bytes && m_queue_stats.num_bytes + len > m_queue_stats.max_bytes)
+            return false;
+    }
+
+    send(std::move(buf));
+
+    return true;
+}
+
 void nplex::connection_s::send(flatbuffers::DetachedBuffer &&buf)
 {
     int rc = 0;
-    auto len = output_msg_t::length(buf);
-
-    if (m_state == conn_state_e::SYNCED)
-    {
-        if (settings.max_queue_length && stats.queue_msgs + 1 > settings.max_queue_length)
-            disconnect(ERR_QUEUE_LENGTH);
-
-        if (settings.max_queue_bytes && stats.queue_bytes + len > settings.max_queue_bytes)
-            disconnect(ERR_QUEUE_BYTES);
-    }
 
     auto msg = new output_msg_t(std::move(buf));
-
-    assert(len == msg->length());
 
     if ((rc = uv_write(&msg->req, get_stream(&m_tcp), msg->buf.data(), static_cast<unsigned int>(msg->buf.size()), ::cb_tcp_write)) != 0) {
         delete msg;
@@ -250,8 +246,8 @@ void nplex::connection_s::send(flatbuffers::DetachedBuffer &&buf)
         return;
     }
 
-    stats.queue_msgs++;
-    stats.queue_bytes += static_cast<std::uint32_t>(len);
+    m_queue_stats.num_msgs++;
+    m_queue_stats.num_bytes += msg->length();
 
     if (m_timer_keepalive && uv_is_active(get_handle(m_timer_keepalive)))
         uv_timer_again(m_timer_keepalive);
@@ -259,10 +255,10 @@ void nplex::connection_s::send(flatbuffers::DetachedBuffer &&buf)
 
 void nplex::connection_s::send_keepalive()
 {
-    if (stats.queue_msgs)
+    if (m_queue_stats.num_msgs > 0)
         return;
 
-    rev_t crev = server()->rev();
+    rev_t crev = context()->rev();
     session()->send(create_keepalive_msg(crev));
 }
 

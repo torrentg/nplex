@@ -8,6 +8,8 @@
 * Add buffer gto::cqueue<update_t>
 * Writer cmd_t only contains update_t (buffer created at write time)
 * Create 2 uv_async (stop + journal_write_completed) ?
+* Create timer to check if msg delivery exceeds X millis ?
+* Remove ping request
 
 ## Useful commands
 
