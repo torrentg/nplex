@@ -18,6 +18,7 @@ enum LoginCode: byte {
 
 enum SubmitCode : byte {
     ACCEPTED,
+    TRY_LATER,
     NO_MODIFICATIONS,
     ERROR_INVALID_REVISION,
     ERROR_INVALID_KEY,

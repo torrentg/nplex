@@ -99,21 +99,23 @@ inline const char *EnumNameLoginCode(LoginCode e) {
 
 enum class SubmitCode : int8_t {
   ACCEPTED = 0,
-  NO_MODIFICATIONS = 1,
-  ERROR_INVALID_REVISION = 2,
-  ERROR_INVALID_KEY = 3,
-  ERROR_DUPLICATE_KEY = 4,
-  ERROR_MESSAGE = 5,
-  REJECTED_PERMISSION = 6,
-  REJECTED_INTEGRITY = 7,
-  REJECTED_ENSURE = 8,
+  TRY_LATER = 1,
+  NO_MODIFICATIONS = 2,
+  ERROR_INVALID_REVISION = 3,
+  ERROR_INVALID_KEY = 4,
+  ERROR_DUPLICATE_KEY = 5,
+  ERROR_MESSAGE = 6,
+  REJECTED_PERMISSION = 7,
+  REJECTED_INTEGRITY = 8,
+  REJECTED_ENSURE = 9,
   MIN = ACCEPTED,
   MAX = REJECTED_ENSURE
 };
 
-inline const SubmitCode (&EnumValuesSubmitCode())[9] {
+inline const SubmitCode (&EnumValuesSubmitCode())[10] {
   static const SubmitCode values[] = {
     SubmitCode::ACCEPTED,
+    SubmitCode::TRY_LATER,
     SubmitCode::NO_MODIFICATIONS,
     SubmitCode::ERROR_INVALID_REVISION,
     SubmitCode::ERROR_INVALID_KEY,
@@ -127,8 +129,9 @@ inline const SubmitCode (&EnumValuesSubmitCode())[9] {
 }
 
 inline const char * const *EnumNamesSubmitCode() {
-  static const char * const names[10] = {
+  static const char * const names[11] = {
     "ACCEPTED",
+    "TRY_LATER",
     "NO_MODIFICATIONS",
     "ERROR_INVALID_REVISION",
     "ERROR_INVALID_KEY",

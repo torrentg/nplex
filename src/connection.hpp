@@ -46,8 +46,8 @@ struct connection_s
     connection_s(const connection_s &) = delete;
     connection_s & operator=(const connection_s &) = delete;
 
+    bool is_blocked() const;
     void disconnect(int rc);
-    bool try_send(flatbuffers::DetachedBuffer &&buf);
     void send(flatbuffers::DetachedBuffer &&buf);
     void report_peer_activity();
     void send_keepalive();
@@ -113,7 +113,7 @@ class connection_t : private connection_s
     void set_connection_lost(std::uint32_t millis);
 
     using connection_s::disconnect;
-    using connection_s::try_send;
+    using connection_s::is_blocked;
     using connection_s::send;
 
   private:

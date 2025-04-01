@@ -13,6 +13,9 @@
 // maximum time (in millis) between login and load messages reception
 #define TIMEOUT_NO_USER 5000
 
+#define MAX_REVS_IN_CHANGES_PUSH 1000
+#define MAX_BYTES_IN_CHANGES_PUSH (10 * 1024 * 1024)
+
 // ==========================================================
 // session_t methods
 // ==========================================================
@@ -45,20 +48,37 @@ void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
     auto msg = flatbuffers::GetRoot<nplex::msgs::Message>(buf.data());
     auto type = msg->content_type();
 
-    // TODO: set lrev based on msg content
-
-    if (m_state == state_e::SYNCED)
+    // update lrev based on message content
+    switch (type)
     {
-        if (!m_con.try_send(std::move(buf)))
-        {
-            m_state = state_e::SYNCING;
-            SPDLOG_DEBUG("Message {} to {} discarded (output queue is full)", msgs::EnumNameMsgContent(type), m_id);
+        case msgs::MsgContent::CHANGES_PUSH: {
+            auto changes = msg->content_as_CHANGES_PUSH();
+            if (changes && changes->updates() && changes->updates()->size() > 0) {
+                auto len = changes->updates()->size();
+                m_lrev = changes->updates()->Get(len - 1)->rev();
+            }
+            break;
+        }
+        case msgs::MsgContent::LOAD_RESPONSE: {
+            auto resp = msg->content_as_LOAD_RESPONSE();
+            if (resp && resp->snapshot())
+                m_lrev = resp->snapshot()->rev();
+            break;
         }
 
-        return;
+        default:
+            break;
     }
 
+    // update the message with the current revision
     update_crev(buf, m_context->repo.rev());
+
+    if (m_state == state_e::SYNCED && m_con.is_blocked())
+    {
+        SPDLOG_DEBUG("Message {} to {} discarded (queue is full)", msgs::EnumNameMsgContent(type), m_id);
+        m_con.disconnect(ERR_QUEUE_LENGTH);
+        return;
+    }
 
     m_con.send(std::move(buf));
 
@@ -66,6 +86,31 @@ void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
         SPDLOG_TRACE("Sent {} to {}", msgs::EnumNameMsgContent(type), m_id);
     else
         SPDLOG_DEBUG("Sent {} to {}", msgs::EnumNameMsgContent(type), m_id);
+}
+
+void nplex::session_t::process_delivery(const msgs::Message *msg)
+{
+    assert(msg);
+    assert(msg->content());
+
+    if (m_state != state_e::SYNCING)
+        return;
+
+    if (m_ongoing_sync_task)
+        return;
+
+    // Get the available output queue
+    auto stats = m_con.queue_stats();
+    stats.max_msgs = (stats.max_msgs == 0 ? UINT32_MAX : stats.max_msgs);
+    stats.max_bytes = (stats.max_bytes == 0 ? UINT32_MAX : stats.max_bytes);
+
+    // Check if there is enough space in the output queue
+    if (static_cast<double>(stats.num_msgs) / static_cast<double>(stats.max_msgs) > 0.66 || 
+        static_cast<double>(stats.num_bytes) / static_cast<double>(stats.max_bytes) > 0.66) {
+        return;
+    }
+
+    do_sync();
 }
 
 void nplex::session_t::process_request(const msgs::Message *msg)
@@ -320,15 +365,20 @@ void nplex::session_t::do_sync()
         return;
 
     // Get the available output queue
-    std::uint32_t max_msgs = 1000;
-    std::uint32_t max_bytes = 10 * 1024 * 1024;
+    auto stats = m_con.queue_stats();
+    stats.max_msgs = (stats.max_msgs == 0 ? UINT32_MAX : stats.max_msgs);
+    stats.max_bytes = (stats.max_bytes == 0 ? UINT32_MAX : stats.max_bytes);
 
-    // TODO: Check if worth to send or wait for more room in the output queue
+    std::uint32_t max_msgs = static_cast<std::uint32_t>(stats.max_msgs - stats.num_msgs);
+    std::uint32_t max_bytes = static_cast<std::uint32_t>(stats.max_bytes - stats.num_bytes);
+
+    // TODO: check if info in cache
 
     sync_task_t *task = new sync_task_t(m_context->storage, this, m_lrev, max_msgs, max_bytes);
 
-    task->config_builder(m_load_cid, 1000, 2048);
+    task->config_builder(m_load_cid, MAX_REVS_IN_CHANGES_PUSH, MAX_BYTES_IN_CHANGES_PUSH);
 
+    m_ongoing_sync_task = true;
     m_context->submit_task(task);
 }
 

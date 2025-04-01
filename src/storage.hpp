@@ -28,7 +28,7 @@ class storage_t
 {
   public:
 
-    using callback_t = std::function<void(bool, const std::vector<update_t> &&)>;
+    using callback_t = std::function<void(bool, std::vector<update_t> &&)>;
 
     /**
      * Constructor.

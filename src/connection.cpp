@@ -124,7 +124,7 @@ static void cb_tcp_write(uv_write_t *req, int status)
     auto ptr = flatbuffers::GetRoot<nplex::msgs::Message>(msg->content.data());
     assert(ptr);
 
-    // TODO: check if syncing + required to submit a new sync_task
+    obj->session()->process_delivery(ptr);
 }
 
 static void cb_close_timer(uv_handle_t *handle)
@@ -216,22 +216,18 @@ void nplex::connection_s::disconnect(int rc)
     uv_close(get_handle(&m_tcp), ::cb_close_connection);
 }
 
-bool nplex::connection_s::try_send(flatbuffers::DetachedBuffer &&buf)
+bool nplex::connection_s::is_blocked() const
 {
-    auto len = output_msg_t::length(buf);
+    if (m_queue_stats.num_msgs == 0) // always there is room for the first message
+        return false;
 
-    if (m_queue_stats.num_msgs > 0) // always there is room for the first message
-    {
-        if (m_queue_stats.max_msgs && m_queue_stats.num_msgs + 1 > m_queue_stats.max_msgs)
-            return false;
+    if (m_queue_stats.max_msgs && m_queue_stats.num_msgs >= m_queue_stats.max_msgs)
+        return true;
 
-        if (m_queue_stats.max_bytes && m_queue_stats.num_bytes + len > m_queue_stats.max_bytes)
-            return false;
-    }
+    if (m_queue_stats.max_bytes && m_queue_stats.num_bytes >= m_queue_stats.max_bytes)
+        return true;
 
-    send(std::move(buf));
-
-    return true;
+    return false;
 }
 
 void nplex::connection_s::send(flatbuffers::DetachedBuffer &&buf)

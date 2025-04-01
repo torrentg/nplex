@@ -46,8 +46,10 @@ class session_t
     // rest of methods
     void disconnect(int rc);
     void process_request(const msgs::Message *msg);
+    void process_delivery(const msgs::Message *msg);
     void push_changes(const std::span<update_t> &updates);
     void send(flatbuffers::DetachedBuffer &&buf);
+    void sync_task_complete() { m_ongoing_sync_task = false; do_sync(); }
     void do_sync();
 
   private:

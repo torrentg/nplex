@@ -39,10 +39,17 @@ void nplex::sync_task_t::run()
 
 void nplex::sync_task_t::after()
 {
+    if (!m_builder.empty()) {
+        auto buf = m_builder.finish(m_rev, true);
+        m_bytes += buf.size();
+        m_buffers.push_back(std::move(buf));
+    }
+
     for (auto &buf : m_buffers)
         m_session->send(std::move(buf));
 
     SPDLOG_INFO("sync_task completed: r{}, {} msgs, {} bytes", m_rev, m_buffers.size(), m_bytes);
+    m_session->sync_task_complete();
 }
 
 void nplex::sync_task_t::config_builder(std::size_t cid, std::uint32_t changes_max_revs, std::uint32_t changes_max_bytes)

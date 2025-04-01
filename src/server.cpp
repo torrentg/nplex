@@ -169,6 +169,16 @@ void nplex::server_t::init_context(const params_t &params)
     m_context = std::make_shared<context_t>(m_loop.get(), params);
     m_context->m_max_sessions = params.max_connections;
     m_loop->data = m_context.get();
+
+    m_context->storage->set_writer_callback([this](bool success, std::vector<update_t> &&updates) {
+        if (success) {
+            m_context->publish(updates);
+        }
+        else {
+            SPDLOG_ERROR("Error writing to journal");
+            uv_stop(m_loop.get());
+        }
+    });
 }
 
 void nplex::server_t::init_async(const params_t &)
@@ -313,11 +323,11 @@ void nplex::server_t::simule_submit()
     if (rc == msgs::SubmitCode::ACCEPTED) {
         assert(m_context->repo.rev() == update.meta->rev);
         SPDLOG_DEBUG("Update rev={}, user={}, type={}", m_context->repo.rev(), update.meta->user.c_str(), update.meta->type);
-        m_context->publish({&update, 1});
+        //m_context->publish({&update, 1});
+        m_context->storage->write_entry(std::move(update));
     }
     else {
         SPDLOG_ERROR("Error try_commit = {}", static_cast<int>(rc));
     }
 
-    m_context->storage->write_entry(std::move(update));
 }
