@@ -66,7 +66,7 @@ static void version()
 {
     std::cout <<
     PROJECT_NAME << " " << PROJECT_VERSION << "\n"
-    "Copyright (c) 2025 Gerard Torrent.\n"
+    "Copyright (c) 2026 Gerard Torrent.\n"
     "License MIT: MIT License <https://opensource.org/licenses/MIT>."
     << std::endl;
 }

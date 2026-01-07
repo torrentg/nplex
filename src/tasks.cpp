@@ -4,7 +4,6 @@
 #include "exception.hpp"
 #include "messaging.hpp"
 #include "session.hpp"
-#include "server.hpp"
 #include "tasks.hpp"
 
 // ==========================================================
@@ -35,16 +34,16 @@ void nplex::sync_task_t::run()
     m_storage->read_entries(m_rev + 1, [this](const msgs::Update *update) -> bool {
         return append_update(update);
     });
-}
 
-void nplex::sync_task_t::after()
-{
-    if (!m_builder.empty()) {
+    if (!m_builder.empty() || m_buffers.empty()) {
         auto buf = m_builder.finish(m_rev, true);
         m_bytes += buf.size();
         m_buffers.push_back(std::move(buf));
     }
+}
 
+void nplex::sync_task_t::after()
+{
     for (auto &buf : m_buffers)
         m_session->send(std::move(buf));
 

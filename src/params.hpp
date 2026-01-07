@@ -30,10 +30,10 @@ struct params_t
     user_t default_user;                                        // Default user.
     std::vector<user_t> users;                                  // List of users.
     bool disable_fsync = DISABLE_FSYNC;                         // Disable fsync.
-    std::uint32_t write_queue_max_length = QUEUE_MAX_LENGTH;    // Maximum number of messages in the write queue.
-    std::uint32_t write_queue_max_bytes = QUEUE_MAX_BYTES;      // Maximum number of bytes in the write queue.
-    std::uint32_t flush_max_entries = FLUSH_MAX_ENTRIES;        // Maximum number of entries to flush.
-    std::uint32_t flush_max_bytes = FLUSH_MAX_BYTES;            // Maximum number of bytes to flush.
+    std::uint32_t write_queue_max_length = QUEUE_MAX_LENGTH;    // Maximum number of messages in the write queue (0 = unlimited).
+    std::uint32_t write_queue_max_bytes = QUEUE_MAX_BYTES;      // Maximum number of bytes in the write queue (0 = unlimited).
+    std::uint32_t flush_max_entries = FLUSH_MAX_ENTRIES;        // Maximum number of entries to flush (0 = unlimited).
+    std::uint32_t flush_max_bytes = FLUSH_MAX_BYTES;            // Maximum number of bytes to flush (0 = unlimited).
 
     params_t() = default;
     params_t(const fs::path &path);

@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <sys/socket.h>
 #include <spdlog/spdlog.h>
+#include "context.hpp"
 #include "messaging.hpp"
 #include "exception.hpp"
 #include "tasks.hpp"
@@ -148,10 +149,19 @@ void nplex::server_t::init(const params_t &params)
 {
     SPDLOG_INFO("Initializing Nplex server ...");
 
-    init_event_loop(params);
-    init_context(params);
-    init_async(params);
-    init_network(params);
+    try {
+        init_event_loop(params);
+        init_context(params);
+        init_async(params);
+        init_network(params);
+    } catch (...) {
+        m_loop.reset();
+        m_context.reset();
+        m_async.reset();
+        m_signal.reset();
+        m_tcp.reset();
+        throw;
+    }
 }
 
 void nplex::server_t::init_event_loop(const params_t &)
@@ -228,8 +238,11 @@ void nplex::server_t::init_network(const params_t &params)
     SPDLOG_INFO("Nplex listening on {}", params.addr.str());
 }
 
-void nplex::server_t::run()
+void nplex::server_t::run() noexcept
 {
+    if (!m_loop || !m_context)
+        return;
+
     try {
         m_context->m_running = true;
         SPDLOG_INFO("Nplex server started");
@@ -260,8 +273,11 @@ void nplex::server_t::run()
     SPDLOG_INFO("Nplex server terminated");
 }
 
-void nplex::server_t::stop()
+void nplex::server_t::stop() noexcept
 {
+    if (!m_loop)
+        return;
+
     // TODO: check if running
     // TODO: send signal to stop the event loop
 }

@@ -24,7 +24,7 @@
 #define NPLEX_UPDATE 4
 #define NPLEX_DELETE 8
 
-// Error codes
+// Error codes (values less than 1000 are considered libuv errors)
 #define ERR_CLOSED_BY_LOCAL 1000
 #define ERR_CLOSED_BY_PEER 1001
 #define ERR_MSG_ERROR 1002

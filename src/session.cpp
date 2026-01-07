@@ -2,7 +2,6 @@
 #include <spdlog/spdlog.h>
 #include "exception.hpp"
 #include "messaging.hpp"
-#include "server.hpp"
 #include "utils.hpp"
 #include "user.hpp"
 #include "context.hpp"

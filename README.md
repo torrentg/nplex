@@ -28,14 +28,14 @@ cmake -DENABLE_COVERAGE=ON ..
 * [doctest](https://github.com/doctest/doctest). The fastest feature-rich C++11/14/17/20/23 single-header testing framework. MIT license.
 * [FastGlobbing](https://github.com/Robert-van-Engelen/FastGlobbing). Wildcard string matching and globbing library. CPOL license.
 * [inih](https://github.com/benhoyt/inih). Simple .INI file parser in C. BSD-3-clause license.
-* [utf8.h](https://github.com/sheredom/utf8.h). Utf8 string functions for C and C++.  Unlicense license.
+* [utf8.h](https://github.com/sheredom/utf8.h). Utf8 string functions for C and C++. Unlicense license.
+* [spdlog](https://github.com/gabime/spdlog). Fast C++ logging library. MIT license.
 
 ### Shared
 
 * [{fmt}](https://github.com/fmtlib/fmt). A string formatting library. MIT license.
 * [libuv](https://github.com/libuv/libuv). Cross-platform asynchronous I/O. MIT license.
 * [flatbuffers](https://github.com/google/flatbuffers). Memory efficient serialization library. Apache-2.0 license .
-* [spdlog](https://github.com/gabime/spdlog). Fast C++ logging library. MIT license.
 
 ## Maintainers
 

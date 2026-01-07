@@ -66,6 +66,13 @@ class storage_t
     void set_writer_callback(callback_t &&callback) { m_callback = std::move(callback); }
 
     /**
+     * Check if there is space in the write queue.
+     * 
+     * @return true = queue is not full, false = queue is full.
+     */
+    bool is_writer_blocked() const;
+
+    /**
      * Write an entry into the journal.
      * 
      * This method is asynchronous and non-blocking.
@@ -149,7 +156,7 @@ class storage_t
     gto::cqueue<cmd_t> m_queue;
     std::vector<ldb_entry_t> m_entries;
     std::condition_variable m_cond_not_empty{};
-    std::mutex m_mutex;
+    mutable std::mutex m_mutex;
     std::uint32_t m_queue_max_length;
     std::uint32_t m_queue_max_bytes;
     std::uint32_t m_flush_max_entries;

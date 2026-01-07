@@ -47,6 +47,10 @@ static nplex::rev_t parse_rev(const char* filename)
     return num;
 }
 
+static inline std::uint32_t get_param(std::uint32_t value) {
+    return (value == 0 ? UINT32_MAX : value);
+}
+
 // ==========================================================
 // snapshots_t methods
 // ==========================================================
@@ -59,10 +63,10 @@ nplex::storage_t::storage_t(const nplex::params_t &params) : m_path{params.datad
     if (!fs::is_directory(m_path))
         throw nplex::nplex_exception(fmt::format("Invalid storage directory ({})", m_path.string()));
 
-    m_queue_max_length = params.write_queue_max_length;
-    m_queue_max_bytes = params.write_queue_max_bytes;
-    m_flush_max_entries = params.flush_max_entries;
-    m_flush_max_bytes = params.flush_max_bytes;
+    m_queue_max_length = get_param(params.write_queue_max_length);
+    m_queue_max_bytes = get_param(params.write_queue_max_bytes);
+    m_flush_max_entries = get_param(params.flush_max_entries);
+    m_flush_max_bytes = get_param(params.flush_max_bytes);
 
     m_journal = ldb::journal_t(m_path, JOURNAL_NAME, params.check_journal);
     m_journal.set_fsync(!params.disable_fsync);
@@ -241,6 +245,25 @@ READ_END:
     return count;
 }
 
+bool nplex::storage_t::is_writer_blocked() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+
+    if (!m_running)
+        return true;
+
+    if (m_queue.empty()) // always there is place for one entry
+        return false;
+
+    if (m_queue.size() >= m_queue_max_length)
+        return true;
+
+    if (m_bytes_in_queue >= m_queue_max_bytes)
+        return true;
+
+    return false;
+}
+
 void nplex::storage_t::write_entry(update_t &&upd)
 { 
     auto buffer = serialize_update(upd);
@@ -249,12 +272,6 @@ void nplex::storage_t::write_entry(update_t &&upd)
 
     if (!m_running)
         return;
-
-    if (m_queue.size() >= m_queue_max_length)
-        throw nplex_exception("exceeded write-queue capacity (length)");
-
-    if (m_bytes_in_queue + buffer.size() > m_queue_max_bytes)
-        throw nplex_exception("exceeded write-queue capacity (bytes)");
 
     assert(!m_queue.empty() || m_bytes_in_queue == 0);
 

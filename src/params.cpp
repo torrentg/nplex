@@ -28,20 +28,20 @@
 #define FLUSH_MAX_ENTRIES "flush-max-entries"
 #define FLUSH_MAX_BYTES "flush-max-bytes"
 
-static std::string mode_to_string(std::uint8_t mode)
+static std::string crud_to_string(std::uint8_t crud)
 {
     return std::string{
-        ((mode & NPLEX_CREATE) ? 'c' : '-'),
-        ((mode & NPLEX_READ)   ? 'r' : '-'),
-        ((mode & NPLEX_UPDATE) ? 'u' : '-'),
-        ((mode & NPLEX_DELETE) ? 'd' : '-')
+        ((crud & NPLEX_CREATE) ? 'c' : '-'),
+        ((crud & NPLEX_READ)   ? 'r' : '-'),
+        ((crud & NPLEX_UPDATE) ? 'u' : '-'),
+        ((crud & NPLEX_DELETE) ? 'd' : '-')
     };
 }
 
-static std::uint8_t parse_mode(const std::string_view &str)
+static std::uint8_t parse_crud(const std::string_view &str)
 {
-    static const char *crud = "crud";
-    std::uint8_t mode = 0;
+    static const char *crud_str = "crud";
+    std::uint8_t crud = 0;
 
     if (str.size() != 4)
         throw std::invalid_argument(fmt::format("Invalid crud ({})", str));
@@ -50,20 +50,20 @@ static std::uint8_t parse_mode(const std::string_view &str)
     {
         char c = str[i];
 
-        if (c != crud[i] && c != '-')
+        if (c != crud_str[i] && c != '-')
             throw std::invalid_argument(fmt::format("Invalid crud ({})", str));
 
         switch (c)
         {
-            case 'c': mode |= NPLEX_CREATE; break;
-            case 'r': mode |= NPLEX_READ;   break;
-            case 'u': mode |= NPLEX_UPDATE; break;
-            case 'd': mode |= NPLEX_DELETE; break;
+            case 'c': crud |= NPLEX_CREATE; break;
+            case 'r': crud |= NPLEX_READ;   break;
+            case 'u': crud |= NPLEX_UPDATE; break;
+            case 'd': crud |= NPLEX_DELETE; break;
             default: break;
         }
     }
 
-    return mode;
+    return crud;
 }
 
 static bool parse_bool(const std::string_view &str)
@@ -153,7 +153,7 @@ static nplex::acl_t parse_acl(const std::string_view &str)
     if (str.size() < 6 || str[4] != ':')
         throw std::invalid_argument(fmt::format("Invalid acl ({})", str));
 
-    auto mode =  parse_mode(str.substr(0, 4));
+    auto mode = parse_crud(str.substr(0, 4));
     std::string pattern{str.substr(5)};
 
     return nplex::acl_t{mode, pattern};
@@ -182,7 +182,7 @@ static int cb_inih_inner(void *obj, const char *section, const char *name, const
         } else if (strcmp(name, FLUSH_MAX_ENTRIES) == 0) {
             params->flush_max_entries = parse_uint32(value);
         } else if (strcmp(name, FLUSH_MAX_BYTES) == 0) {
-            params->flush_max_entries = parse_bytes(value);
+            params->flush_max_bytes = parse_bytes(value);
         } else {
             throw std::invalid_argument(fmt::format("Unrecognized entry ({})", name));
         }
@@ -340,7 +340,7 @@ void nplex::params_t::save(const fs::path &path) const
 
         for (const auto &acl : user.permissions)
             if (!acl.pattern.empty())
-                ofs << USER_ACL << " = " << mode_to_string(acl.mode) << ":" << acl.pattern << std::endl;
+                ofs << USER_ACL << " = " << crud_to_string(acl.mode) << ":" << acl.pattern << std::endl;
 
         ofs << std::endl;
     }

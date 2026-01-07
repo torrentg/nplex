@@ -40,10 +40,6 @@ struct task_t
     virtual void run() = 0;
     //! Function executed in the event-loop thread.
     virtual void after() = 0;
-
-    // Never calls this method from run() because it is executed in the thread-pool.
-    // It is safe to call it in after() because it is executed in the event-loop thread.
-    server_t * get_server() const { return static_cast<server_t *>(work.loop->data); }
 };
 
 /**

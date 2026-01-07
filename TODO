@@ -11,6 +11,8 @@
 * Manage exceptions in write thread
 * Remove buffer from storage::cmd ?
 * Remove ping request ?
+* [defaults] -> [user-defaults]
+* log_level_e: remove DEFAULT and add NONE
 
 ## Useful commands
 
