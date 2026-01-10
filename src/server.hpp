@@ -28,27 +28,22 @@ class server_t
      */
     void run() noexcept;
 
-    /**
-     * Stop the server.
-     * This function is called from a signal handler.
-     */
-    void stop() noexcept;
-
     // TODO: remove this test method
     void simule_submit();
 
   private:
 
-    std::unique_ptr<uv_loop_t> m_loop;
+    std::unique_ptr<uv_loop_t> m_loop;        // event loop
     std::unique_ptr<uv_tcp_t> m_tcp;          // tcp listener
-    std::unique_ptr<uv_async_t> m_async;      // used to stop the server and to notify that journal write done
-    std::unique_ptr<uv_signal_t> m_signal;    // used to manage the SIGINT signal (Ctrl-C)
+    std::unique_ptr<uv_signal_t> m_sigint;    // used to manage the SIGINT signal (Ctrl-C)
+    std::unique_ptr<uv_signal_t> m_sigterm;   // used to manage the SIGTERM signal (terminate)
     std::shared_ptr<context_t> m_context;     // see context_ptr
 
     void init_event_loop(const params_t &params);
+    void init_signals(const params_t &);
     void init_context(const params_t &params);
-    void init_async(const params_t &params);
     void init_network(const params_t &params);
+    void init_test(const params_t &params);
 };
 
 } // namespace nplex

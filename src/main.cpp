@@ -54,6 +54,12 @@ static void help()
     "  -V, --version    Output version information, then exit.\n"
     "  -h, --help       Show this help, then exit.\n"
     "\n"
+    "Signals:\n"
+    "  SIGHUP           Recreate log file (when daemonized).\n"
+    "  SIGINT           Graceful shutdown.\n"
+    "  SIGTERM          Graceful shutdown.\n"
+    "  SIGPIPE          Ignored.\n"
+    "\n"
     "Exit status:\n"
     "  0   finished without errors\n"
     "  1   finished with errors\n"
@@ -71,7 +77,7 @@ static void version()
     << std::endl;
 }
 
-static void handle_sighup(int signal)
+static void handle_sig_logrotate(int signal)
 {
     if (signal != SIGHUP)
         return;
@@ -84,14 +90,6 @@ static void handle_sighup(int signal)
     } catch (const spdlog::spdlog_ex &e) {
         std::cerr << "Failed to recreate log file: " << e.what() << std::endl;
     }
-}
-
-static void handle_sigterm(int signal)
-{
-    if (signal != SIGTERM)
-        return;
-
-    server.stop();
 }
 
 static void install_signal_handler(int signal, void (*handle)(int))
@@ -278,6 +276,11 @@ int main(int argc, char *argv[])
             spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%t] [%s:%#] [%-5l] %v");
         else
             spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%-5l] %v");
+
+        if (daemonize_arg)
+            install_signal_handler(SIGHUP, handle_sig_logrotate);
+        else
+            signal(SIGHUP, SIG_IGN);
     }
     catch (const spdlog::spdlog_ex &e) {
         std::cerr << e.what() << std::endl;
@@ -290,15 +293,11 @@ int main(int argc, char *argv[])
             std::cerr << "Error: Failed to daemonize the process." << std::endl;
             return EXIT_FAILURE;
         }
-
-        // logrotate signal
-        install_signal_handler(SIGHUP, handle_sighup);
     }
 
     try {
         server.init(params);
-        signal(SIGPIPE, SIG_IGN);
-        install_signal_handler(SIGTERM, handle_sigterm);
+        signal(SIGPIPE, SIG_IGN); // SIGTERM and SIGINT are handled in server.cpp
         server.run();
         return EXIT_SUCCESS;
     }

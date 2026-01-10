@@ -47,6 +47,7 @@ struct connection_s
     connection_s & operator=(const connection_s &) = delete;
 
     bool is_blocked() const;
+    void shutdown(int rc);
     void disconnect(int rc);
     void send(flatbuffers::DetachedBuffer &&buf);
     void report_peer_activity();
@@ -112,6 +113,7 @@ class connection_t : private connection_s
      */
     void set_connection_lost(std::uint32_t millis);
 
+    using connection_s::shutdown;
     using connection_s::disconnect;
     using connection_s::is_blocked;
     using connection_s::send;

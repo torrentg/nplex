@@ -9,10 +9,12 @@
 #include "session.hpp"
 #include "storage.hpp"
 #include "utils.hpp"
-#include "tasks.hpp"
 #include "user.hpp"
 
 namespace nplex {
+
+// Forward declarations.
+struct task_t;
 
 struct context_t : public std::enable_shared_from_this<context_t>
 {

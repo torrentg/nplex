@@ -8,38 +8,38 @@
 #include <chrono>
 #include "cstring.hpp"
 
-#define PROJECT_NAME "nplex"
-#define PROJECT_VERSION "0.1.0"
-#define PROJECT_URL "https://github.com/torrentg/nplex"
+#define PROJECT_NAME            "nplex"
+#define PROJECT_VERSION         "0.1.0"
+#define PROJECT_URL             "https://github.com/torrentg/nplex"
 
-#define API_VERSION 10
+#define API_VERSION             10
 
-#define CONFIG_FILENAME "nplex.ini"
-#define LOG_FILENAME "nplex.log"
-#define JOURNAL_NAME "journal"
-#define SNAPSHOT_FILENAME "snapshot-{}.dat"
+#define CONFIG_FILENAME         "nplex.ini"
+#define LOG_FILENAME            "nplex.log"
+#define JOURNAL_NAME            "journal"
+#define SNAPSHOT_FILENAME       "snapshot-{}.dat"
 
-#define NPLEX_CREATE 1
-#define NPLEX_READ   2
-#define NPLEX_UPDATE 4
-#define NPLEX_DELETE 8
+#define NPLEX_CREATE            1
+#define NPLEX_READ              2
+#define NPLEX_UPDATE            4
+#define NPLEX_DELETE            8
 
 // Error codes (values less than 1000 are considered libuv errors)
-#define ERR_CLOSED_BY_LOCAL 1000
-#define ERR_CLOSED_BY_PEER 1001
-#define ERR_MSG_ERROR 1002
-#define ERR_MSG_UNEXPECTED 1003
-#define ERR_MSG_SIZE 1004
-#define ERR_USR_NOT_FOUND 1005
-#define ERR_USR_INVL_PWD 1006
-#define ERR_USR_MAX_CONN 1007
-#define ERR_MAX_CONN 1008
-#define ERR_API_VERSION 1009
-#define ERR_CONNECTION_LOST 1010
-#define ERR_QUEUE_LENGTH 1011
-#define ERR_QUEUE_BYTES 1012
+#define ERR_CLOSED_BY_LOCAL     1000
+#define ERR_CLOSED_BY_PEER      1001
+#define ERR_MSG_ERROR           1002
+#define ERR_MSG_UNEXPECTED      1003
+#define ERR_MSG_SIZE            1004
+#define ERR_USR_NOT_FOUND       1005
+#define ERR_USR_INVL_PWD        1006
+#define ERR_USR_MAX_CONN        1007
+#define ERR_MAX_CONN            1008
+#define ERR_API_VERSION         1009
+#define ERR_CONNECTION_LOST     1010
+#define ERR_QUEUE_LENGTH        1011
+#define ERR_QUEUE_BYTES         1012
 
-#define UNUSED(x) (void)(x)
+#define UNUSED(x)               (void)(x)
 
 namespace nplex {
 

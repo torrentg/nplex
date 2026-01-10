@@ -44,6 +44,7 @@ class session_t
     const char * strerror() const;
 
     // rest of methods
+    void shutdown(int rc);
     void disconnect(int rc);
     void process_request(const msgs::Message *msg);
     void process_delivery(const msgs::Message *msg);

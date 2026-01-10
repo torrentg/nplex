@@ -2,14 +2,14 @@
 
 #include "common.hpp"
 
-#define KEEPALIVE_MILLIS 3000
-#define MAX_MSG_BYTES (50 * 1024 * 1024)
-#define MAX_QUEUE_LENGTH 1000
-#define MAX_QUEUE_BYTES (100 * 1024 * 1024)
-#define TIMEOUT_FACTOR 3.0
-#define MAX_CONNECTIONS 5
-#define CAN_FORCE false
-#define IS_ACTIVE true
+#define KEEPALIVE_MILLIS        3000
+#define MAX_MSG_BYTES           (50 * 1024 * 1024)
+#define MAX_QUEUE_LENGTH        1000
+#define MAX_QUEUE_BYTES         (100 * 1024 * 1024)
+#define TIMEOUT_FACTOR          3.0
+#define MAX_CONNECTIONS         5
+#define CAN_FORCE               false
+#define IS_ACTIVE               true
 
 namespace nplex {
 

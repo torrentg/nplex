@@ -25,24 +25,31 @@ static int get_peeraddr(const uv_tcp_t *con, char *str, size_t len)
     int rc = 0;
     sockaddr_storage sa = {};
     int sa_len = sizeof(sa);
-    sockaddr_in *addr_in = reinterpret_cast<sockaddr_in *>(&sa);
-    uint16_t port = 0;
-    char ip[128] = {0};
 
     if ((rc = uv_tcp_getpeername(con, reinterpret_cast<sockaddr *>(&sa), &sa_len)) != 0)
         return rc;
 
+    char ip[INET6_ADDRSTRLEN] = {0};
     if ((rc = uv_ip_name(reinterpret_cast<sockaddr *>(&sa), ip, sizeof(ip))) != 0)
         return rc;
 
-    port = ntohs(addr_in->sin_port);
+    const int family = sa.ss_family;
 
-    if (addr_in->sin_family == AF_INET6)
-        snprintf(str, len, "[%s]:%hu", ip, port);
-    else
-        snprintf(str, len, "%s:%hu", ip, port);
+    if (family == AF_INET) {
+        auto *addr_in = reinterpret_cast<const sockaddr_in *>(&sa);
+        const uint16_t port = ntohs(addr_in->sin_port);
+        std::snprintf(str, len, "%s:%hu", ip, port);
+        return 0;
+    }
 
-    return 0;
+    if (family == AF_INET6) {
+        auto *addr_in6 = reinterpret_cast<const sockaddr_in6 *>(&sa);
+        const uint16_t port = ntohs(addr_in6->sin6_port);
+        std::snprintf(str, len, "[%s]:%hu", ip, port);
+        return 0;
+    }
+
+    return UV_EAI_FAMILY;
 }
 
 static void cb_tcp_alloc(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf)
@@ -61,6 +68,9 @@ static void cb_tcp_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
 
     auto obj = reinterpret_cast<nplex::connection_s *>(stream);
 
+    if (nread == 0)
+        return;
+
     if (nread == UV_EOF || buf->base == NULL) {
         obj->disconnect(ERR_CLOSED_BY_PEER);
         return;
@@ -77,7 +87,7 @@ static void cb_tcp_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
 
     while (obj->input_msg.size() >= sizeof(output_msg_t::len))
     {
-        const char *ptr = obj->input_msg.c_str();
+        const char *ptr = obj->input_msg.data();
         std::uint32_t len = ntohl_ptr(ptr);
 
         if (obj->input_max_msg_bytes && len > obj->input_max_msg_bytes) {
@@ -108,6 +118,7 @@ static void cb_tcp_write(uv_write_t *req, int status)
     auto msg = std::unique_ptr<output_msg_t>(reinterpret_cast<output_msg_t *>(req));
     auto obj = reinterpret_cast<connection_s *>(req->handle);
 
+    assert(msg);
     assert(obj->m_queue_stats.num_msgs > 0);
     assert(obj->m_queue_stats.num_bytes >= msg->length());
 
@@ -147,7 +158,22 @@ static void cb_close_connection(uv_handle_t *handle)
     obj->m_timer_disconnect = nullptr;
     obj->m_timer_keepalive = nullptr;
 
-    obj->context()->release_session(obj->session());
+    auto session = obj->session();
+    obj->context()->release_session(session);
+}
+
+static void cb_tcp_shutdown(uv_shutdown_t *req, int status)
+{
+    SPDLOG_TRACE("Shutdown connection");
+
+    using namespace nplex;
+
+    auto obj = reinterpret_cast<connection_s *>(req->data);
+    assert(obj);
+
+    delete req;
+
+    obj->disconnect(status);
 }
 
 // ==========================================================
@@ -169,6 +195,8 @@ nplex::connection_s::connection_s(session_t *session, uv_stream_t *stream)
     if ((rc = uv_tcp_init(stream->loop, &m_tcp)) != 0)
         goto CTOR_ERR;
 
+    m_tcp.data = session;
+
     if ((rc = uv_accept(stream, get_stream(&m_tcp))) != 0)
         goto CTOR_ERR;
 
@@ -178,8 +206,8 @@ nplex::connection_s::connection_s(session_t *session, uv_stream_t *stream)
     if ((rc = get_peeraddr(&m_tcp, addr_str, sizeof(addr_str))) != 0)
         goto CTOR_ERR;
 
-    m_tcp.data = session;
     m_addr = addr_t(addr_str);
+
     return;
 
 CTOR_ERR:
@@ -214,6 +242,28 @@ void nplex::connection_s::disconnect(int rc)
     }
 
     uv_close(get_handle(&m_tcp), ::cb_close_connection);
+}
+
+void nplex::connection_s::shutdown(int rc)
+{
+    if (!m_error)
+        m_error = rc;
+
+    if (uv_is_closing(get_handle(&m_tcp)))
+        return;
+
+    uv_read_stop(get_stream(&m_tcp));
+
+    auto req = new uv_shutdown_t{};
+    req->data = this;
+
+    int uvrc = uv_shutdown(req, get_stream(&m_tcp), ::cb_tcp_shutdown);
+    if (uvrc != 0) {
+        delete req;
+        if (uvrc == UV_EALREADY)
+            return;
+        disconnect(uvrc);
+    }
 }
 
 bool nplex::connection_s::is_blocked() const
@@ -288,7 +338,7 @@ void nplex::connection_t::set_timer(uv_timer_t *&timer, std::uint32_t millis, uv
             return;
         }
 
-        timer->data = this;
+        timer->data = static_cast<connection_s *>(this);
     }
 
     uv_timer_stop(timer);

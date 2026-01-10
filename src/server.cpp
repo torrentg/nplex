@@ -8,7 +8,6 @@
 #include "context.hpp"
 #include "messaging.hpp"
 #include "exception.hpp"
-#include "tasks.hpp"
 #include "server.hpp"
 
 #define MAX_QUEUED_CONNECTIONS 128
@@ -61,7 +60,6 @@ static struct sockaddr_storage get_sockaddr(uv_loop_t *loop, const nplex::addr_t
             hints.ai_socktype = SOCK_STREAM;
             hints.ai_protocol = IPPROTO_TCP;
 
-            // request address info made synchronously (at this point no other tasks are done)
             std::string port = std::to_string(addr.port());
             if ((rc = uv_getaddrinfo(loop, &req, NULL, addr.host().c_str(), port.c_str(), &hints)) != 0)
                 throw std::runtime_error(uv_strerror(rc));
@@ -86,15 +84,8 @@ static struct sockaddr_storage get_sockaddr(uv_loop_t *loop, const nplex::addr_t
 static void cb_signal_handler(uv_signal_t *handle, int signum)
 {
     SPDLOG_WARN("Signal received: {}({})", ::strsignal(signum), signum);
-    uv_stop(handle->loop);
     uv_signal_stop(handle);
-    uv_close(reinterpret_cast<uv_handle_t *>(handle), nullptr);
-}
-
-static void cb_process_async(uv_async_t *handle)
-{
-    UNUSED(handle);
-    //TODO: use async signal to stop the thread (ex. SIGINT signal) or notify a write
+    uv_stop(handle->loop);
 }
 
 static void cb_close_handle(uv_handle_t *handle, void *arg)
@@ -110,20 +101,16 @@ static void cb_close_handle(uv_handle_t *handle, void *arg)
             SPDLOG_TRACE("Closing UV_SIGNAL");
             uv_close(handle, nullptr);
             break;
-        case UV_ASYNC:
-            SPDLOG_TRACE("Closing UV_ASYNC");
-            uv_close(handle, nullptr);
-            break;
         case UV_TCP:
             SPDLOG_TRACE("Closing UV_TCP");
             uv_close(handle, nullptr);
             break;
         case UV_TIMER:
-            SPDLOG_TRACE("Closing UV_TIMER");
+            SPDLOG_TRACE("Closing UV_TIMER"); // TODO: to remove
             uv_close(handle, (uv_close_cb) free);
             break;
         default:
-            SPDLOG_TRACE("Closing OTHER");
+            SPDLOG_TRACE("Closing UV_{}", uv_handle_type_name(handle->type));
             uv_close(handle, (uv_close_cb) free);
     }
 }
@@ -152,13 +139,14 @@ void nplex::server_t::init(const params_t &params)
     try {
         init_event_loop(params);
         init_context(params);
-        init_async(params);
+        init_signals(params);
         init_network(params);
+        init_test(params);
     } catch (...) {
         m_loop.reset();
         m_context.reset();
-        m_async.reset();
-        m_signal.reset();
+        m_sigint.reset();
+        m_sigterm.reset();
         m_tcp.reset();
         throw;
     }
@@ -177,7 +165,6 @@ void nplex::server_t::init_event_loop(const params_t &)
 void nplex::server_t::init_context(const params_t &params)
 {
     m_context = std::make_shared<context_t>(m_loop.get(), params);
-    m_context->m_max_sessions = params.max_connections;
     m_loop->data = m_context.get();
 
     m_context->storage->set_writer_callback([this](bool success, std::vector<update_t> &&updates) {
@@ -191,23 +178,29 @@ void nplex::server_t::init_context(const params_t &params)
     });
 }
 
-void nplex::server_t::init_async(const params_t &)
+void nplex::server_t::init_signals(const params_t &)
 {
     int rc = 0;
 
-    m_async = std::make_unique<uv_async_t>();
+    m_sigint = std::make_unique<uv_signal_t>();
 
-    if ((rc = uv_async_init(m_loop.get(), m_async.get(), ::cb_process_async)) != 0)
+    if ((rc = uv_signal_init(m_loop.get(), m_sigint.get())) != 0)
         throw nplex_exception(uv_strerror(rc));
 
-    m_signal = std::make_unique<uv_signal_t>();
-
-    if ((rc = uv_signal_init(m_loop.get(), m_signal.get())) != 0)
+    if ((rc = uv_signal_start(m_sigint.get(), ::cb_signal_handler, SIGINT)) != 0)
         throw nplex_exception(uv_strerror(rc));
 
-    if ((rc = uv_signal_start(m_signal.get(), ::cb_signal_handler, SIGINT)) != 0)
+    m_sigterm = std::make_unique<uv_signal_t>();
+
+    if ((rc = uv_signal_init(m_loop.get(), m_sigterm.get())) != 0)
         throw nplex_exception(uv_strerror(rc));
 
+    if ((rc = uv_signal_start(m_sigterm.get(), ::cb_signal_handler, SIGTERM)) != 0)
+        throw nplex_exception(uv_strerror(rc));
+}
+
+void nplex::server_t::init_test(const params_t &)
+{
     // TODO: Remove this testing code
     uv_timer_t *timer = (uv_timer_t *) malloc(sizeof(uv_timer_t));
     timer->data = this;
@@ -273,15 +266,6 @@ void nplex::server_t::run() noexcept
     SPDLOG_INFO("Nplex server terminated");
 }
 
-void nplex::server_t::stop() noexcept
-{
-    if (!m_loop)
-        return;
-
-    // TODO: check if running
-    // TODO: send signal to stop the event loop
-}
-
 // TODO: remove this test function
 void nplex::server_t::simule_submit()
 {
@@ -345,5 +329,4 @@ void nplex::server_t::simule_submit()
     else {
         SPDLOG_ERROR("Error try_commit = {}", static_cast<int>(rc));
     }
-
 }

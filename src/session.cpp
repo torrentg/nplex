@@ -6,6 +6,7 @@
 #include "user.hpp"
 #include "context.hpp"
 #include "session.hpp"
+#include "tasks.hpp"
 
 // maximum message size (in bytes) for a non logged user
 #define MAX_MSG_BYTES_FROM_NO_USER 1024
@@ -37,6 +38,12 @@ void nplex::session_t::disconnect(int rc)
 {
     m_state = state_e::CLOSED;
     m_con.disconnect(rc);
+}
+
+void nplex::session_t::shutdown(int rc)
+{
+    m_state = state_e::CLOSED;
+    m_con.shutdown(rc);
 }
 
 void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
@@ -75,7 +82,7 @@ void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
     if (m_state == state_e::SYNCED && m_con.is_blocked())
     {
         SPDLOG_DEBUG("Message {} to {} discarded (queue is full)", msgs::EnumNameMsgContent(type), m_id);
-        m_con.disconnect(ERR_QUEUE_LENGTH);
+        m_con.shutdown(ERR_QUEUE_LENGTH);
         return;
     }
 
@@ -151,7 +158,7 @@ void nplex::session_t::process_login_request(const msgs::LoginRequest *req)
         return;
     }
 
-    if (!req || !req->user() || !req->password()) {
+    if (!req) {
         disconnect(ERR_MSG_ERROR);
         return;
     }
@@ -163,7 +170,18 @@ void nplex::session_t::process_login_request(const msgs::LoginRequest *req)
                 msgs::LoginCode::UNSUPPORTED_API_VERSION
             ) 
         );
-        disconnect(ERR_API_VERSION);
+        shutdown(ERR_API_VERSION);
+        return;
+    }
+
+    if (!req->user() || !req->password()) {
+        send(
+            create_login_msg(
+                req->cid(), 
+                msgs::LoginCode::INVALID_CREDENTIALS
+            ) 
+        );
+        shutdown(ERR_MSG_ERROR);
         return;
     }
 
@@ -175,7 +193,7 @@ void nplex::session_t::process_login_request(const msgs::LoginRequest *req)
                 msgs::LoginCode::INVALID_CREDENTIALS
             ) 
         );
-        disconnect(ERR_USR_NOT_FOUND);
+        shutdown(ERR_USR_NOT_FOUND);
         return;
     }
 
@@ -188,7 +206,7 @@ void nplex::session_t::process_login_request(const msgs::LoginRequest *req)
                 msgs::LoginCode::INVALID_CREDENTIALS
             ) 
         );
-        disconnect(ERR_USR_INVL_PWD);
+        shutdown(ERR_USR_INVL_PWD);
         return;
     }
 
@@ -199,7 +217,7 @@ void nplex::session_t::process_login_request(const msgs::LoginRequest *req)
                 msgs::LoginCode::TOO_MANY_CONNECTIONS
             ) 
         );
-        disconnect(ERR_USR_MAX_CONN);
+        shutdown(ERR_USR_MAX_CONN);
         return;
     }
 

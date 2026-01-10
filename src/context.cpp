@@ -3,6 +3,7 @@
 #include <fmt/ranges.h>
 #include "exception.hpp"
 #include "context.hpp"
+#include "tasks.hpp"
 
 // ==========================================================
 // Internal (static) functions
@@ -87,7 +88,7 @@ static void cb_task_after(uv_work_t *req, int status)
     SPDLOG_DEBUG("Task {}: duration = {} μs", task->name(), duration_us);
 
     if (status == UV_ECANCELED) {
-        SPDLOG_TRACE("Task {} cancelled", task->name());
+        SPDLOG_DEBUG("Task {} cancelled", task->name());
         goto END;
     }
 
@@ -124,11 +125,9 @@ END:
 nplex::context_t::context_t(uv_loop_t *loop_, const params_t &params) : loop(loop_)
 {
     users = ::create_users(params);
-
+    m_max_sessions = params.max_connections;
     storage = std::make_shared<storage_t>(params);
-
     auto [min_rev, max_rev] = storage->get_range();
-
     repo = storage->get_repo(max_rev);
 }
 
