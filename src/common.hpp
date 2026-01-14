@@ -104,9 +104,9 @@ enum log_level_e : std::uint8_t {
     TRACE,    // developper messages
     DEBUG,    // connection initiated/terminated, data update, sent/recv message (except KEEPALIVE_PUSH), tasks duration
     INFO,     // users login/disconnection, snapshots
-    DEFAULT,  // default log level (info)
     WARN,     // signal SIGINT, threshold exceeded, unexpected events
     ERROR,    // critical errors
+    NONE      // disable logging
 };
 
 } // namespace nplex

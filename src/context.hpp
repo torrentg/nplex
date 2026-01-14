@@ -19,7 +19,7 @@ struct task_t;
 struct context_t : public std::enable_shared_from_this<context_t>
 {
     uv_loop_t *loop;                            // Event loop (owns the thread pool)
-    std::map<std::string, user_ptr> users;      // User data
+    std::map<std::string, user_ptr> users;      // Users in config file (pwd, permissions, etc)
     storage_ptr storage;                        // Storage object (owns the write-thread)
     repo_t repo;                                // Repository object (the key-value map)
     std::set<session_ptr, shared_ptr_compare<session_t>> sessions; // Current sessions

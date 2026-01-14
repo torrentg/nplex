@@ -7,35 +7,43 @@
 #include "utils.hpp"
 #include "params.hpp"
 
-#define GENERAL_ADDR                "addr"
-#define GENERAL_LOG_LEVEL           "log-level"
-#define GENERAL_MAX_CLIENTS         "max-clients"
-#define GENERAL_DISABLE_FSYNC       "disable-fsync"
-#define SECTION_USER_DEFAULTS       "user-defaults"
-#define USER_PASSWORD               "password"
-#define USER_ACTIVE                 "active"
-#define USER_CAN_FORCE              "can-force"
-#define USER_MAX_CONNECTIONS        "max-connections"
-#define USER_KEEPALIVE_MILLIS       "keepalive-millis"
-#define USER_MAX_MSG_BYTES          "max-msg-bytes"
-#define USER_MAX_QUEUE_LENGTH       "max-queue-length"
-#define USER_MAX_QUEUE_BYTES        "max-queue-bytes"
-#define USER_TIMEOUT_FACTOR         "timeout-factor"
-#define USER_ACL                    "acl"
-#define WRITE_QUEUE_MAX_LENGTH      "write-queue-max-length"
-#define WRITE_QUEUE_MAX_BYTES       "write-queue-max-bytes"
-#define FLUSH_MAX_ENTRIES           "flush-max-entries"
-#define FLUSH_MAX_BYTES             "flush-max-bytes"
+#define GENERAL_ADDR                    "addr"
+#define GENERAL_LOG_LEVEL               "log-level"
+#define GENERAL_MAX_CLIENTS             "max-clients"
+#define GENERAL_DISABLE_FSYNC           "disable-fsync"
+#define SECTION_USER_DEFAULTS           "user-defaults"
+#define USER_PASSWORD                   "password"
+#define USER_ACTIVE                     "active"
+#define USER_CAN_FORCE                  "can-force"
+#define USER_MAX_CONNECTIONS            "max-connections"
+#define USER_KEEPALIVE_MILLIS           "keepalive-millis"
+#define USER_MAX_MSG_BYTES              "max-msg-bytes"
+#define USER_MAX_QUEUE_LENGTH           "max-queue-length"
+#define USER_MAX_QUEUE_BYTES            "max-queue-bytes"
+#define USER_TIMEOUT_FACTOR             "timeout-factor"
+#define USER_ACL                        "acl"
+#define WRITE_QUEUE_MAX_LENGTH          "write-queue-max-length"
+#define WRITE_QUEUE_MAX_BYTES           "write-queue-max-bytes"
+#define FLUSH_MAX_ENTRIES               "flush-max-entries"
+#define FLUSH_MAX_BYTES                 "flush-max-bytes"
 
-#define DEFAULT_CHECK_JOURNAL       false
-#define DEFAULT_ADDR                "localhost:14022"
-#define DEFAULT_LOG_LEVEL           nplex::log_level_e::INFO
-#define DEFAULT_MAX_CONNECTIONS     256
-#define DEFAULT_DISABLE_FSYNC       false
-#define DEFAULT_QUEUE_MAX_LENGTH    1000
-#define DEFAULT_QUEUE_MAX_BYTES     (350 * 1024 * 1024)
-#define DEFAULT_FLUSH_MAX_ENTRIES   50
-#define DEFAULT_FLUSH_MAX_BYTES     (25 * 1024 * 1024)
+#define DEFAULT_CHECK_JOURNAL           false
+#define DEFAULT_ADDR                    "localhost:14022"
+#define DEFAULT_LOG_LEVEL               nplex::log_level_e::INFO
+#define DEFAULT_MAX_CONNECTIONS         256
+#define DEFAULT_DISABLE_FSYNC           false
+#define DEFAULT_QUEUE_MAX_LENGTH        1000
+#define DEFAULT_QUEUE_MAX_BYTES         (350 * 1024 * 1024)
+#define DEFAULT_FLUSH_MAX_ENTRIES       50
+#define DEFAULT_FLUSH_MAX_BYTES         (25 * 1024 * 1024)
+#define DEFAULT_USER_ACTIVE             true
+#define DEFAULT_USER_CAN_FORCE          false
+#define DEFAULT_USER_MAX_CONNECTIONS    5
+#define DEFAULT_USER_KEEPALIVE_MILLIS   3000
+#define DEFAULT_USER_MAX_MSG_BYTES      (50 * 1024 * 1024)
+#define DEFAULT_USER_MAX_QUEUE_LENGTH   1000
+#define DEFAULT_USER_MAX_QUEUE_BYTES    (100 * 1024 * 1024)
+#define DEFAULT_USER_TIMEOUT_FACTOR     3.0
 
 static std::string crud_to_string(std::uint8_t crud)
 {
@@ -280,6 +288,7 @@ static int cb_inih(void *obj, const char *section, const char *name, const char 
 static void set_defaults(nplex::params_t &params)
 {
     params.check_journal = DEFAULT_CHECK_JOURNAL;
+
     params.addr = DEFAULT_ADDR;
     params.log_level = DEFAULT_LOG_LEVEL;
     params.max_connections = DEFAULT_MAX_CONNECTIONS;
@@ -288,6 +297,15 @@ static void set_defaults(nplex::params_t &params)
     params.write_queue_max_bytes = DEFAULT_QUEUE_MAX_BYTES;
     params.flush_max_entries = DEFAULT_FLUSH_MAX_ENTRIES;
     params.flush_max_bytes = DEFAULT_FLUSH_MAX_BYTES;
+
+    params.default_user.active = DEFAULT_USER_ACTIVE;
+    params.default_user.can_force = DEFAULT_USER_CAN_FORCE;
+    params.default_user.max_connections = DEFAULT_USER_MAX_CONNECTIONS;
+    params.default_user.keepalive_millis = DEFAULT_USER_KEEPALIVE_MILLIS;
+    params.default_user.max_msg_bytes = DEFAULT_USER_MAX_MSG_BYTES;
+    params.default_user.max_queue_length = DEFAULT_USER_MAX_QUEUE_LENGTH;
+    params.default_user.max_queue_bytes = DEFAULT_USER_MAX_QUEUE_BYTES;
+    params.default_user.timeout_factor = DEFAULT_USER_TIMEOUT_FACTOR;
 }
 
 nplex::params_t::params_t(const fs::path &path)

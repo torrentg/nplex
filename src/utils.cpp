@@ -46,10 +46,10 @@ std::string nplex::to_string(log_level_e level)
     {
         case log_level_e::TRACE: return "trace";
         case log_level_e::DEBUG: return "debug";
-        case log_level_e::INFO: return "info";
-        case log_level_e::DEFAULT: return "info";
-        case log_level_e::WARN: return "warning";
+        case log_level_e::INFO:  return "info";
+        case log_level_e::WARN:  return "warning";
         case log_level_e::ERROR: return "error";
+        case log_level_e::NONE:  return "none";
         default: return "unknown";
     }
 }

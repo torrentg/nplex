@@ -29,7 +29,6 @@ static spdlog::level::level_enum to_spdlog(log_level_e level)
         case log_level_e::TRACE:   return spdlog::level::trace;
         case log_level_e::DEBUG:   return spdlog::level::debug;
         case log_level_e::INFO:    return spdlog::level::info;
-        case log_level_e::DEFAULT: return spdlog::level::info;
         case log_level_e::WARN:    return spdlog::level::warn;
         case log_level_e::ERROR:   return spdlog::level::err;
         default: return spdlog::level::info;
@@ -109,7 +108,7 @@ int main(int argc, char *argv[])
 {
     fs::path datadir_arg;
     addr_t addr_arg;
-    log_level_e log_level_arg = log_level_e::DEFAULT;
+    log_level_e log_level_arg = log_level_e::NONE;
     bool check_journal_arg = false;
     bool disable_fsync_arg = false;
     bool daemonize_arg = false;
@@ -235,7 +234,7 @@ int main(int argc, char *argv[])
             if (addr_arg.port())
                 params.addr = addr_arg;
 
-            if (log_level_arg != log_level_e::DEFAULT)
+            if (log_level_arg != log_level_e::NONE)
                 params.log_level = log_level_arg;
 
             params.disable_fsync = disable_fsync_arg;
@@ -248,7 +247,7 @@ int main(int argc, char *argv[])
         if (addr_arg.port())
             params.addr = addr_arg;
 
-        if (log_level_arg != log_level_e::DEFAULT)
+        if (log_level_arg != log_level_e::NONE)
             params.log_level = log_level_arg;
 
         params.datadir = std::filesystem::current_path();
@@ -287,12 +286,9 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    if (daemonize_arg)
-    {
-        if (daemon(1, 0) == -1) {
-            std::cerr << "Error: Failed to daemonize the process." << std::endl;
-            return EXIT_FAILURE;
-        }
+    if (daemonize_arg && daemon(1, 0) == -1) {
+        std::cerr << "Error: Failed to daemonize the process." << std::endl;
+        return EXIT_FAILURE;
     }
 
     try {
