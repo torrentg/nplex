@@ -112,6 +112,7 @@ int main(int argc, char *argv[])
     bool check_journal_arg = false;
     bool disable_fsync_arg = false;
     bool daemonize_arg = false;
+    bool has_disable_fsync_arg = false;
 
     // short options
     const char* const options1 = "cdVhFD:l:a:";
@@ -180,6 +181,7 @@ int main(int argc, char *argv[])
 
             case 'F': // -F (turn fsync off)
                 disable_fsync_arg = true;
+                has_disable_fsync_arg = true;
                 break;
 
             default: // '?' (unexpected argument)
@@ -237,7 +239,8 @@ int main(int argc, char *argv[])
             if (log_level_arg != log_level_e::NONE)
                 params.log_level = log_level_arg;
 
-            params.disable_fsync = disable_fsync_arg;
+            if (has_disable_fsync_arg)
+                params.disable_fsync = disable_fsync_arg;
 
             params.save(config_file);
         }
@@ -250,9 +253,11 @@ int main(int argc, char *argv[])
         if (log_level_arg != log_level_e::NONE)
             params.log_level = log_level_arg;
 
+        if (has_disable_fsync_arg)
+            params.disable_fsync = disable_fsync_arg;
+
         params.datadir = std::filesystem::current_path();
         params.check_journal = check_journal_arg;
-        params.disable_fsync = disable_fsync_arg;
     }
     catch(const std::exception &e) {
         std::cerr << "Error accessing " << datadir_arg / CONFIG_FILENAME << ": " << e.what() << std::endl;

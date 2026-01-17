@@ -36,12 +36,18 @@ nplex::session_t::session_t(const context_ptr &context, uv_stream_t *stream) :
 
 void nplex::session_t::disconnect(int rc)
 {
+    if (m_state == state_e::CLOSED)
+        return;
+
     m_state = state_e::CLOSED;
     m_con.disconnect(rc);
 }
 
 void nplex::session_t::shutdown(int rc)
 {
+    if (m_state == state_e::CLOSED)
+        return;
+
     m_state = state_e::CLOSED;
     m_con.shutdown(rc);
 }
@@ -121,6 +127,9 @@ void nplex::session_t::process_delivery(const msgs::Message *msg)
 
 void nplex::session_t::process_request(const msgs::Message *msg)
 {
+    if (m_state == state_e::CLOSED)
+        return;
+
     if (!msg || !msg->content()) {
         disconnect(ERR_MSG_ERROR);
         return;
@@ -259,6 +268,7 @@ void nplex::session_t::process_load_request(const msgs::LoadRequest *req)
     switch (req->mode())
     {
         case msgs::LoadMode::SNAPSHOT_AT_FIXED_REV:
+            SPDLOG_INFO("{} requests a snapshot at revision {}", m_id, req->rev());
             if (req->rev() == m_context->repo.rev())
                 send_last_snapshot(req->cid());
             else
@@ -266,14 +276,17 @@ void nplex::session_t::process_load_request(const msgs::LoadRequest *req)
             break;
 
         case msgs::LoadMode::SNAPSHOT_AT_LAST_REV:
+            SPDLOG_INFO("{} requests a snapshot at last revision", m_id);
             send_last_snapshot(req->cid());
             break;
 
         case msgs::LoadMode::ONLY_UPDATES_FROM_REV:
+            SPDLOG_INFO("{} requests only updates from current revision", m_id);
             send_only_updates(req->cid(), req->rev());
             break;
 
         default:
+            SPDLOG_WARN("{} has sent an unrecognized load mode", m_id);
             disconnect(ERR_MSG_ERROR);
     }
 }
@@ -309,7 +322,7 @@ void nplex::session_t::process_submit_request(const nplex::msgs::SubmitRequest *
 
 void nplex::session_t::process_ping_request(const nplex::msgs::PingRequest *req)
 {
-    if (m_state == state_e::CONNECTED) {
+    if (m_state != state_e::CONNECTED) {
         disconnect(ERR_MSG_UNEXPECTED);
         return;
     }
@@ -333,6 +346,7 @@ void nplex::session_t::send_last_snapshot(std::size_t cid)
 
     send(std::move(buf));
 
+    m_state = state_e::SYNCING;
     m_lrev = m_context->repo.rev();
     m_load_cid = cid;
 
@@ -348,9 +362,10 @@ void nplex::session_t::send_fixed_snapshot(std::size_t cid, rev_t rev)
         return;
     }
 
+    m_state = state_e::SYNCING;
     m_load_cid = cid;
 
-    m_context->submit_task(new repo_task_t(m_context->storage, this, rev, cid));
+    m_context->submit_task(new repo_task_t(m_context->storage, shared_from_this(), rev, cid));
 }
 
 void nplex::session_t::send_only_updates(std::size_t cid, rev_t rev)
@@ -363,6 +378,7 @@ void nplex::session_t::send_only_updates(std::size_t cid, rev_t rev)
         return;
     }
 
+    m_state = state_e::SYNCING;
     m_load_cid = cid;
     m_lrev = rev;
 
@@ -382,16 +398,13 @@ void nplex::session_t::do_sync()
         return;
 
     // Get the available output queue
-    auto stats = m_con.queue_stats();
-    stats.max_msgs = (stats.max_msgs == 0 ? UINT32_MAX : stats.max_msgs);
-    stats.max_bytes = (stats.max_bytes == 0 ? UINT32_MAX : stats.max_bytes);
-
+    const auto &stats = m_con.queue_stats();
     std::uint32_t max_msgs = static_cast<std::uint32_t>(stats.max_msgs - stats.num_msgs);
     std::uint32_t max_bytes = static_cast<std::uint32_t>(stats.max_bytes - stats.num_bytes);
 
     // TODO: check if info in cache
 
-    sync_task_t *task = new sync_task_t(m_context->storage, this, m_lrev, max_msgs, max_bytes);
+    sync_task_t *task = new sync_task_t(m_context->storage, shared_from_this(), m_lrev, max_msgs, max_bytes);
 
     task->config_builder(m_load_cid, MAX_REVS_IN_CHANGES_PUSH, MAX_BYTES_IN_CHANGES_PUSH);
 

@@ -19,7 +19,7 @@ static bool is_valid_user(const nplex::user_t &user)
         return false;
     }
 
-    if (user.timeout_factor <= 1.0) {
+    if (user.timeout_factor != 0.0f && user.timeout_factor <= 1.0f) {
         SPDLOG_WARN("User {} discarded (invalid timeout factor)", user.name);
         return false;
     }

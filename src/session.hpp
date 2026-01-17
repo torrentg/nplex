@@ -19,7 +19,7 @@ using context_ptr = std::shared_ptr<context_t>;
  * 
  * server_t is accessed via tcp.loop->data.
  */
-class session_t
+class session_t : public std::enable_shared_from_this<session_t>
 {
   public:
 
@@ -60,9 +60,9 @@ class session_t
     connection_t m_con;                         // connection object
     std::string m_id;                           // session identifier (user@addr)
     rev_t m_lrev = 0;                           // last revision (maybe unacked, maybe not sent because no data)
-    std::size_t m_load_cid = 0;                 // load correlation id
     state_e m_state = state_e::CLOSED;          // connection state
     bool m_ongoing_sync_task = false;           // true if a sync task is running
+    std::size_t m_load_cid = 0;                 // load correlation id
 
     void process_login_request(const nplex::msgs::LoginRequest *req);
     void process_load_request(const nplex::msgs::LoadRequest *req);

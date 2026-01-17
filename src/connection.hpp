@@ -85,9 +85,9 @@ class connection_t : private connection_s
     const queue_stats_t & queue_stats() const { return m_queue_stats; }
 
     void config(std::uint32_t max_msg_bytes, std::uint32_t max_queue_length, std::uint32_t max_queue_bytes) {
-        input_max_msg_bytes = max_msg_bytes;
-        m_queue_stats.max_msgs = max_queue_length;
-        m_queue_stats.max_bytes = max_queue_bytes;
+        input_max_msg_bytes = (max_msg_bytes == 0 ? UINT32_MAX : max_msg_bytes);
+        m_queue_stats.max_msgs = (max_queue_length == 0 ? UINT32_MAX : max_queue_length);
+        m_queue_stats.max_bytes = (max_queue_bytes == 0 ? UINT32_MAX : max_queue_bytes);
     }
 
     /**

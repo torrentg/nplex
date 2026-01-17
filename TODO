@@ -10,7 +10,8 @@
 * Create timer to check if msg delivery exceeds X millis ?
 * Manage exceptions in write thread
 * Remove buffer from storage::cmd ?
-* Remove ping request ?
+* Crear classe storage_writer_thread_t (gestiona cua)
+* repository_t -> data_store_t ?
 
 ## Useful commands
 

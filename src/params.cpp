@@ -225,7 +225,8 @@ static int cb_inih_inner(void *obj, const char *section, const char *name, const
             params->default_user.max_queue_bytes = parse_bytes(value);
         } else if (strcmp(name, USER_TIMEOUT_FACTOR) == 0) {
             params->default_user.timeout_factor = parse_float(value);
-            if (params->default_user.timeout_factor <= 1.0)
+            if (params->default_user.timeout_factor != 0.0f &&
+                params->default_user.timeout_factor <= 1.0f)
                 throw std::invalid_argument(fmt::format("Invalid timeout factor ({})", value));
         } else {
             throw std::invalid_argument(fmt::format("Unrecognized entry ({})", name));
@@ -265,7 +266,7 @@ static int cb_inih_inner(void *obj, const char *section, const char *name, const
         it->max_queue_bytes = parse_bytes(value);
     } else if (strcmp(name, USER_TIMEOUT_FACTOR) == 0) {
         it->timeout_factor = parse_float(value);
-        if (it->timeout_factor <= 1.0)
+        if (it->timeout_factor != 0.0f && it->timeout_factor <= 1.0f)
             throw std::invalid_argument(fmt::format("Invalid timeout factor ({})", value));
     } else if (strcmp(name, USER_ACL) == 0) {
         it->permissions.push_back(parse_acl(value));

@@ -21,6 +21,9 @@ void nplex::repo_task_t::run()
 
 void nplex::repo_task_t::after()
 {
+    if (m_session->state() != session_t::state_e::SYNCING)
+        return;
+
     m_session->send(std::move(m_buf));
     m_session->do_sync();
 }
@@ -44,10 +47,13 @@ void nplex::sync_task_t::run()
 
 void nplex::sync_task_t::after()
 {
+    if (m_session->state() != session_t::state_e::SYNCING)
+        return;
+
     for (auto &buf : m_buffers)
         m_session->send(std::move(buf));
 
-    SPDLOG_INFO("sync_task completed: r{}, {} msgs, {} bytes", m_rev, m_buffers.size(), m_bytes);
+    SPDLOG_DEBUG("sync_task completed: r{}, {} msgs, {} bytes", m_rev, m_buffers.size(), m_bytes);
     m_session->sync_task_complete();
 }
 

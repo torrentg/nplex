@@ -12,7 +12,7 @@ namespace nplex {
 
 // Forward declarations
 class session_t;
-class server_t;
+using session_ptr = std::shared_ptr<session_t>;
 
 /**
  * Wrapper for a uv_work_t to be executed in the event loop.
@@ -52,12 +52,12 @@ struct task_t
 struct repo_task_t : public task_t
 {
     storage_ptr m_storage;              // storage object
-    session_t *m_session;               // session used to send messages
+    session_ptr m_session;              // session used to send messages
     std::size_t m_cid;                  // correlation id
     rev_t m_rev;                        // snapshot revision
     flatbuffers::DetachedBuffer m_buf;  // serialized message
 
-    repo_task_t(storage_ptr &storage, session_t *session, nplex::rev_t rev, std::size_t cid)
+    repo_task_t(const storage_ptr &storage, const session_ptr &session, nplex::rev_t rev, std::size_t cid)
         : m_storage(storage), m_session(session), m_cid(cid), m_rev(rev) {}
 
     const char * name() const override { return "repo_task"; }
@@ -74,7 +74,7 @@ struct repo_task_t : public task_t
 struct sync_task_t : public task_t
 {
     storage_ptr m_storage;              // storage object
-    session_t *m_session;               // session used to send messages
+    session_ptr m_session;              // session used to send messages
     rev_t m_rev;                        // last revision sent to the session
     std::uint32_t m_max_msgs;           // max number of Changes messages
     std::uint32_t m_max_bytes;          // max bytes of generated Changes messages
@@ -83,7 +83,7 @@ struct sync_task_t : public task_t
     std::vector<flatbuffers::DetachedBuffer> m_buffers;  // Changes messages to send
     std::size_t m_bytes = 0;            // bytes of generated Changes messages
 
-    sync_task_t(storage_ptr &storage, session_t *session, nplex::rev_t rev, std::uint32_t max_msgs, std::uint32_t max_bytes)
+    sync_task_t(const storage_ptr &storage, const session_ptr &session, nplex::rev_t rev, std::uint32_t max_msgs, std::uint32_t max_bytes)
         : m_storage(storage), m_session(session), m_rev(rev), m_max_msgs(max_msgs), m_max_bytes(max_bytes) {}
 
     const char * name() const override { return "sync_task"; }

@@ -226,22 +226,21 @@ void nplex::connection_s::disconnect(int rc)
     if (!m_error)
         m_error = rc;
 
-    if (uv_is_closing(get_handle(&m_tcp)))
-        return;
-
     if (m_timer_disconnect && !uv_is_closing(get_handle(m_timer_disconnect))) {
         uv_timer_stop(m_timer_disconnect);
         uv_close(get_handle(m_timer_disconnect), ::cb_close_timer);
-        m_timer_disconnect = nullptr;
     }
 
     if (m_timer_keepalive && !uv_is_closing(get_handle(m_timer_keepalive))) {
         uv_timer_stop(m_timer_keepalive);
         uv_close(get_handle(m_timer_keepalive), ::cb_close_timer);
-        m_timer_keepalive = nullptr;
     }
+    
+    if (!uv_is_closing(get_handle(&m_tcp)))
+        uv_close(get_handle(&m_tcp), ::cb_close_connection);
 
-    uv_close(get_handle(&m_tcp), ::cb_close_connection);
+    m_timer_disconnect = nullptr;
+    m_timer_keepalive = nullptr;
 }
 
 void nplex::connection_s::shutdown(int rc)
