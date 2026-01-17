@@ -118,6 +118,13 @@ END:
     delete task;
 }
 
+static void cb_async_updates_written(uv_async_t *handle)
+{
+    assert(handle->data);
+    auto context = static_cast<nplex::context_t *>(handle->data);
+    context->on_updates_written_2();
+}
+
 // ==========================================================
 // context_t methods
 // ==========================================================
@@ -129,6 +136,26 @@ nplex::context_t::context_t(uv_loop_t *loop_, const params_t &params) : loop(loo
     storage = std::make_shared<storage_t>(params);
     auto [min_rev, max_rev] = storage->get_range();
     repo = storage->get_repo(max_rev);
+
+    // async handle to process updates written by storage thread
+    m_async_updates_written = (uv_async_t *) malloc(sizeof(uv_async_t));
+    m_async_updates_written->data = this;
+    uv_async_init(loop, m_async_updates_written, cb_async_updates_written);
+    // will be deleted on loop close
+
+    storage->set_writer_callback([this](bool success, std::vector<update_t> &&updates) {
+        on_updates_written_1(success, std::move(updates));
+    });
+}
+
+nplex::context_t::~context_t()
+{
+    storage->set_writer_callback(nullptr);
+
+    if (m_async_updates_written) {
+        uv_close(reinterpret_cast<uv_handle_t *>(m_async_updates_written), (uv_close_cb) free);
+        m_async_updates_written = nullptr;
+    }
 }
 
 void nplex::context_t::submit_task(task_t *task)
@@ -141,12 +168,12 @@ void nplex::context_t::submit_task(task_t *task)
     }
 
     task->start_time = uv_hrtime();
+    m_num_running_tasks++;
 
     int rc = 0;
     if ((rc = uv_queue_work(loop, &task->work, ::cb_task_run, ::cb_task_after)) != 0)
         throw std::runtime_error(uv_strerror(rc));
 
-    m_num_running_tasks++;
 }
 
 void nplex::context_t::release_task(task_t *)
@@ -198,6 +225,39 @@ void nplex::context_t::release_session(session_t *session)
 
     if (!m_running && sessions.empty())
         uv_stop(loop);
+}
+
+void nplex::context_t::on_updates_written_1(bool success, std::vector<update_t> &&updates)
+{
+    if (!success) {
+        SPDLOG_ERROR("Error writing to journal");
+        // TODO: stop the event loop
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(m_pending_publish_mutex);
+
+        m_pending_publish.insert(m_pending_publish.end(),
+            std::make_move_iterator(updates.begin()),
+            std::make_move_iterator(updates.end()));
+    }
+
+    if (m_async_updates_written)
+        uv_async_send(m_async_updates_written);
+}
+
+void nplex::context_t::on_updates_written_2()
+{
+    std::vector<update_t> updates;
+
+    {
+        std::lock_guard<std::mutex> lock(m_pending_publish_mutex);
+        updates.swap(m_pending_publish);
+    }
+
+    if (!updates.empty())
+        publish(updates);
 }
 
 void nplex::context_t::publish(const std::span<update_t> &updates)

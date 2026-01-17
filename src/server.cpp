@@ -105,8 +105,12 @@ static void cb_close_handle(uv_handle_t *handle, void *arg)
             SPDLOG_TRACE("Closing UV_TCP");
             uv_close(handle, nullptr);
             break;
+        case UV_ASYNC:
+            SPDLOG_TRACE("Closing UV_ASYNC");
+            uv_close(handle, (uv_close_cb) free);
+            break;
         case UV_TIMER:
-            SPDLOG_TRACE("Closing UV_TIMER"); // TODO: to remove
+            SPDLOG_TRACE("Closing UV_TIMER");
             uv_close(handle, (uv_close_cb) free);
             break;
         default:
@@ -166,16 +170,6 @@ void nplex::server_t::init_context(const params_t &params)
 {
     m_context = std::make_shared<context_t>(m_loop.get(), params);
     m_loop->data = m_context.get();
-
-    m_context->storage->set_writer_callback([this](bool success, std::vector<update_t> &&updates) {
-        if (success) {
-            m_context->publish(updates);
-        }
-        else {
-            SPDLOG_ERROR("Error writing to journal");
-            uv_stop(m_loop.get());
-        }
-    });
 }
 
 void nplex::server_t::init_signals(const params_t &)
@@ -258,10 +252,18 @@ void nplex::server_t::run() noexcept
     while (m_context->m_num_running_tasks != 0 || !m_context->sessions.empty())
         uv_run(m_loop.get(), UV_RUN_DEFAULT);
 
+    // destroy context to free repo/storage memory before closing handles
+    m_context.reset();
+
     // closing remaining objects
     uv_walk(m_loop.get(), ::cb_close_handle, NULL);
     while (uv_run(m_loop.get(), UV_RUN_NOWAIT));
     uv_loop_close(m_loop.get());
+
+    m_tcp.reset();
+    m_sigint.reset();
+    m_sigterm.reset();
+    m_loop.reset();
 
     SPDLOG_INFO("Nplex server terminated");
 }

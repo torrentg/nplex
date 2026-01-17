@@ -92,12 +92,13 @@ void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
         return;
     }
 
+    size_t bytes = buf.size();
     m_con.send(std::move(buf));
 
     if (type == msgs::MsgContent::KEEPALIVE_PUSH)
-        SPDLOG_TRACE("Sent {} to {}", msgs::EnumNameMsgContent(type), m_id);
+        SPDLOG_TRACE("Sent {} to {} ({})", msgs::EnumNameMsgContent(type), m_id, bytes_to_string(bytes));
     else
-        SPDLOG_DEBUG("Sent {} to {}", msgs::EnumNameMsgContent(type), m_id);
+        SPDLOG_DEBUG("Sent {} to {} ({})", msgs::EnumNameMsgContent(type), m_id, bytes_to_string(bytes));
 }
 
 void nplex::session_t::process_delivery(const msgs::Message *msg)

@@ -52,7 +52,7 @@ static inline std::uint32_t get_param(std::uint32_t value) {
 }
 
 // ==========================================================
-// snapshots_t methods
+// storage_t methods
 // ==========================================================
 
 nplex::storage_t::storage_t(const nplex::params_t &params) : m_path{params.datadir}
