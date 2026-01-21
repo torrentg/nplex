@@ -33,20 +33,20 @@ nplex::journal_writer::~journal_writer()
     stop();
 }
 
-void nplex::journal_writer::start(callback_t &&cb)
+void nplex::journal_writer::start(result_callback_t &&result_cb, error_callback_t &&error_cb)
 {
-    m_callback = std::move(cb);
+    m_result_cb = std::move(result_cb);
+    m_error_cb = std::move(error_cb);
 
     bool expected = false;
     if (m_running.compare_exchange_strong(expected, true)) {
         m_thread = std::thread([this]{
             try {
                 run();
-            } catch (const std::exception &ex) {
-                SPDLOG_ERROR("Journal writer thread exception: {}", ex.what());
-                m_running.store(false);
             } catch (...) {
-                SPDLOG_ERROR("Journal writer thread unknown exception");
+                if (m_error_cb) {
+                    m_error_cb(std::current_exception());
+                }
                 m_running.store(false);
             }
         });
@@ -109,6 +109,7 @@ void nplex::journal_writer::run()
     std::vector<update_t> updates;
     std::size_t bytes_batch = 0;
     std::uint64_t start_time = 0;
+    int ldb_rc = LDB_OK;
 
     batch.reserve(32);
     updates.reserve(32);
@@ -159,7 +160,7 @@ void nplex::journal_writer::run()
         // Step2: Write batch to journal
         start_time = uv_hrtime();
 
-        m_journal.append(batch.data(), batch.size(), &num_writes);
+        ldb_rc = m_journal.append(batch.data(), batch.size(), &num_writes);
 
         SPDLOG_TRACE("journal_writer wrote {} entries ({} bytes) in {}μs", 
             num_writes, bytes_to_string(bytes_batch), (uv_hrtime() - start_time) / 1000);
@@ -181,8 +182,8 @@ void nplex::journal_writer::run()
                 updates.emplace_back(std::move(cmd.update));
             }
 
-            if (!updates.empty() && m_callback)
-                m_callback(true, std::move(updates));
+            if (!updates.empty() && m_result_cb)
+                m_result_cb(true, std::move(updates));
 
             // Remaining staged entries (not written)
             updates.clear();
@@ -197,8 +198,11 @@ void nplex::journal_writer::run()
                 updates.emplace_back(std::move(cmd.update));
             }
 
-            if (!updates.empty() && m_callback)
-                m_callback(false, std::move(updates));
+            if (!updates.empty() && m_result_cb)
+                m_result_cb(false, std::move(updates));
+
+            if (!updates.empty() && ldb_rc != LDB_OK && m_error_cb)
+                m_error_cb(std::make_exception_ptr(ldb_strerror(ldb_rc)));
 
             assert(!m_queue.empty() || m_bytes_in_queue == 0);
         }

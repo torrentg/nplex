@@ -69,7 +69,7 @@ class session_t : public std::enable_shared_from_this<session_t>
     void process_submit_request(const nplex::msgs::SubmitRequest *req);
     void process_ping_request(const nplex::msgs::PingRequest *req);
 
-    void send_last_snapshot(std::size_t cid);
+    void send_repo_snapshot(std::size_t cid);
     void send_fixed_snapshot(std::size_t cid, rev_t rev);
     void send_only_updates(std::size_t cid, rev_t rev);
 };

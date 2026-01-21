@@ -90,7 +90,7 @@ static void cb_task_after(uv_work_t *req, int status)
 
     uint64_t duration_us = (uv_hrtime() - task->start_time) / 1000;
 
-    SPDLOG_DEBUG("Task {}: duration = {} μs", task->name(), duration_us);
+    SPDLOG_TRACE("Task {}: duration = {} μs", task->name(), duration_us);
 
     if (status == UV_ECANCELED) {
         SPDLOG_DEBUG("Task {} cancelled", task->name());
@@ -128,7 +128,7 @@ static void cb_async_stop_loop(uv_async_t *handle)
     uv_stop(handle->loop);
 }
 
-static void cb_async_updates_written(uv_async_t *handle)
+static void cb_async_updates_result(uv_async_t *handle)
 {
     assert(handle->data);
     auto context = static_cast<nplex::context_t *>(handle->data);
@@ -172,11 +172,21 @@ nplex::context_t::context_t(uv_loop_t *loop_, const params_t &params) : loop(loo
     // async handle to process updates written by storage thread
     m_async_updates_written = std::make_unique<uv_async_t>();
     m_async_updates_written->data = this;
-    uv_async_init(loop, m_async_updates_written.get(), cb_async_updates_written);
+    uv_async_init(loop, m_async_updates_written.get(), cb_async_updates_result);
 
-    m_journal_writer->start([this](bool success, std::vector<update_t> &&updates) {
-        on_updates_written_1(success, std::move(updates));
-    });
+    // start journal writing thread
+    m_journal_writer->start(
+        [this](bool success, std::vector<update_t> &&updates) {
+            on_updates_written_1(success, std::move(updates));
+        },
+        [this](std::exception_ptr ex) {
+            try {
+                if (ex) std::rethrow_exception(ex);
+            } catch (const std::exception &e) {
+                SPDLOG_ERROR("Exception in journal writer: {}", e.what());
+            }
+            stop();
+        });
 }
 
 nplex::context_t::~context_t()
@@ -205,8 +215,17 @@ void nplex::context_t::close()
         uv_close(reinterpret_cast<uv_handle_t *>(m_async_stop_loop.get()), nullptr);
 }
 
+void nplex::context_t::stop()
+{
+    if (m_async_stop_loop)
+        uv_async_send(m_async_stop_loop.get());
+}
+
 void nplex::context_t::persist(update_t &&upd)
 {
+    if (!m_running)
+        return;
+
     if (m_journal_writer)
         m_journal_writer->write(std::move(upd));
 }
@@ -282,13 +301,11 @@ void nplex::context_t::release_session(session_t *session)
 
 void nplex::context_t::on_updates_written_1(bool success, std::vector<update_t> &&updates)
 {
-    if (!success)
-    {
-        SPDLOG_ERROR("Error writing to journal");
-
-        if (m_async_updates_written)
-            uv_async_send(m_async_updates_written.get());
-
+    if (!success) {
+        auto min_rev = updates.empty() ? 0 : updates.front().meta->rev;
+        auto max_rev = updates.empty() ? 0 : updates.back().meta->rev;
+        SPDLOG_ERROR("Unable to write updates r{}-r{} to journal", min_rev, max_rev);
+        stop();
         return;
     }
 

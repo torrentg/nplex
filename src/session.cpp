@@ -83,7 +83,7 @@ void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
     }
 
     // update the message with the current revision
-    update_crev(buf, m_context->repo.rev());
+    update_crev(buf, m_context->last_persisted_rev());
 
     if (m_state == state_e::SYNCED && m_con.is_blocked())
     {
@@ -269,20 +269,23 @@ void nplex::session_t::process_load_request(const msgs::LoadRequest *req)
     switch (req->mode())
     {
         case msgs::LoadMode::SNAPSHOT_AT_FIXED_REV:
-            SPDLOG_INFO("{} requests a snapshot at revision {}", m_id, req->rev());
+            SPDLOG_INFO("{} requested snapshot r{}", m_id, req->rev());
             if (req->rev() == m_context->repo.rev())
-                send_last_snapshot(req->cid());
+                send_repo_snapshot(req->cid());
             else
                 send_fixed_snapshot(req->cid(), req->rev());
             break;
 
         case msgs::LoadMode::SNAPSHOT_AT_LAST_REV:
-            SPDLOG_INFO("{} requests a snapshot at last revision", m_id);
-            send_last_snapshot(req->cid());
+            SPDLOG_INFO("{} requested current snapshot", m_id);
+            if (m_context->last_persisted_rev() == m_context->repo.rev())
+                send_repo_snapshot(req->cid());
+            else
+                send_fixed_snapshot(req->cid(), m_context->last_persisted_rev());
             break;
 
         case msgs::LoadMode::ONLY_UPDATES_FROM_REV:
-            SPDLOG_INFO("{} requests only updates from current revision", m_id);
+            SPDLOG_INFO("{} requested only updates from current revision", m_id);
             send_only_updates(req->cid(), req->rev());
             break;
 
@@ -305,7 +308,7 @@ void nplex::session_t::process_submit_request(const nplex::msgs::SubmitRequest *
     send(
         create_submit_msg(
             req->cid(), 
-            m_context->repo.rev(),
+            m_context->last_persisted_rev(),
             rc,
             (rc == msgs::SubmitCode::ACCEPTED ? m_context->repo.rev() : 0)
         )
@@ -330,21 +333,23 @@ void nplex::session_t::process_ping_request(const nplex::msgs::PingRequest *req)
     send(
         create_ping_msg(
             req->cid(), 
-            m_context->repo.rev(),
+            m_context->last_persisted_rev(),
             (req->payload() ? req->payload()->str() : "")
         )
     );
 }
 
-void nplex::session_t::send_last_snapshot(std::size_t cid)
+void nplex::session_t::send_repo_snapshot(std::size_t cid)
 {
     load_builder_t builder(cid);
 
     builder.set_snapshot(m_context->repo, m_user);
 
-    auto buf = builder.finish(m_context->repo.rev(), true);
-
+    auto buf = builder.finish(m_context->last_persisted_rev(), true);
+    
     send(std::move(buf));
+    
+    assert(m_context->last_persisted_rev() == m_context->repo.rev());
 
     m_state = state_e::SYNCING;
     m_lrev = m_context->repo.rev();
@@ -355,11 +360,11 @@ void nplex::session_t::send_last_snapshot(std::size_t cid)
 
 void nplex::session_t::send_fixed_snapshot(std::size_t cid, rev_t rev)
 {
-    // TODO: remove blocking call
-    auto [min_rev, max_rev] = m_context->storage->get_revs_range();
+    auto min_rev = m_context->minimum_rev();
+    auto max_rev = m_context->last_persisted_rev();
 
     if (rev < min_rev || rev > max_rev) {
-        send(load_builder_t{cid}.finish(m_context->repo.rev(), false));
+        send(load_builder_t{cid}.finish(max_rev, false));
         return;
     }
 
@@ -371,12 +376,11 @@ void nplex::session_t::send_fixed_snapshot(std::size_t cid, rev_t rev)
 
 void nplex::session_t::send_only_updates(std::size_t cid, rev_t rev)
 {
-    // TODO: remove blocking call
-    auto min_rev = m_context->storage->get_revs_range().first;
-    auto crev = m_context->repo.rev();
+    auto min_rev = m_context->minimum_rev();
+    auto max_rev = m_context->last_persisted_rev();
 
-    if (rev < min_rev || rev > crev) {
-        send(load_builder_t{m_load_cid}.finish(crev, false));
+    if (rev < min_rev || rev > max_rev) {
+        send(load_builder_t{m_load_cid}.finish(max_rev, false));
         return;
     }
 
@@ -389,7 +393,7 @@ void nplex::session_t::send_only_updates(std::size_t cid, rev_t rev)
 
 void nplex::session_t::do_sync()
 {
-    if (m_lrev == m_context->repo.rev()) {
+    if (m_lrev == m_context->last_persisted_rev()) {
         m_state = state_e::SYNCED;
         return;
     }
@@ -424,7 +428,7 @@ void nplex::session_t::push_changes(const std::span<update_t> &updates)
     builder.append_updates(updates);
 
     if (!builder.empty())
-        send(builder.finish(m_context->repo.rev(), false));
+        send(builder.finish(m_context->last_persisted_rev(), false));
 
     m_lrev = updates.back().meta->rev;
 }

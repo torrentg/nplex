@@ -5,13 +5,12 @@
 * Add snapshot-max-bytes param
 * Add database-max-entries param
 * Add database-max-bytes param
-* Add buffer gto::cqueue<update_t>
-* Create 2 uv_async (stop + journal_write_completed) ?
 * Create timer to check if msg delivery exceeds X millis ?
 * Manage exceptions in write thread
-* Remove buffer from storage::cmd ?
-* Crear classe storage_writer_thread_t (gestiona cua)
 * repository_t -> data_store_t ?
+* Split load_request to snapshot_request + stream_request
+* Check exception in writer thread stops the event loop
+* context_t::sessions: replace set by unordered_set
 
 ## Useful commands
 

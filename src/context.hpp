@@ -44,6 +44,7 @@ struct context_t : public std::enable_shared_from_this<context_t>
     rev_t minimum_rev() const { return m_rev_0; }
     rev_t last_persisted_rev() const { return m_rev_w; }
 
+    void stop();
     void close();
     bool has_active_tasks_or_sessions() const { return (m_num_running_tasks != 0 || !sessions.empty()); }
     void persist(update_t &&upd);

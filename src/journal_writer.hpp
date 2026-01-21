@@ -43,7 +43,14 @@ class journal_writer
      *             is transferred to the callback; the writer moves this vector when 
      *             invoking the callback.
      */
-    using callback_t = std::function<void(bool success, std::vector<update_t> &&updates)>;
+    using result_callback_t = std::function<void(bool success, std::vector<update_t> &&updates)>;
+
+    /**
+     * Error callback type invoked when an exception occurs in the journal writer.
+     *
+     * @param[in] e The exception that was thrown.
+     */
+    using error_callback_t = std::function<void(std::exception_ptr)>;
 
     journal_writer(ldb::journal_t &journal, const params_t &params);
     ~journal_writer();
@@ -56,9 +63,10 @@ class journal_writer
      * 
      * If the thread is already started, does nothing.
      * 
-     * @param[in] cb The callback function that will be called on every write completion.
+     * @param[in] result_cb The callback function that will be called on every write completion.
+     * @param[in] error_cb The callback function that will be called when an exception occurs.
      */
-    void start(callback_t &&cb);
+    void start(result_callback_t &&result_cb, error_callback_t &&error_cb);
 
     /**
      * Enqueues an update to be written to the journal.
@@ -96,18 +104,19 @@ class journal_writer
     ldb::journal_t &m_journal;                      // Reference to the journal object
 
     gto::cqueue<cmd_t> m_queue;                     // Queue of pending write commands
-    std::size_t m_bytes_in_queue = 0;             // Total bytes in the queue
-    std::size_t m_queue_max_length;               // Maximum number of messages in the write queue (always > 0).
-    std::size_t m_queue_max_bytes;                // Maximum number of bytes in the write queue (always > 0).
+    std::size_t m_bytes_in_queue = 0;               // Total bytes in the queue
+    std::size_t m_queue_max_length;                 // Maximum number of messages in the write queue (always > 0).
+    std::size_t m_queue_max_bytes;                  // Maximum number of bytes in the write queue (always > 0).
 
     std::thread m_thread;                           // Writer thread
     std::atomic<bool> m_running{false};             // Running flag
     std::condition_variable m_cond;                 // Used by producer to notify consumer that m_queue is not empty
     std::mutex m_mutex;                             // Protects m_queue and m_bytes_in_queue
 
-    std::size_t m_flush_max_entries;              // Maximum number of entries to flush (always > 0).
-    std::size_t m_flush_max_bytes;                // Maximum number of bytes to flush (always > 0).
-    callback_t m_callback;                          // Callback invoked on each write completion
+    std::size_t m_flush_max_entries;                // Maximum number of entries to flush (always > 0).
+    std::size_t m_flush_max_bytes;                  // Maximum number of bytes to flush (always > 0).
+    result_callback_t m_result_cb;                  // Callback invoked on each write completion
+    error_callback_t m_error_cb;                    // Callback invoked on exception
 
     /**
      * Main function executed by the writer thread.
