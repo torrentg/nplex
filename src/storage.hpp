@@ -1,91 +1,54 @@
 #pragma once
 
-#include <mutex>
-#include <atomic>
-#include <thread>
 #include <string>
-#include <vector>
 #include <memory>
-#include <functional>
 #include <filesystem>
-#include <condition_variable>
 #include "messages.hpp"
 #include "common.hpp"
-#include "params.hpp"
-#include "cqueue.hpp"
-#include "journal.h"
 #include "repository.hpp"
 #include "user.hpp"
+
+// Forward references
+namespace ldb {
+    class journal_t;
+}
 
 namespace nplex {
 
 /** 
  * Persistent storage (disk).
  * 
- * This object is accessed by multiple threads.
+ * All methods are blocking.
+ * This object is accessed by multiple threads (tasks).
+ * 
+ * @see journal_writer
  */
 class storage_t
 {
   public:
 
-    using callback_t = std::function<void(bool, std::vector<update_t> &&)>;
-
     /**
      * Constructor.
      * 
-     * Start a thread to write entries to disk.
-     * 
-     * @param[in] params Parameters.
-     * 
-     * @exception nplex_exception Error creating the storage object.
+     * @param[in] journal Journal object.
+     * @param[in] path Storage path.
      */
-    storage_t(const params_t &params);
-
-    ~storage_t() { close(); }
+    storage_t(ldb::journal_t &journal, const std::filesystem::path &path) : m_path{path}, m_journal{journal} {}
+    ~storage_t() = default;
 
     /**
-     * Stops the writer thread.
-     */
-    void close();
-
-    /**
-     * Returns the data revision range.
+     * Returns the revision range of constructible repositories.
      * 
      * @return Pair of revisions (min, max).
+     * 
+     * @exception nplex_exception Data dir not found, inconsistent data.
      */
-    std::pair<rev_t, rev_t> get_range() const { return {min_rev, max_rev}; }
-
-    /**
-     * Sets the callback function invoked on each journal write.
-     * 
-     * First callback argument is the result (success/failure).
-     * Second argument are the processed entries.
-     * 
-     * @param[in] callback Callback function.
-     */
-    void set_writer_callback(callback_t &&callback) { m_callback = std::move(callback); }
-
-    /**
-     * Check if there is space in the write queue.
-     * 
-     * @return true = queue is not full, false = queue is full.
-     */
-    bool is_writer_blocked() const;
-
-    /**
-     * Write an entry into the journal.
-     * 
-     * This method is asynchronous and non-blocking.
-     * On finish, the callback function is called with the result.
-     * 
-     * @param[in] upd Entry to write to disk.
-     * 
-     * @exception nplex_exception Error serializing update, or exceeded write-queue capacity.
-     */
-    void write_entry(update_t &&upd);
+    std::pair<rev_t, rev_t> get_revs_range();
 
     /**
      * Reads entries from rev until func returns false or last entry read.
+     * 
+     * This is a blocking method.
      * 
      * @param[in] rev Initial revision (included).
      * @param[in] func Function to execute on every entry.
@@ -109,7 +72,7 @@ class storage_t
      * 
      * @return Snapshot binary data (empty if not available).
      * 
-     * @exception nplex_exception Error reading file or invalid content.
+     * @exception nplex_exception If the file cannot be read or the content is invalid.
      */
     std::string read_snapshot(rev_t rev);
 
@@ -144,31 +107,8 @@ class storage_t
 
   private:
 
-    struct cmd_t {
-        update_t update;
-        flatbuffers::DetachedBuffer buffer;
-    };
-
-    std::thread m_thread;
-    std::filesystem::path m_path;
-    callback_t m_callback;
-    ldb::journal_t m_journal;
-    gto::cqueue<cmd_t> m_queue;
-    std::vector<ldb_entry_t> m_entries;
-    std::condition_variable m_cond_not_empty{};
-    mutable std::mutex m_mutex;
-    std::uint32_t m_queue_max_length;
-    std::uint32_t m_queue_max_bytes;
-    std::uint32_t m_flush_max_entries;
-    std::uint32_t m_flush_max_bytes;
-    std::uint32_t m_bytes_in_queue = 0;
-    std::atomic<bool> m_running = false;
-    rev_t min_rev = 0;
-    rev_t max_rev = 0;
-
-    void run_writer();
-    void process_write_commands();
-    rev_t get_snapshot_rev(rev_t rev, bool le = true) const;
+    const std::filesystem::path m_path;   // Storage path.
+    ldb::journal_t &m_journal;            // Journal object.
 };
 
 using storage_ptr = std::shared_ptr<storage_t>;

@@ -1,3 +1,4 @@
+#include <cassert>
 #include <spdlog/spdlog.h>
 #include "cppcrc.h"
 #include "utils.hpp"
@@ -274,6 +275,7 @@ nplex::update_t nplex::deserialize_update(const Update *msg, const user_ptr &use
 
 void nplex::load_builder_t::set_snapshot(const repo_t &repo, const user_ptr &user)
 { 
+    assert(m_offset_snapshot.IsNull());
     m_offset_snapshot = repo.serialize(m_builder, user);
 }
 

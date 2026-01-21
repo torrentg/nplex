@@ -107,7 +107,7 @@ static void cb_close_handle(uv_handle_t *handle, void *arg)
             break;
         case UV_ASYNC:
             SPDLOG_TRACE("Closing UV_ASYNC");
-            uv_close(handle, (uv_close_cb) free);
+            uv_close(handle, nullptr);
             break;
         case UV_TIMER:
             SPDLOG_TRACE("Closing UV_TIMER");
@@ -239,27 +239,20 @@ void nplex::server_t::run() noexcept
         SPDLOG_ERROR("{}", e.what());
     }
 
-    m_context->m_running = false;
-
-    // stoping the journal writing thread
-    m_context->storage->close();
-
-    // closing all sessions
-    for (auto &session : m_context->sessions)
-        session->disconnect(ERR_CLOSED_BY_LOCAL);
+    // stoping context (sessions, writer thread, etc)
+    m_context->close();
 
     // awaiting until all tasks terminated and all sessions closed
-    while (m_context->m_num_running_tasks != 0 || !m_context->sessions.empty())
+    while (m_context->has_active_tasks_or_sessions())
         uv_run(m_loop.get(), UV_RUN_DEFAULT);
-
-    // destroy context to free repo/storage memory before closing handles
-    m_context.reset();
 
     // closing remaining objects
     uv_walk(m_loop.get(), ::cb_close_handle, NULL);
     while (uv_run(m_loop.get(), UV_RUN_NOWAIT));
     uv_loop_close(m_loop.get());
 
+    // free resources
+    m_context.reset();
     m_tcp.reset();
     m_sigint.reset();
     m_sigterm.reset();
@@ -325,8 +318,7 @@ void nplex::server_t::simule_submit()
     if (rc == msgs::SubmitCode::ACCEPTED) {
         assert(m_context->repo.rev() == update.meta->rev);
         SPDLOG_DEBUG("Update rev={}, user={}, type={}", m_context->repo.rev(), update.meta->user.c_str(), update.meta->type);
-        //m_context->publish({&update, 1});
-        m_context->storage->write_entry(std::move(update));
+        m_context->persist(std::move(update));
     }
     else {
         SPDLOG_ERROR("Error try_commit = {}", static_cast<int>(rc));

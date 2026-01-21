@@ -252,8 +252,8 @@ void nplex::session_t::process_login_request(const msgs::LoginRequest *req)
         create_login_msg(
             req->cid(), 
             msgs::LoginCode::AUTHORIZED,
-            m_context->storage->get_range().first,
-            m_context->repo.rev(),
+            m_context->minimum_rev(),
+            m_context->last_persisted_rev(),
             *user
         ) 
     );
@@ -287,7 +287,6 @@ void nplex::session_t::process_load_request(const msgs::LoadRequest *req)
             break;
 
         default:
-            SPDLOG_WARN("{} has sent an unrecognized load mode", m_id);
             disconnect(ERR_MSG_ERROR);
     }
 }
@@ -356,7 +355,8 @@ void nplex::session_t::send_last_snapshot(std::size_t cid)
 
 void nplex::session_t::send_fixed_snapshot(std::size_t cid, rev_t rev)
 {
-    auto [min_rev, max_rev] = m_context->storage->get_range();
+    // TODO: remove blocking call
+    auto [min_rev, max_rev] = m_context->storage->get_revs_range();
 
     if (rev < min_rev || rev > max_rev) {
         send(load_builder_t{cid}.finish(m_context->repo.rev(), false));
@@ -371,7 +371,8 @@ void nplex::session_t::send_fixed_snapshot(std::size_t cid, rev_t rev)
 
 void nplex::session_t::send_only_updates(std::size_t cid, rev_t rev)
 {
-    auto min_rev = m_context->storage->get_range().first;
+    // TODO: remove blocking call
+    auto min_rev = m_context->storage->get_revs_range().first;
     auto crev = m_context->repo.rev();
 
     if (rev < min_rev || rev > crev) {

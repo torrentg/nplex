@@ -336,7 +336,7 @@ static bool ldb_is_valid_name(const char *name)
     while (*ptr != 0 && (isalnum(*ptr) || *ptr == '_'))
         ptr++;
 
-    return (*ptr == 0 && ptr - name < LDB_NAME_MAX_LENGTH);
+    return (*ptr == 0 && ptr - name <= LDB_NAME_MAX_LENGTH);
 }
 
 static char * ldb_create_filename(const char *path, const char *name, const char *ext)
@@ -1174,16 +1174,17 @@ int ldb_open(ldb_impl_t *obj, const char *path, const char *name, bool check)
     memset(obj, 0x00, sizeof(ldb_impl_t));
 
     obj->name = strdup(name);
-    obj->force_fsync = false;
-    pthread_mutex_init(&obj->mutex_state, NULL);
-    pthread_mutex_init(&obj->mutex_files, NULL);
     obj->path = strdup(path);
     obj->dat_path = ldb_create_filename(path, name, LDB_EXT_DAT);
     obj->idx_path = ldb_create_filename(path, name, LDB_EXT_IDX);
-    obj->dat_end = sizeof(ldb_header_dat_t);
 
     if (!obj->name || !obj->path || !obj->dat_path || !obj->idx_path)
         exit_function(LDB_ERR_MEM);
+
+    obj->force_fsync = false;
+    obj->dat_end = sizeof(ldb_header_dat_t);
+    pthread_mutex_init(&obj->mutex_state, NULL);
+    pthread_mutex_init(&obj->mutex_files, NULL);
 
     // case dat file not exist
     if (access(obj->dat_path, F_OK) != 0)
@@ -1242,14 +1243,14 @@ LDB_OPEN_ERR:
 
 int ldb_append(ldb_impl_t *obj, ldb_entry_t *entries, size_t len, size_t *num)
 {
+    if (num != NULL)
+        *num = 0;
+
     if (!obj || !entries)
         return LDB_ERR_ARG;
 
     if (!ldb_is_valid_obj(obj))
         return LDB_ERR;
-
-    if (num != NULL)
-        *num = 0;
 
     if (len == 0)
         return LDB_OK;
@@ -1309,11 +1310,11 @@ int ldb_append(ldb_impl_t *obj, ldb_entry_t *entries, size_t len, size_t *num)
 
 int ldb_read(ldb_journal_t *obj, uint64_t seqnum, ldb_entry_t *entries, size_t len, char *buf, size_t buf_len, size_t *num)
 {
-    if (!obj || !entries || len == 0 || !buf || buf_len < sizeof(ldb_record_dat_t))
-        return LDB_ERR_ARG;
-
     if (num != NULL)
         *num = 0;
+
+    if (!obj || !entries || len == 0 || !buf || buf_len < sizeof(ldb_record_dat_t))
+        return LDB_ERR_ARG;
 
     for (size_t i = 0; i < len; i++) {
         entries[i].seqnum = 0;

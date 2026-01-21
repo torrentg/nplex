@@ -1,9 +1,14 @@
 #include <spdlog/spdlog.h>
 #include <fmt/core.h>
 #include <fmt/ranges.h>
+#include "journal.h"
+#include "journal_writer.hpp"
 #include "exception.hpp"
-#include "context.hpp"
+#include "storage.hpp"
+#include "params.hpp"
 #include "tasks.hpp"
+#include "user.hpp"
+#include "context.hpp"
 
 // ==========================================================
 // Internal (static) functions
@@ -118,6 +123,11 @@ END:
     delete task;
 }
 
+static void cb_async_stop_loop(uv_async_t *handle)
+{
+    uv_stop(handle->loop);
+}
+
 static void cb_async_updates_written(uv_async_t *handle)
 {
     assert(handle->data);
@@ -133,29 +143,72 @@ nplex::context_t::context_t(uv_loop_t *loop_, const params_t &params) : loop(loo
 {
     users = ::create_users(params);
     m_max_sessions = params.max_connections;
-    storage = std::make_shared<storage_t>(params);
-    auto [min_rev, max_rev] = storage->get_range();
-    repo = storage->get_repo(max_rev);
+
+    auto path = params.datadir;
+
+    if (!fs::exists(path))
+        throw nplex::nplex_exception(fmt::format("Storage directory does not exist ({})", path.string()));
+
+    if (!fs::is_directory(path))
+        throw nplex::nplex_exception(fmt::format("Invalid storage directory ({})", path.string()));
+
+    m_journal = std::make_unique<ldb::journal_t>(path, JOURNAL_NAME, params.check_journal);
+    m_journal->set_fsync(!params.disable_fsync);
+
+    storage = std::make_shared<storage_t>(*m_journal, path);
+
+    m_journal_writer = std::make_unique<journal_writer>(*m_journal, params);
+
+    std::tie(m_rev_0, m_rev_w) = storage->get_revs_range();
+    SPDLOG_INFO("Data range: [r{}, r{}]", m_rev_0, m_rev_w);
+
+    repo = storage->get_repo(m_rev_w);
+
+    // async handle to stop the loop
+    m_async_stop_loop = std::make_unique<uv_async_t>();
+    m_async_stop_loop->data = this;
+    uv_async_init(loop, m_async_stop_loop.get(), cb_async_stop_loop);
 
     // async handle to process updates written by storage thread
-    m_async_updates_written = (uv_async_t *) malloc(sizeof(uv_async_t));
+    m_async_updates_written = std::make_unique<uv_async_t>();
     m_async_updates_written->data = this;
-    uv_async_init(loop, m_async_updates_written, cb_async_updates_written);
-    // will be deleted on loop close
+    uv_async_init(loop, m_async_updates_written.get(), cb_async_updates_written);
 
-    storage->set_writer_callback([this](bool success, std::vector<update_t> &&updates) {
+    m_journal_writer->start([this](bool success, std::vector<update_t> &&updates) {
         on_updates_written_1(success, std::move(updates));
     });
 }
 
 nplex::context_t::~context_t()
 {
-    storage->set_writer_callback(nullptr);
+    // this method is defined in the compilation unit to avoid incomplete type errors
+    // nothing to do explicitly
+}
 
-    if (m_async_updates_written) {
-        uv_close(reinterpret_cast<uv_handle_t *>(m_async_updates_written), (uv_close_cb) free);
-        m_async_updates_written = nullptr;
-    }
+void nplex::context_t::close()
+{
+    m_running = false;
+
+    // closing all sessions
+    for (auto &session : sessions)
+        session->disconnect(ERR_CLOSED_BY_LOCAL);
+
+    // stopping the journal writing thread
+    if (m_journal_writer)
+        m_journal_writer->stop();
+
+    // release libuv resources
+    if (m_async_updates_written)
+        uv_close(reinterpret_cast<uv_handle_t *>(m_async_updates_written.get()), nullptr);
+
+    if (m_async_stop_loop)
+        uv_close(reinterpret_cast<uv_handle_t *>(m_async_stop_loop.get()), nullptr);
+}
+
+void nplex::context_t::persist(update_t &&upd)
+{
+    if (m_journal_writer)
+        m_journal_writer->write(std::move(upd));
 }
 
 void nplex::context_t::submit_task(task_t *task)
@@ -229,9 +282,13 @@ void nplex::context_t::release_session(session_t *session)
 
 void nplex::context_t::on_updates_written_1(bool success, std::vector<update_t> &&updates)
 {
-    if (!success) {
+    if (!success)
+    {
         SPDLOG_ERROR("Error writing to journal");
-        // TODO: stop the event loop
+
+        if (m_async_updates_written)
+            uv_async_send(m_async_updates_written.get());
+
         return;
     }
 
@@ -244,7 +301,7 @@ void nplex::context_t::on_updates_written_1(bool success, std::vector<update_t> 
     }
 
     if (m_async_updates_written)
-        uv_async_send(m_async_updates_written);
+        uv_async_send(m_async_updates_written.get());
 }
 
 void nplex::context_t::on_updates_written_2()
@@ -256,8 +313,13 @@ void nplex::context_t::on_updates_written_2()
         updates.swap(m_pending_publish);
     }
 
-    if (!updates.empty())
-        publish(updates);
+    if (updates.empty())
+        return;
+
+    assert(m_rev_w < updates.front().meta->rev);
+    m_rev_w = updates.back().meta->rev;
+
+    publish(updates);
 }
 
 void nplex::context_t::publish(const std::span<update_t> &updates)

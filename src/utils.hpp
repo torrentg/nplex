@@ -1,7 +1,6 @@
 #pragma once
 
-#include <cstdint>
-#include "flatbuffers/flatbuffers.h"
+#include <flatbuffers/flatbuffers.h>
 #include "common.hpp"
 
 namespace nplex {

@@ -303,7 +303,7 @@ void nplex::connection_s::send_keepalive()
     if (m_queue_stats.num_msgs > 0)
         return;
 
-    rev_t crev = context()->rev();
+    rev_t crev = context()->last_persisted_rev();
     session()->send(create_keepalive_msg(crev));
 }
 

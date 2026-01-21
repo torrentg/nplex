@@ -71,7 +71,7 @@ struct load_builder_t
 {
     uint64_t m_cid = 0;
     flatbuffers::FlatBufferBuilder m_builder;
-    flatbuffers::Offset<msgs::Snapshot> m_offset_snapshot;
+    flatbuffers::Offset<msgs::Snapshot> m_offset_snapshot = 0;
 
     load_builder_t(std::size_t cid) : m_cid(cid) {}
     void set_snapshot(const repo_t &repo, const user_ptr &user = nullptr);
