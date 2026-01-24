@@ -375,15 +375,16 @@ void nplex::session_t::do_sync()
     if (is_closed() || !m_updates_cid || m_lrev == m_context->last_persisted_rev())
         return;
 
-    const auto &stats = m_con.queue_stats();
+    const auto &stats = m_con.stats();
+    const auto &params = m_con.params();
 
     // Check output queue availability
-    if ((stats.num_msgs  * 100) / stats.max_msgs  > MAX_PCT_OCUPPANCY_OUTPUT_QUEUE || 
-        (stats.num_bytes * 100) / stats.max_bytes > MAX_PCT_OCUPPANCY_OUTPUT_QUEUE) {
+    if ((stats.unack_msgs  * 100) / params.max_unack_msgs  > MAX_PCT_OCUPPANCY_OUTPUT_QUEUE || 
+        (stats.unack_bytes * 100) / params.max_unack_bytes > MAX_PCT_OCUPPANCY_OUTPUT_QUEUE) {
         return;
     }
 
-    std::uint32_t max_bytes = static_cast<std::uint32_t>(stats.max_bytes - stats.num_bytes);
+    std::uint32_t max_bytes = static_cast<std::uint32_t>(params.max_unack_bytes - stats.unack_bytes);
 
     // TODO: check if info in cache
 

@@ -59,8 +59,8 @@ static void cb_tcp_alloc(uv_handle_t *handle, size_t suggested_size, uv_buf_t *b
 
     auto obj = reinterpret_cast<nplex::connection_s *>(handle);
 
-    buf->base = obj->input_buffer;
-    buf->len = sizeof(obj->input_buffer);
+    buf->base = obj->m_input_buffer;
+    buf->len = sizeof(obj->m_input_buffer);
 }
 
 static void cb_tcp_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
@@ -84,19 +84,19 @@ static void cb_tcp_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
 
     obj->report_peer_activity();
 
-    obj->input_msg.append(buf->base, static_cast<std::size_t>(nread));
+    obj->m_input_msg.append(buf->base, static_cast<std::size_t>(nread));
 
-    while (obj->input_msg.size() >= sizeof(output_msg_t::len))
+    while (obj->m_input_msg.size() >= sizeof(output_msg_t::len))
     {
-        const char *ptr = obj->input_msg.data();
+        const char *ptr = obj->m_input_msg.data();
         std::uint32_t len = ntohl_ptr(ptr);
 
-        if (obj->input_max_msg_bytes && len > obj->input_max_msg_bytes) {
+        if (len > obj->m_params.max_msg_bytes) {
             obj->disconnect(ERR_MSG_SIZE);
             return;
         }
 
-        if (obj->input_msg.size() < len)
+        if (obj->m_input_msg.size() < len)
             break;
 
         auto msg = parse_network_msg(ptr, len);
@@ -106,9 +106,11 @@ static void cb_tcp_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
             return;
         }
 
+        obj->m_stats.recv_msgs++;
+        obj->m_stats.recv_bytes += len;
         obj->session()->process_request(msg);
 
-        obj->input_msg.erase(0, len);
+        obj->m_input_msg.erase(0, len);
     }
 }
 
@@ -120,11 +122,11 @@ static void cb_tcp_write(uv_write_t *req, int status)
     auto obj = reinterpret_cast<connection_s *>(req->handle);
 
     assert(msg);
-    assert(obj->m_queue_stats.num_msgs > 0);
-    assert(obj->m_queue_stats.num_bytes >= msg->length());
+    assert(obj->m_stats.unack_msgs > 0);
+    assert(obj->m_stats.unack_bytes >= msg->length());
 
-    obj->m_queue_stats.num_msgs--;
-    obj->m_queue_stats.num_bytes -= msg->length();
+    obj->m_stats.unack_msgs--;
+    obj->m_stats.unack_bytes -= msg->length();
 
     if (status < 0) {
         obj->disconnect(status);
@@ -268,13 +270,13 @@ void nplex::connection_s::shutdown(int rc)
 
 bool nplex::connection_s::is_blocked() const
 {
-    if (m_queue_stats.num_msgs == 0) // always there is room for the first message
+    if (m_stats.unack_msgs == 0) // always there is room for the first message
         return false;
 
-    if (m_queue_stats.max_msgs && m_queue_stats.num_msgs >= m_queue_stats.max_msgs)
+    if (m_stats.unack_msgs >= m_params.max_unack_msgs)
         return true;
 
-    if (m_queue_stats.max_bytes && m_queue_stats.num_bytes >= m_queue_stats.max_bytes)
+    if (m_stats.unack_bytes >= m_params.max_unack_bytes)
         return true;
 
     return false;
@@ -297,8 +299,10 @@ void nplex::connection_s::send(flatbuffers::DetachedBuffer &&buf)
         return;
     }
 
-    m_queue_stats.num_msgs++;
-    m_queue_stats.num_bytes += msg->length();
+    m_stats.unack_msgs++;
+    m_stats.unack_bytes += msg->length();
+    m_stats.sent_msgs++;
+    m_stats.sent_bytes += msg->length();
 
     if (m_timer_keepalive && uv_is_active(get_handle(m_timer_keepalive)))
         uv_timer_again(m_timer_keepalive);
@@ -306,7 +310,7 @@ void nplex::connection_s::send(flatbuffers::DetachedBuffer &&buf)
 
 void nplex::connection_s::send_keepalive()
 {
-    if (m_queue_stats.num_msgs > 0)
+    if (m_stats.unack_msgs > 0)
         return;
 
     rev_t crev = context()->last_persisted_rev();
@@ -327,9 +331,9 @@ void nplex::connection_s::report_peer_activity()
 
 void nplex::connection_t::config(std::uint32_t max_msg_bytes, std::uint32_t max_queue_length, std::uint32_t max_queue_bytes)
 {
-    input_max_msg_bytes = (max_msg_bytes == 0 ? UINT32_MAX : max_msg_bytes);
-    m_queue_stats.max_msgs = (max_queue_length == 0 ? UINT32_MAX : max_queue_length);
-    m_queue_stats.max_bytes = (max_queue_bytes == 0 ? UINT32_MAX : max_queue_bytes);
+    m_params.max_msg_bytes = (max_msg_bytes == 0 ? UINT32_MAX : max_msg_bytes);
+    m_params.max_unack_msgs = (max_queue_length == 0 ? UINT32_MAX : max_queue_length);
+    m_params.max_unack_bytes = (max_queue_bytes == 0 ? UINT32_MAX : max_queue_bytes);
 }
 
 void nplex::connection_t::set_timer(uv_timer_t *&timer, std::uint32_t millis, uv_timer_cb timer_cb)

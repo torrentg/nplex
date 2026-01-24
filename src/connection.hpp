@@ -14,12 +14,22 @@ namespace nplex {
 class session_t;
 struct context_t;
 
-struct queue_stats_t
+struct con_params_t
 {
-    std::size_t max_msgs = UINT32_MAX;              // maximum number of messages in the queue
-    std::size_t max_bytes = UINT32_MAX;             // maximum number of bytes in the queue
-    std::size_t num_msgs = 0;                       // current number of messages in the queue
-    std::size_t num_bytes = 0;                      // current number of bytes in the queue
+    std::size_t max_msg_bytes = UINT32_MAX;         // maximum incomming message size
+    std::size_t max_unack_msgs = UINT32_MAX;        // maximum number of msgs in the output queue
+    std::size_t max_unack_bytes = UINT32_MAX;       // maximum number of bytes in the output queue
+
+};
+
+struct con_stats_t
+{
+    std::size_t unack_msgs = 0;                     // Number of msgs in the output queue
+    std::size_t unack_bytes = 0;                    // Number of bytes in the output queue
+    std::size_t recv_msgs = 0;                      // Total received messages
+    std::size_t recv_bytes = 0;                     // Total received bytes
+    std::size_t sent_msgs = 0;                      // Total sent messages
+    std::size_t sent_bytes = 0;                     // Total sent bytes
 };
 
 /**
@@ -34,16 +44,14 @@ struct queue_stats_t
 struct connection_s
 {
     uv_tcp_t m_tcp = {};                            // libuv tcp handle (must be first)
+    addr_t m_addr;                                  // peer address
     uv_timer_t *m_timer_disconnect = nullptr;       // connection-lost timer
     uv_timer_t *m_timer_keepalive = nullptr;        // keepalive timer
-    addr_t m_addr;                                  // peer address
+    char m_input_buffer[UINT16_MAX] = {0};          // input buffer used by read()
+    std::string m_input_msg;                        // current incoming message
+    con_params_t m_params;                          // connection parameters
+    con_stats_t m_stats;                            // connection statistics
     int m_error = 0;                                // disconnection cause
-
-    std::uint32_t input_max_msg_bytes = 0;          // maximum incomming message size (0 = unlimited)
-    char input_buffer[UINT16_MAX] = {0};            // input buffer used by read()
-    std::string input_msg;                          // current incoming message
-
-    queue_stats_t m_queue_stats;                    // output queue stats
 
     connection_s(session_t *session, uv_stream_t *stream);
     ~connection_s();
@@ -87,8 +95,9 @@ class connection_t : private connection_s
     connection_t& operator=(const connection_t&) = delete;
 
     const addr_t & addr() const { return m_addr; }
+    const auto & params() const { return m_params; }
+    const auto & stats() const { return m_stats; }
     int error() const { return m_error; }
-    const queue_stats_t & queue_stats() const { return m_queue_stats; }
 
     /**
      * Configure the connection parameters.
