@@ -29,12 +29,6 @@ enum SubmitCode : byte {
     REJECTED_ENSURE
 }
 
-enum LoadMode: byte {
-    SNAPSHOT_AT_LAST_REV,
-    SNAPSHOT_AT_FIXED_REV,
-    ONLY_UPDATES_FROM_REV
-}
-
 // ========================================================
 // Structures
 
@@ -101,26 +95,40 @@ table PingResponse
     payload: string;                // Payload (same as request)
 }
 
-table LoadRequest
+table SnapshotRequest
 {
     cid: uint64;                    // Correlation id (used to match responses to requests)
-    mode: LoadMode;                 // Load mode
-    rev: uint64;                    // Requested revision
+    rev: uint64;                    // Requested revision, 0 means last available snapshot
 }
 
-table LoadResponse
+table SnapshotResponse
 {
-    cid: uint64;                    // Correlation id (loadRequest cid)
+    cid: uint64;                    // Correlation id (snapshotRequest cid)
     crev: uint64;                   // Current revision
+    rev0: uint64;                   // Oldest revision available
     accepted: bool;                 // Request accepted
-    snapshot: Snapshot;             // Snapshot (if requested)
+    snapshot: Snapshot;             // Snapshot
 }
 
-table ChangesPush
+table UpdatesRequest
 {
-    cid: uint64;                    // Correlation id (loadRequest cid)
+    cid: uint64;                    // Correlation id (used to match responses to requests)
+    rev: uint64;                    // From revision (excluded), 0 means new updates
+}
+
+table UpdatesResponse
+{
+    cid: uint64;                    // Correlation id (updatesRequest cid)
     crev: uint64;                   // Current database revision
-    updates: [Update];              // Database updates
+    rev0: uint64;                   // Oldest revision available
+    accepted: bool;                 // Request accepted
+}
+
+table UpdatesPush
+{
+    cid: uint64;                    // Correlation id (updatesRequest cid)
+    crev: uint64;                   // Current database revision
+    updates: [Update];              // Database updates (can be empty)
 }
 
 table SubmitRequest
@@ -155,11 +163,13 @@ union MsgContent {
     PING_RESPONSE: PingResponse,
     LOGIN_REQUEST: LoginRequest,
     LOGIN_RESPONSE: LoginResponse,
-    LOAD_REQUEST: LoadRequest,
-    LOAD_RESPONSE: LoadResponse,
+    SNAPSHOT_REQUEST: SnapshotRequest,
+    SNAPSHOT_RESPONSE: SnapshotResponse,
     SUBMIT_REQUEST: SubmitRequest,
     SUBMIT_RESPONSE: SubmitResponse,
-    CHANGES_PUSH: ChangesPush,
+    UPDATES_REQUEST: UpdatesRequest,
+    UPDATES_RESPONSE: UpdatesResponse,
+    UPDATES_PUSH: UpdatesPush,
     KEEPALIVE_PUSH: KeepAlivePush
 }
 

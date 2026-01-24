@@ -4,28 +4,63 @@
 #include "exception.hpp"
 #include "messaging.hpp"
 #include "session.hpp"
+#include "context.hpp"
 #include "tasks.hpp"
 
 // ==========================================================
-// repo_task_t methods
+// Internal (static) functions
 // ==========================================================
 
-void nplex::repo_task_t::run()
+static std::size_t estimate_bytes(const nplex::update_dto_t &update)
 {
-    load_builder_t builder(m_cid);
-    auto m_repo = m_storage->get_repo(m_rev, m_session->user());
-    SPDLOG_TRACE("repo_task completed: r{}", m_repo.rev());
-    builder.set_snapshot(m_repo);
-    m_buf = builder.finish(0, true);
+    using namespace nplex;
+
+    if (update.deletes.empty() && update.upserts.empty())
+        return 0;
+
+    std::size_t bytes = 0;
+
+    bytes += sizeof(std::uint64_t);             // rev
+    bytes += sizeof(std::uint64_t);             // timestamp
+    bytes += sizeof(std::uint32_t);             // type
+    bytes += sizeof(std::uint32_t);             // num upserts
+    bytes += sizeof(std::uint32_t);             // num deletes
+    bytes += sizeof(std::uint32_t);             // user length
+    bytes += update.user.size();                // user
+    bytes += sizeof(std::uint32_t);             // num upserts
+    bytes += sizeof(std::uint32_t);             // num deletes
+
+    for (const auto &pair : update.upserts)
+    {
+        bytes += sizeof(std::uint32_t);         // key length
+        bytes += pair.first.size();             // key data
+        bytes += sizeof(std::uint32_t);         // value length
+        bytes += pair.second.size();            // value data
+    }
+
+    for (const auto &key : update.deletes)
+    {
+        bytes += sizeof(std::uint32_t);         // key length
+        bytes += key.size();                    // key data
+    }
+
+    return bytes;
 }
 
-void nplex::repo_task_t::after()
-{
-    if (m_session->state() != session_t::state_e::SYNCING)
-        return;
+// ==========================================================
+// snapshot_task_t methods
+// ==========================================================
 
-    m_session->send(std::move(m_buf));
-    m_session->do_sync();
+void nplex::snapshot_task_t::run()
+{
+    auto &storage = m_session->context()->storage;
+
+    m_repo = storage->get_repo(m_rev, m_session->user());
+}
+
+void nplex::snapshot_task_t::after()
+{
+    m_session->send_snapshot(m_cid, m_repo);
 }
 
 // ==========================================================
@@ -34,44 +69,33 @@ void nplex::repo_task_t::after()
 
 void nplex::sync_task_t::run()
 {
-    m_storage->read_entries(m_rev + 1, [this](const msgs::Update *update) -> bool {
-        return append_update(update);
-    });
+    auto &storage = m_session->context()->storage;
 
-    if (!m_builder.empty() || m_buffers.empty()) {
-        auto buf = m_builder.finish(m_rev, true);
-        m_bytes += buf.size();
-        m_buffers.push_back(std::move(buf));
-    }
+    storage->read_entries(m_rev + 1, [this](const msgs::Update *update) -> bool {
+
+        auto upd = deserialize_update(update, m_session->user());
+        auto bytes = estimate_bytes(upd);
+
+        m_last_rev = upd.rev;
+
+        if (bytes == 0)
+            return true;
+
+        if (!m_updates.empty() && m_updates.size() + 1 > m_max_items)
+            return false;
+
+        if (!m_updates.empty() && m_bytes + bytes > m_max_bytes)
+            return false;
+
+        m_updates.push_back(std::move(upd));
+        m_bytes += bytes;
+
+        return (m_bytes < m_max_bytes && m_updates.size() < m_max_items);
+    });
 }
 
 void nplex::sync_task_t::after()
 {
-    if (m_session->state() != session_t::state_e::SYNCING)
-        return;
-
-    for (auto &buf : m_buffers)
-        m_session->send(std::move(buf));
-
-    SPDLOG_DEBUG("sync_task completed: r{}, {} msgs, {} bytes", m_rev, m_buffers.size(), m_bytes);
-    m_session->sync_task_complete();
-}
-
-void nplex::sync_task_t::config_builder(std::size_t cid, std::uint32_t changes_max_revs, std::uint32_t changes_max_bytes)
-{
-    m_builder = changes_builder_t(cid, m_session->user(), changes_max_revs, changes_max_bytes);
-}
-
-bool nplex::sync_task_t::append_update(const nplex::msgs::Update *update)
-{
-    auto rc = m_builder.append_update(update);
-
-    if (!rc || m_bytes + m_builder.m_builder.GetSize() >= m_max_bytes)
-    {
-        auto buf = m_builder.finish(m_rev, true);
-        m_bytes += buf.size();
-        m_buffers.push_back(std::move(buf));
-    }
-
-    return (m_bytes < m_max_bytes && m_buffers.size() < m_max_msgs);
+    m_session->send_updates(m_cid, m_rev + 1, m_last_rev, m_updates);
+    m_session->do_sync();
 }

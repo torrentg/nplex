@@ -8,9 +8,10 @@
 * Create timer to check if msg delivery exceeds X millis ?
 * Manage exceptions in write thread
 * repository_t -> data_store_t ?
-* Split load_request to snapshot_request + stream_request
-* Check exception in writer thread stops the event loop
+* Test that exception in writer thread stops the event loop
 * context_t::sessions: replace set by unordered_set
+* Implement a cache of updates
+* Implement purge (cache + deleted keys) based on time/size
 
 ## Useful commands
 

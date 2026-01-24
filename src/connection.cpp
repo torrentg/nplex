@@ -1,6 +1,7 @@
 #include <cassert>
 #include <arpa/inet.h>
 #include <spdlog/spdlog.h>
+#include <flatbuffers/flatbuffers.h>
 #include "messaging.hpp"
 #include "context.hpp"
 #include "session.hpp"
@@ -11,13 +12,13 @@
 // ==========================================================
 
 template <typename T>
-static uv_handle_t * get_handle(T *obj) {
-    return reinterpret_cast<uv_handle_t *>(obj);
+static auto get_handle(T* obj) -> decltype(reinterpret_cast<std::conditional_t<std::is_const<T>::value, const uv_handle_t*, uv_handle_t*>>(obj)) {
+    return reinterpret_cast<std::conditional_t<std::is_const<T>::value, const uv_handle_t*, uv_handle_t*>>(obj);
 }
 
 template <typename T>
-static uv_stream_t * get_stream(T *obj) {
-    return reinterpret_cast<uv_stream_t *>(obj);
+static auto get_stream(T* obj) -> decltype(reinterpret_cast<std::conditional_t<std::is_const<T>::value, const uv_stream_t*, uv_stream_t*>>(obj)) {
+    return reinterpret_cast<std::conditional_t<std::is_const<T>::value, const uv_stream_t*, uv_stream_t*>>(obj);
 }
 
 static int get_peeraddr(const uv_tcp_t *con, char *str, size_t len)
@@ -235,7 +236,7 @@ void nplex::connection_s::disconnect(int rc)
         uv_timer_stop(m_timer_keepalive);
         uv_close(get_handle(m_timer_keepalive), ::cb_close_timer);
     }
-    
+
     if (!uv_is_closing(get_handle(&m_tcp)))
         uv_close(get_handle(&m_tcp), ::cb_close_connection);
 
@@ -279,6 +280,11 @@ bool nplex::connection_s::is_blocked() const
     return false;
 }
 
+bool nplex::connection_s::is_closed() const
+{
+    return uv_is_closing(get_handle(&m_tcp));
+}
+
 void nplex::connection_s::send(flatbuffers::DetachedBuffer &&buf)
 {
     int rc = 0;
@@ -318,6 +324,13 @@ void nplex::connection_s::report_peer_activity()
 // ==========================================================
 // connection_t methods
 // ==========================================================
+
+void nplex::connection_t::config(std::uint32_t max_msg_bytes, std::uint32_t max_queue_length, std::uint32_t max_queue_bytes)
+{
+    input_max_msg_bytes = (max_msg_bytes == 0 ? UINT32_MAX : max_msg_bytes);
+    m_queue_stats.max_msgs = (max_queue_length == 0 ? UINT32_MAX : max_queue_length);
+    m_queue_stats.max_bytes = (max_queue_bytes == 0 ? UINT32_MAX : max_queue_bytes);
+}
 
 void nplex::connection_t::set_timer(uv_timer_t *&timer, std::uint32_t millis, uv_timer_cb timer_cb)
 {

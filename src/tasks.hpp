@@ -46,21 +46,20 @@ struct task_t
  * Create and sends a snapshot.
  *   - Retrieve nearest snapshot from disk
  *   - Apply updates until the given rev
- *   - Creates the LoadResponse message
+ *   - Creates the SnapshotResponse message
  *   - Sends the message over the network
  */
-struct repo_task_t : public task_t
+struct snapshot_task_t : public task_t
 {
-    storage_ptr m_storage;              // storage object
-    session_ptr m_session;              // session used to send messages
-    std::size_t m_cid;                  // correlation id
     rev_t m_rev;                        // snapshot revision
-    flatbuffers::DetachedBuffer m_buf;  // serialized message
+    std::size_t m_cid;                  // correlation id
+    session_ptr m_session;              // session used to send messages
+    nplex::repo_t m_repo;               // users repo at m_rev (result)
 
-    repo_task_t(const storage_ptr &storage, const session_ptr &session, nplex::rev_t rev, std::size_t cid)
-        : m_storage(storage), m_session(session), m_cid(cid), m_rev(rev) {}
+    snapshot_task_t(const session_ptr &session, nplex::rev_t rev, std::size_t cid)
+        : m_rev(rev), m_cid(cid), m_session(session) {}
 
-    const char * name() const override { return "repo_task"; }
+    const char * name() const override { return "snapshot_task"; }
     void run() override;
     void after() override;
 };
@@ -68,30 +67,26 @@ struct repo_task_t : public task_t
 /**
  * Synchronize the session with the repo.
  *   - Read journal entries from disk
- *   - Create some ChangesPush messages
- *   - Sends the messages over the network
+ *   - Save non-empty user updates in a list
+ *   - Sends these updates over the network
  */
 struct sync_task_t : public task_t
 {
-    storage_ptr m_storage;              // storage object
-    session_ptr m_session;              // session used to send messages
-    rev_t m_rev;                        // last revision sent to the session
-    std::uint32_t m_max_msgs;           // max number of Changes messages
-    std::uint32_t m_max_bytes;          // max bytes of generated Changes messages
+    rev_t m_rev;                            // last revision sent to the session
+    std::size_t m_cid;                      // correlation id
+    session_ptr m_session;                  // users session
+    std::uint32_t m_max_items = UINT32_MAX; // max number of updates
+    std::uint32_t m_max_bytes = UINT32_MAX; // max bytes of retrieved updates
+    std::vector<update_dto_t> m_updates;    // non-empty updates read (filtered by user)
+    std::size_t m_bytes = 0;                // cumulated bytes (filtered by user)
+    rev_t m_last_rev = 0;                   // last revision read
 
-    changes_builder_t m_builder;        // Changes messages builder
-    std::vector<flatbuffers::DetachedBuffer> m_buffers;  // Changes messages to send
-    std::size_t m_bytes = 0;            // bytes of generated Changes messages
-
-    sync_task_t(const storage_ptr &storage, const session_ptr &session, nplex::rev_t rev, std::uint32_t max_msgs, std::uint32_t max_bytes)
-        : m_storage(storage), m_session(session), m_rev(rev), m_max_msgs(max_msgs), m_max_bytes(max_bytes) {}
+    sync_task_t(const session_ptr &session, nplex::rev_t rev, std::size_t cid, std::uint32_t max_items, std::uint32_t max_bytes)
+        : m_rev(rev), m_cid(cid), m_session(session), m_max_items(max_items), m_max_bytes(max_bytes) {}
 
     const char * name() const override { return "sync_task"; }
     void run() override;
     void after() override;
-
-    void config_builder(std::size_t cid, std::uint32_t changes_max_revs, std::uint32_t changes_max_bytes);
-    bool append_update(const nplex::msgs::Update *update);
 };
 
 } // namespace nplex

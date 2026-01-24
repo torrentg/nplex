@@ -10,7 +10,7 @@
 #include "utils.hpp"
 #include "storage.hpp"
 
-#define READ_BATCH_ENTRIES  1000ul
+#define READ_BATCH_ENTRIES  10000ul
 #define READ_BATCH_BYTES    (2 * 1024 * 1024)
 #define READ_BATCH_FACTOR   2
 
@@ -188,7 +188,7 @@ std::size_t nplex::storage_t::read_entries(rev_t rev, const std::function<bool(c
 
         rc = m_journal.read(rev, entries, len, buf.data(), buf.size(), &num_reads);
 
-        SPDLOG_TRACE("Read journal entries, range = [r{}, r{}], rc = {}",  
+        SPDLOG_TRACE("Read journal entries, range = [r{}, r{}], rc = {}", 
             rev, rev + num_reads - (num_reads ? 1 : 0), ldb_strerror(rc));
 
         if (rc != LDB_OK && rc != LDB_ERR_NOT_FOUND)
@@ -224,7 +224,7 @@ std::size_t nplex::storage_t::read_entries(rev_t rev, const std::function<bool(c
 
             while (new_size < 128 + entries[num_reads].data_len)
                 new_size *= READ_BATCH_FACTOR;
-            
+
             if (buf.size() < new_size)
                 buf.resize(new_size, 0);
         }

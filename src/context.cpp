@@ -342,10 +342,5 @@ void nplex::context_t::on_updates_written_2()
 void nplex::context_t::publish(const std::span<update_t> &updates)
 {
     for (auto &session : sessions)
-    {
-        if (session->state() != session_t::state_e::SYNCED)
-            continue;
-
         session->push_changes(updates);
-    }
 }

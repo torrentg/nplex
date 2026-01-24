@@ -58,6 +58,10 @@ gto::cstring nplex::create_cstring(const flatbuffers::Vector<std::uint8_t> *valu
     return gto::cstring{reinterpret_cast<const char *>(value->data()), static_cast<std::size_t>(value->size())};
 }
 
+std::string nplex::create_string(const flatbuffers::Vector<std::uint8_t> *value) {
+    return std::string{reinterpret_cast<const char *>(value->data()), static_cast<std::size_t>(value->size())};
+}
+
 static std::string format_double(double value)
 {
     std::ostringstream oss;
