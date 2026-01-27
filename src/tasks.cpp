@@ -97,5 +97,5 @@ void nplex::sync_task_t::run()
 void nplex::sync_task_t::after()
 {
     m_session->send_updates(m_cid, m_rev + 1, m_last_rev, m_updates);
-    m_session->do_sync();
+    m_session->do_sync(m_cid);
 }

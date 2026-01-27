@@ -127,6 +127,8 @@ static void cb_tcp_write(uv_write_t *req, int status)
 
     obj->m_stats.unack_msgs--;
     obj->m_stats.unack_bytes -= msg->length();
+    obj->m_stats.sent_msgs++;
+    obj->m_stats.sent_bytes += msg->length();
 
     if (status < 0) {
         obj->disconnect(status);
@@ -220,6 +222,7 @@ CTOR_ERR:
 
 nplex::connection_s::~connection_s()
 {
+    assert(is_closed());
     assert(m_timer_keepalive == nullptr);
     assert(m_timer_disconnect == nullptr);
 }
@@ -301,8 +304,6 @@ void nplex::connection_s::send(flatbuffers::DetachedBuffer &&buf)
 
     m_stats.unack_msgs++;
     m_stats.unack_bytes += msg->length();
-    m_stats.sent_msgs++;
-    m_stats.sent_bytes += msg->length();
 
     if (m_timer_keepalive && uv_is_active(get_handle(m_timer_keepalive)))
         uv_timer_again(m_timer_keepalive);

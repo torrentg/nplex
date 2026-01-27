@@ -10,8 +10,8 @@
 #include "utils.hpp"
 #include "storage.hpp"
 
-#define READ_BATCH_ENTRIES  10000ul
-#define READ_BATCH_BYTES    (2 * 1024 * 1024)
+#define READ_BATCH_ENTRIES  10000
+#define READ_BATCH_BYTES    (1 * 1024 * 1024)
 #define READ_BATCH_FACTOR   2
 
 namespace fs = std::filesystem;
@@ -176,15 +176,15 @@ std::size_t nplex::storage_t::read_entries(rev_t rev, const std::function<bool(c
     ldb_stats_t stats = {};
     std::vector<char> buf;
 
-    if ((rc = m_journal.stats(rev, rev + std::min(num, READ_BATCH_ENTRIES) - 1, &stats)) != LDB_OK)
+    if ((rc = m_journal.stats(rev, rev + std::min(num, std::size_t{READ_BATCH_ENTRIES}) - 1, &stats)) != LDB_OK)
         throw nplex_exception("{}", ldb_strerror(rc));
 
-    buf.resize(std::min(stats.data_size, static_cast<size_t>(READ_BATCH_BYTES)), 0);
+    buf.resize(std::clamp(stats.data_size, std::size_t{256}, std::size_t{READ_BATCH_BYTES}), 0);
 
     while (count < num)
     {
         std::size_t num_reads = 0;
-        std::size_t len = std::min(READ_BATCH_ENTRIES, num - count);
+        std::size_t len = std::min(std::size_t{READ_BATCH_ENTRIES}, num - count);
 
         rc = m_journal.read(rev, entries, len, buf.data(), buf.size(), &num_reads);
 

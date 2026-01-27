@@ -46,7 +46,7 @@ class session_t : public std::enable_shared_from_this<session_t>
     void send_snapshot(std::size_t cid, const repo_t &repo, const user_ptr &user = nullptr);
     void send_updates(std::size_t cid, rev_t from_rev, rev_t to_rev, const std::span<update_dto_t> &updates);
     void push_changes(const std::span<update_t> &updates);
-    void do_sync();
+    void do_sync(std::size_t cid);
 
   private:
 
@@ -56,6 +56,7 @@ class session_t : public std::enable_shared_from_this<session_t>
     std::string m_id;                           // session identifier (user@addr)
     rev_t m_lrev = 0;                           // last revision sent (maybe unacked, maybe not sent because no data)
     std::size_t m_updates_cid = 0;              // updates correlation id
+    bool m_sync_in_progress = false;            // is a sync operation in progress
 
     void process_login_request(const nplex::msgs::LoginRequest *req);
     void process_snapshot_request(const nplex::msgs::SnapshotRequest *req);

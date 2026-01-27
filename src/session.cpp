@@ -8,16 +8,16 @@
 #include "session.hpp"
 #include "tasks.hpp"
 
-// maximum message size (in bytes) for a non logged user
+// maximum message size (in bytes) for a not logged user
 #define MAX_MSG_BYTES_FROM_NO_USER 1024
-// maximum time (in millis) for a non logged user
+// maximum time (in millis) for a not logged user
 #define TIMEOUT_NO_USER 5000
-// maximum (aprox) bytes in an UpdatesPush message
+// maximum (approx) bytes in an UpdatesPush message
 #define MAX_BYTES_IN_PUSH (1 * 1024 * 1024)
-// maximum numbers of items in a sync batch
+// maximum number of items in a sync batch
 #define MAX_ITEMS_IN_SYNC 10000
-// maximum % ocuppancy in output queue to start a sync
-#define MAX_PCT_OCUPPANCY_OUTPUT_QUEUE 66
+// maximum % occupancy in output queue to start a sync
+#define MAX_PCT_OCCUPANCY_OUTPUT_QUEUE 66
 
 // ==========================================================
 // session_t methods
@@ -81,8 +81,8 @@ void nplex::session_t::process_delivery(const msgs::Message *msg)
     assert(msg);
     assert(msg->content());
 
-    if (m_updates_cid != 0 && m_lrev < m_context->last_persisted_rev())
-        do_sync();
+    if (m_updates_cid != 0 && m_lrev < m_context->last_persisted_rev() && !m_sync_in_progress)
+        do_sync(m_updates_cid);
 }
 
 void nplex::session_t::process_request(const msgs::Message *msg)
@@ -306,14 +306,8 @@ void nplex::session_t::process_updates_request(const msgs::UpdatesRequest *req)
         )
     );
 
-    // case: requested updates from current revision
-    if (rev == m_context->last_persisted_rev()) {
-        m_lrev = m_context->last_persisted_rev();
-        return;
-    }
-
-    // case: requested updates from a past revision
-    do_sync();
+    m_lrev = rev;
+    do_sync(m_updates_cid);
 }
 
 void nplex::session_t::process_submit_request(const nplex::msgs::SubmitRequest *req)
@@ -370,17 +364,20 @@ void nplex::session_t::process_ping_request(const nplex::msgs::PingRequest *req)
     );
 }
 
-void nplex::session_t::do_sync()
+void nplex::session_t::do_sync(std::size_t cid)
 {
-    if (is_closed() || !m_updates_cid || m_lrev == m_context->last_persisted_rev())
+    if (is_closed() || !m_updates_cid || cid != m_updates_cid)
+        return;
+
+    if (m_lrev == m_context->last_persisted_rev() || m_sync_in_progress)
         return;
 
     const auto &stats = m_con.stats();
     const auto &params = m_con.params();
 
     // Check output queue availability
-    if ((stats.unack_msgs  * 100) / params.max_unack_msgs  > MAX_PCT_OCUPPANCY_OUTPUT_QUEUE || 
-        (stats.unack_bytes * 100) / params.max_unack_bytes > MAX_PCT_OCUPPANCY_OUTPUT_QUEUE) {
+    if ((stats.unack_msgs  * 100) / params.max_unack_msgs  > MAX_PCT_OCCUPANCY_OUTPUT_QUEUE || 
+        (stats.unack_bytes * 100) / params.max_unack_bytes > MAX_PCT_OCCUPANCY_OUTPUT_QUEUE) {
         return;
     }
 
@@ -390,6 +387,8 @@ void nplex::session_t::do_sync()
 
     sync_task_t *task = new sync_task_t(shared_from_this(), m_lrev, m_updates_cid, MAX_ITEMS_IN_SYNC, max_bytes);
     m_context->submit_task(task);
+
+    m_sync_in_progress = true;
 }
 
 const char * nplex::session_t::strerror() const
@@ -414,7 +413,7 @@ const char * nplex::session_t::strerror() const
         case ERR_CONNECTION_LOST: return "connection lost";
         case ERR_QUEUE_LENGTH: return "max queue length exceeded";
         case ERR_QUEUE_BYTES: return "max queue bytes exceeded";
-        default: return "unknow error";
+        default: return "unknown error";
     }
 }
 
@@ -437,22 +436,29 @@ void nplex::session_t::send_snapshot(std::size_t cid, const repo_t &repo, const 
 
 void nplex::session_t::send_updates(std::size_t cid, rev_t from_rev, rev_t to_rev, const std::span<update_dto_t> &updates)
 {
-    if (is_closed() || cid != m_updates_cid || updates.empty())
+    if (is_closed() || cid != m_updates_cid || updates.empty()) {
+        m_sync_in_progress = false;
         return;
+    }
 
     assert(m_lrev == 0 || m_lrev + 1 == from_rev);
 
     updates_builder_t builder;
     auto it = updates.begin();
+    rev_t rev = m_lrev;
 
     while (it != updates.end())
     {
         for (; it != updates.end(); ++it)
         {
-            builder.append(*it);
-
             if (builder.bytes() >= MAX_BYTES_IN_PUSH)
                 break;
+
+            assert(it->rev >= from_rev && it->rev <= to_rev);
+            assert(it->rev > rev);
+            rev = it->rev;
+
+            builder.append(*it);
         }
 
         if (!builder.empty())
@@ -460,6 +466,7 @@ void nplex::session_t::send_updates(std::size_t cid, rev_t from_rev, rev_t to_re
     }
 
     m_lrev = to_rev;
+    m_sync_in_progress = false;
 }
 
 void nplex::session_t::push_changes(const std::span<update_t> &updates)

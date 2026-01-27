@@ -126,9 +126,9 @@ table UpdatesResponse
 
 table UpdatesPush
 {
-    cid: uint64;                    // Correlation id (updatesRequest cid)
+    cid: uint64;                    // Correlation id (UpdatesRequest cid)
     crev: uint64;                   // Current database revision
-    updates: [Update];              // Database updates (can be empty)
+    updates: [Update];              // Database updates
 }
 
 table SubmitRequest
