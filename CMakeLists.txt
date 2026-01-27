@@ -155,6 +155,12 @@ set_source_files_properties(
     COMPILE_OPTIONS "-Wno-useless-cast"
 )
 
+set_source_files_properties(
+    ${CMAKE_CURRENT_LIST_DIR}/deps/ini.c
+    PROPERTIES 
+    COMPILE_OPTIONS "-Wno-useless-cast"
+)
+
 target_link_libraries(
     nplex
     "$<$<STREQUAL:${ENABLE_SANITIZERS},ON>:-lasan>"

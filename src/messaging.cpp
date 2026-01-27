@@ -112,9 +112,7 @@ nplex::output_msg_t::output_msg_t(DetachedBuffer &&msg) : content(std::move(msg)
     metadata = htonl(0); // not-compressed
 
     checksum = CRC32::CRC32::calc(reinterpret_cast<const std::uint8_t *>(&len), sizeof(len));
-    checksum = crc_utils::reverse(checksum ^ 0xFFFFFFFF);
     checksum = CRC32::CRC32::calc(reinterpret_cast<const std::uint8_t *>(&metadata), sizeof(metadata), checksum);
-    checksum = crc_utils::reverse(checksum ^ 0xFFFFFFFF);
     checksum = CRC32::CRC32::calc(reinterpret_cast<const std::uint8_t *>(content.data()), content.size(), checksum);
     checksum = htonl(checksum);
 
