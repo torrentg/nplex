@@ -72,7 +72,7 @@ static void cb_tcp_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
     if (nread == 0)
         return;
 
-    if (nread == UV_EOF || buf->base == NULL) {
+    if (nread == UV_EOF || buf->base == nullptr) {
         obj->disconnect(ERR_CLOSED_BY_PEER);
         return;
     }

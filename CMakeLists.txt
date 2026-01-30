@@ -103,10 +103,10 @@ set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
 
 #set(
-#    # see https://clang.llvm.org/extra/clang-tidy/checks/list.html
+#    # See .clang-tidy file for config
+#    # See https://clang.llvm.org/extra/clang-tidy/checks/list.html
 #    CMAKE_CXX_CLANG_TIDY
 #    clang-tidy
-#    -checks=-*,performance-*,portability-*,misc-*,clang-analyzer-*,bugprone-*,-bugprone-assignment-in-if-condition,-performance-avoid-endl,-misc-use-anonymous-namespace,-misc-include-cleaner,-misc-const-correctness
 #)
 
 add_executable(

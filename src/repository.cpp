@@ -414,7 +414,7 @@ std::uint32_t nplex::repo_t::purge(millis_t timestamp)
 
     while (!m_removed_keys.empty())
     {
-        auto &key = m_removed_keys.front();
+        auto key = m_removed_keys.front();
         auto it = m_data.find(key);
 
         // Case: removed key not found

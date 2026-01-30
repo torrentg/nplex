@@ -179,7 +179,7 @@ nplex::context_t::context_t(uv_loop_t *loop_, const params_t &params) : loop(loo
         [this](bool success, std::vector<update_t> &&updates) {
             on_updates_written_1(success, std::move(updates));
         },
-        [this](std::exception_ptr ex) {
+        [this](const std::exception_ptr &ex) {
             try {
                 if (ex) std::rethrow_exception(ex);
             } catch (const std::exception &e) {

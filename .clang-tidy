@@ -1,0 +1,23 @@
+---
+#
+# Check this file using command `clang-tidy --dump-config`
+# For more information, see https://clang.llvm.org/extra/clang-tidy/
+#
+Checks: >-
+  -*,
+  performance-*,
+  portability-*,
+  misc-*,
+  clang-analyzer-*,
+  bugprone-*,
+  -bugprone-assignment-in-if-condition,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-implicit-widening-of-multiplication-result,
+  -portability-avoid-pragma-once,
+  -performance-avoid-endl,
+  -misc-use-anonymous-namespace,
+  -misc-include-cleaner,
+  -misc-const-correctness,
+  -misc-non-private-member-variables-in-classes
+HeaderFilterRegex: '^.*/src/.*'
+ExcludeHeaderFilterRegex: '^.*src/messages.hpp'

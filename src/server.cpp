@@ -61,7 +61,7 @@ static struct sockaddr_storage get_sockaddr(uv_loop_t *loop, const nplex::addr_t
             hints.ai_protocol = IPPROTO_TCP;
 
             std::string port = std::to_string(addr.port());
-            if ((rc = uv_getaddrinfo(loop, &req, NULL, addr.host().c_str(), port.c_str(), &hints)) != 0)
+            if ((rc = uv_getaddrinfo(loop, &req, nullptr, addr.host().c_str(), port.c_str(), &hints)) != 0)
                 throw std::runtime_error(uv_strerror(rc));
 
             if (req.addrinfo->ai_family != AF_INET && req.addrinfo->ai_family != AF_INET6) {
@@ -247,7 +247,7 @@ void nplex::server_t::run() noexcept
         uv_run(m_loop.get(), UV_RUN_DEFAULT);
 
     // closing remaining objects
-    uv_walk(m_loop.get(), ::cb_close_handle, NULL);
+    uv_walk(m_loop.get(), ::cb_close_handle, nullptr);
     while (uv_run(m_loop.get(), UV_RUN_NOWAIT));
     uv_loop_close(m_loop.get());
 

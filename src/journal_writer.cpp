@@ -162,8 +162,12 @@ void nplex::journal_writer::run()
 
         ldb_rc = m_journal.append(batch.data(), batch.size(), &num_writes);
 
-        SPDLOG_TRACE("journal_writer wrote {} entries ({} bytes) in {}μs", 
-            num_writes, bytes_to_string(bytes_batch), (uv_hrtime() - start_time) / 1000);
+        SPDLOG_TRACE("journal_writer wrote {}/{} entries ({} bytes) in {}μs", 
+            num_writes, batch.size(), bytes_to_string(bytes_batch), (uv_hrtime() - start_time) / 1000);
+
+        if (ldb_rc != LDB_OK) {
+            SPDLOG_DEBUG("journal_writer append failed: {}", ldb_strerror(ldb_rc));
+        }
 
         // Step3: Reports back results via callback and remove entries from m_queue
         {
@@ -201,7 +205,7 @@ void nplex::journal_writer::run()
             if (!updates.empty() && m_result_cb)
                 m_result_cb(false, std::move(updates));
 
-            if (!updates.empty() && ldb_rc != LDB_OK && m_error_cb)
+            if (ldb_rc != LDB_OK && m_error_cb)
                 m_error_cb(std::make_exception_ptr(ldb_strerror(ldb_rc)));
 
             assert(!m_queue.empty() || m_bytes_in_queue == 0);
