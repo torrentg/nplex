@@ -193,6 +193,7 @@ void nplex::server_t::init_signals(const params_t &)
         throw nplex_exception(uv_strerror(rc));
 }
 
+#define TEST_DELAY_BETWEEN_UPDATES_MS 100
 void nplex::server_t::init_test(const params_t &)
 {
     // TODO: Remove this testing code
@@ -202,7 +203,7 @@ void nplex::server_t::init_test(const params_t &)
     uv_timer_start(timer, [](uv_timer_t *x) {
         auto server = (nplex::server_t *) x->data;
         server->simule_submit();
-    }, 4000, 4000);
+    }, TEST_DELAY_BETWEEN_UPDATES_MS, TEST_DELAY_BETWEEN_UPDATES_MS);
 }
 
 void nplex::server_t::init_network(const params_t &params)
@@ -231,7 +232,7 @@ void nplex::server_t::run() noexcept
         return;
 
     try {
-        m_context->m_running = true;
+        m_context->open();
         SPDLOG_INFO("Nplex server started");
         uv_run(m_loop.get(), UV_RUN_DEFAULT);
     }
@@ -264,13 +265,11 @@ void nplex::server_t::run() noexcept
 // TODO: remove this test function
 void nplex::server_t::simule_submit()
 {
-    auto it = m_context->users.find("admin");
-    if (it == m_context->users.end()) {
+    auto user = m_context->get_user("admin");
+    if (!user) {
         SPDLOG_WARN("Admin user not found");
         return;
     }
-
-    const auto &user = it->second;
 
     // Create a valid SubmitRequest message
     using namespace msgs;
@@ -299,7 +298,7 @@ void nplex::server_t::simule_submit()
         MsgContent::SUBMIT_REQUEST, 
         CreateSubmitRequest(builder, 
             4,              // cid
-            m_context->repo.rev(),   // crev
+            m_context->m_repo.rev(),   // crev
             1,              // type
             builder.CreateVector(upserts),
             builder.CreateVector(deletes),
@@ -313,11 +312,11 @@ void nplex::server_t::simule_submit()
     auto submit_req = flatbuffers::GetRoot<msgs::Message>(builder.GetBufferPointer())->content_as_SUBMIT_REQUEST();
 
     update_t update;
-    auto rc = m_context->repo.try_commit(*user, submit_req, update);
+    auto rc = m_context->m_repo.try_commit(*user, submit_req, update);
 
     if (rc == msgs::SubmitCode::ACCEPTED) {
-        assert(m_context->repo.rev() == update.meta->rev);
-        SPDLOG_DEBUG("Update rev={}, user={}, type={}", m_context->repo.rev(), update.meta->user.c_str(), update.meta->type);
+        assert(m_context->m_repo.rev() == update.meta->rev);
+        SPDLOG_DEBUG("Update rev={}, user={}, type={}", m_context->m_repo.rev(), update.meta->user.c_str(), update.meta->type);
         m_context->persist(std::move(update));
     }
     else {

@@ -12,7 +12,6 @@ namespace nplex {
 
 // Forward declarations
 class session_t;
-struct context_t;
 
 struct con_params_t
 {
@@ -67,7 +66,6 @@ struct connection_s
     void report_peer_activity();
     void send_keepalive();
 
-    context_t * context() const { return reinterpret_cast<context_t *>(m_tcp.loop->data); }
     session_t * session() const { return reinterpret_cast<session_t *>(m_tcp.data); }
 };
 
@@ -84,6 +82,11 @@ struct connection_s
  * - Disconnect on peer inactivity (connection lost)
  * - Handle disconnections
  * - Manage libuv resources
+ * 
+ * Callbacks to the session:
+ * - session()->process_request()
+ * - session()->process_delivery()
+ * - session()->send_keepalive()
  */
 class connection_t : private connection_s
 {

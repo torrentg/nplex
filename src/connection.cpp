@@ -164,7 +164,7 @@ static void cb_close_connection(uv_handle_t *handle)
     obj->m_timer_keepalive = nullptr;
 
     auto session = obj->session();
-    obj->context()->release_session(session);
+    session->release();
 }
 
 static void cb_tcp_shutdown(uv_shutdown_t *req, int status)
@@ -314,8 +314,7 @@ void nplex::connection_s::send_keepalive()
     if (m_stats.unack_msgs > 0)
         return;
 
-    rev_t crev = context()->last_persisted_rev();
-    session()->send(create_keepalive_msg(crev));
+    session()->send_keepalive();
 }
 
 void nplex::connection_s::report_peer_activity()

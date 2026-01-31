@@ -139,10 +139,10 @@ static void cb_async_updates_result(uv_async_t *handle)
 // context_t methods
 // ==========================================================
 
-nplex::context_t::context_t(uv_loop_t *loop_, const params_t &params) : loop(loop_)
+nplex::context_t::context_t(uv_loop_t *loop, const params_t &params) : m_loop(loop)
 {
-    users = ::create_users(params);
-    m_max_sessions = params.max_connections;
+    m_users = ::create_users(params);
+    m_max_sessions = (params.max_connections ? params.max_connections : UINT32_MAX);
 
     auto path = params.datadir;
 
@@ -155,24 +155,24 @@ nplex::context_t::context_t(uv_loop_t *loop_, const params_t &params) : loop(loo
     m_journal = std::make_unique<ldb::journal_t>(path, JOURNAL_NAME, params.check_journal);
     m_journal->set_fsync(!params.disable_fsync);
 
-    storage = std::make_shared<storage_t>(*m_journal, path);
+    m_storage = std::make_shared<storage_t>(*m_journal, path);
 
     m_journal_writer = std::make_unique<journal_writer>(*m_journal, params);
 
-    std::tie(m_rev_0, m_rev_w) = storage->get_revs_range();
+    std::tie(m_rev_0, m_rev_w) = m_storage->get_revs_range();
     SPDLOG_INFO("Data range: [r{}, r{}]", m_rev_0, m_rev_w);
 
-    repo = storage->get_repo(m_rev_w);
+    m_repo = m_storage->get_repo(m_rev_w);
 
     // async handle to stop the loop
     m_async_stop_loop = std::make_unique<uv_async_t>();
     m_async_stop_loop->data = this;
-    uv_async_init(loop, m_async_stop_loop.get(), cb_async_stop_loop);
+    uv_async_init(m_loop, m_async_stop_loop.get(), cb_async_stop_loop);
 
     // async handle to process updates written by storage thread
     m_async_updates_written = std::make_unique<uv_async_t>();
     m_async_updates_written->data = this;
-    uv_async_init(loop, m_async_updates_written.get(), cb_async_updates_result);
+    uv_async_init(m_loop, m_async_updates_written.get(), cb_async_updates_result);
 
     // start journal writing thread
     m_journal_writer->start(
@@ -195,12 +195,17 @@ nplex::context_t::~context_t()
     // nothing to do explicitly
 }
 
+void nplex::context_t::open()
+{
+    m_running = true;
+}
+
 void nplex::context_t::close()
 {
     m_running = false;
 
     // closing all sessions
-    for (auto &session : sessions)
+    for (auto &session : m_sessions)
         session->disconnect(ERR_CLOSED_BY_LOCAL);
 
     // stopping the journal writing thread
@@ -243,7 +248,7 @@ void nplex::context_t::submit_task(task_t *task)
     m_num_running_tasks++;
 
     int rc = 0;
-    if ((rc = uv_queue_work(loop, &task->work, ::cb_task_run, ::cb_task_after)) != 0)
+    if ((rc = uv_queue_work(m_loop, &task->work, ::cb_task_run, ::cb_task_after)) != 0)
         throw std::runtime_error(uv_strerror(rc));
 
 }
@@ -254,7 +259,7 @@ void nplex::context_t::release_task(task_t *)
     m_num_running_tasks--;
 
     if (!m_running && !m_num_running_tasks)
-        uv_stop(loop);
+        uv_stop(m_loop);
 }
 
 void nplex::context_t::append_session(uv_stream_t *stream)
@@ -264,7 +269,7 @@ void nplex::context_t::append_session(uv_stream_t *stream)
     if (!m_running)
         return;
 
-    if (m_max_sessions && sessions.size() >= m_max_sessions) {
+    if (m_sessions.size() >= m_max_sessions) {
         SPDLOG_WARN("Incomming connection rejected (max {} clients reached)", m_max_sessions);
         return;
     }
@@ -272,7 +277,7 @@ void nplex::context_t::append_session(uv_stream_t *stream)
     auto session = std::make_shared<session_t>(shared_from_this(), stream);
     SPDLOG_DEBUG("New connection: {}", session->id());
 
-    sessions.insert(session);
+    m_sessions.insert(session);
 }
 
 void nplex::context_t::release_session(session_t *session)
@@ -280,9 +285,9 @@ void nplex::context_t::release_session(session_t *session)
     if (!session)
         return;
 
-    auto it = sessions.find(session);
+    auto it = m_sessions.find(session);
 
-    if (it == sessions.end())
+    if (it == m_sessions.end())
         return;
 
     if (session->user())
@@ -293,10 +298,10 @@ void nplex::context_t::release_session(session_t *session)
     if (session->user() && session->user()->num_connections > 0)
         session->user()->num_connections--;
 
-    sessions.erase(it);
+    m_sessions.erase(it);
 
-    if (!m_running && sessions.empty())
-        uv_stop(loop);
+    if (!m_running && m_sessions.empty())
+        uv_stop(m_loop);
 }
 
 void nplex::context_t::on_updates_written_1(bool success, std::vector<update_t> &&updates)
@@ -341,6 +346,16 @@ void nplex::context_t::on_updates_written_2()
 
 void nplex::context_t::publish(const std::span<update_t> &updates)
 {
-    for (auto &session : sessions)
+    for (auto &session : m_sessions)
         session->push_changes(updates);
+}
+
+nplex::user_ptr nplex::context_t::get_user(const std::string &name) const
+{
+    auto it = m_users.find(name);
+
+    if (it == m_users.end())
+        return nullptr;
+
+    return it->second;
 }

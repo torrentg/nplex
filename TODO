@@ -6,7 +6,6 @@
 * Add database-max-entries param
 * Add database-max-bytes param
 * Create timer to check if msg delivery exceeds X millis ?
-* Manage exceptions in write thread
 * repository_t -> data_store_t ?
 * Test that exception in writer thread stops the event loop
 * context_t::sessions: replace set by unordered_set

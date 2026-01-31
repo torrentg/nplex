@@ -53,7 +53,7 @@ static std::size_t estimate_bytes(const nplex::update_dto_t &update)
 
 void nplex::snapshot_task_t::run()
 {
-    auto &storage = m_session->context()->storage;
+    auto &storage = m_session->context()->m_storage;
 
     m_repo = storage->get_repo(m_rev, m_session->user());
 }
@@ -69,7 +69,7 @@ void nplex::snapshot_task_t::after()
 
 void nplex::sync_task_t::run()
 {
-    auto &storage = m_session->context()->storage;
+    auto &storage = m_session->context()->m_storage;
 
     storage->read_entries(m_rev + 1, [this](const msgs::Update *update) -> bool {
 
@@ -98,4 +98,13 @@ void nplex::sync_task_t::after()
 {
     m_session->send_updates(m_cid, m_rev + 1, m_last_rev, m_updates);
     m_session->do_sync(m_cid);
+}
+
+// ==========================================================
+// write_snapshot_task_t methods
+// ==========================================================
+void nplex::write_snapshot_task_t::run()
+{
+    m_storage->write_snapshot(std::string_view{
+        reinterpret_cast<const char *>(m_buf.data()), m_buf.size() });
 }

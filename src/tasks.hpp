@@ -89,4 +89,21 @@ struct sync_task_t : public task_t
     void after() override;
 };
 
+/**
+ * Write a snapshot to disk.
+ */
+struct write_snapshot_task_t : public task_t
+{
+    rev_t m_rev;                            // snapshot revision
+    flatbuffers::DetachedBuffer m_buf;      // serialized snapshot buffer
+    storage_ptr m_storage;                  // storage object
+
+    write_snapshot_task_t(nplex::rev_t rev, flatbuffers::DetachedBuffer &&buf, const storage_ptr &storage)
+        : m_rev(rev), m_buf(std::move(buf)), m_storage(storage) {}
+
+    const char * name() const override { return "write_snapshot_task"; }
+    void run() override;
+    void after() override {}
+};
+
 } // namespace nplex

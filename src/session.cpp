@@ -36,6 +36,12 @@ nplex::session_t::session_t(const context_ptr &context, uv_stream_t *stream) :
     m_id = m_con.addr().str();
 }
 
+void nplex::session_t::release()
+{
+    assert(is_closed());
+    m_context->release_session(this);
+}
+
 void nplex::session_t::disconnect(int rc)
 {
     if (is_closed())
@@ -158,8 +164,8 @@ void nplex::session_t::process_login_request(const msgs::LoginRequest *req)
         return;
     }
 
-    auto it = m_context->users.find(req->user()->str());
-    if (it == m_context->users.end()) {
+    auto user = m_context->get_user(req->user()->str());
+    if (!user) {
         send(
             create_login_msg(
                 req->cid(), 
@@ -169,8 +175,6 @@ void nplex::session_t::process_login_request(const msgs::LoginRequest *req)
         shutdown(ERR_USR_NOT_FOUND);
         return;
     }
-
-    auto &user = it->second;
 
     if (user->password != req->password()->str()) {
         send(
@@ -233,7 +237,7 @@ void nplex::session_t::process_snapshot_request(const msgs::SnapshotRequest *req
     if (rev == 0)
         rev = m_context->last_persisted_rev();
 
-    SPDLOG_INFO("{} requested snapshot r{}", m_id, rev);
+    SPDLOG_INFO("{} requested snapshot at r{}", m_id, rev);
 
     // case: requested snapshot out of range
     if (rev < m_context->minimum_rev() || rev > m_context->last_persisted_rev())
@@ -253,9 +257,9 @@ void nplex::session_t::process_snapshot_request(const msgs::SnapshotRequest *req
     }
 
     // case: requested current snapshot
-    if (rev == m_context->last_persisted_rev() && rev == m_context->repo.rev())
+    if (rev == m_context->last_persisted_rev() && rev == m_context->m_repo.rev())
     {
-        send_snapshot(cid, m_context->repo, m_user);
+        send_snapshot(cid, m_context->m_repo, m_user);
         return;
     }
 
@@ -277,7 +281,7 @@ void nplex::session_t::process_updates_request(const msgs::UpdatesRequest *req)
     if (rev == 0)
         rev = m_context->last_persisted_rev();
 
-    SPDLOG_INFO("{} requested updates r{}", m_id, rev);
+    SPDLOG_INFO("{} requested updates from r{}", m_id, rev);
 
     // case: requested updates out of range (reject)
     if (rev < m_context->minimum_rev())
@@ -320,7 +324,7 @@ void nplex::session_t::process_submit_request(const nplex::msgs::SubmitRequest *
     update_t update;
 
     // try to commit the update
-    auto rc = m_context->repo.try_commit(*m_user, req, update);
+    auto rc = m_context->m_repo.try_commit(*m_user, req, update);
 
     // case: commit rejected
     if (rc != msgs::SubmitCode::ACCEPTED) {
@@ -342,12 +346,12 @@ void nplex::session_t::process_submit_request(const nplex::msgs::SubmitRequest *
             req->cid(), 
             m_context->last_persisted_rev(),
             rc,
-            m_context->repo.rev()
+            m_context->m_repo.rev()
         )
     );
 
     // persist the update
-    assert(m_context->repo.rev() == update.meta->rev);
+    assert(m_context->m_repo.rev() == update.meta->rev);
     m_context->persist(std::move(update));
 
     // TODO: repo cleanup (purge)
@@ -415,6 +419,15 @@ const char * nplex::session_t::strerror() const
         case ERR_QUEUE_BYTES: return "max queue bytes exceeded";
         default: return "unknown error";
     }
+}
+
+void nplex::session_t::send_keepalive()
+{
+    if (is_closed())
+        return;
+
+    rev_t crev = m_context->last_persisted_rev();
+    send(create_keepalive_msg(crev));
 }
 
 void nplex::session_t::send_snapshot(std::size_t cid, const repo_t &repo, const user_ptr &user)
