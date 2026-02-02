@@ -26,8 +26,6 @@ struct params_t;
 class journal_writer;
 using user_ptr = std::shared_ptr<user_t>;
 using storage_ptr = std::shared_ptr<storage_t>;
-using user_map_t = std::map<std::string, user_ptr>;
-using session_set_t = std::set<session_ptr, shared_ptr_compare<session_t>>;
 
 struct context_t : public std::enable_shared_from_this<context_t>
 {
@@ -54,6 +52,11 @@ struct context_t : public std::enable_shared_from_this<context_t>
     void on_updates_written_2();
     std::tuple<msgs::SubmitCode, rev_t> try_commit(const msgs::SubmitRequest *msg, const user_t &user);
 
+  private: // types
+
+    using user_map_t = std::map<std::string, user_ptr>;
+    using session_set_t = std::set<session_ptr, shared_ptr_compare<session_t>>;
+
   private: // members
 
     uv_loop_t *m_loop;                                  // Reference to the event loop
@@ -78,6 +81,7 @@ struct context_t : public std::enable_shared_from_this<context_t>
 
     void stop();                                        // Stops the event loop
     void publish(const std::span<update_t> &updates);   // Publishes updates to all sessions
+    void check_for_snapshot();                          // Checks if a new snapshot is needed
 };
 
 using context_ptr = std::shared_ptr<context_t>;

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <map>
-#include <limits>
 #include "cqueue.hpp"
 #include "common.hpp"
 #include "messages.hpp"
@@ -16,7 +15,14 @@ namespace nplex {
  */
 class repo_t
 {
-  public:
+  public: // types
+
+    struct delta_t {
+        std::size_t count = 0;        // Number of updates from last snapshot
+        std::size_t bytes = 0;        // Total accumulated size of updates (approx)
+    };
+
+  public: // methods
 
     /**
      * Get the current revision.
@@ -24,6 +30,18 @@ class repo_t
      * @return The current revision number.
      */
     rev_t rev() const noexcept { return m_rev; }
+
+    /**
+     * Get info about accumulated updates since last snapshot.
+     * 
+     * @return The delta info.
+     */
+    const delta_t & delta() const noexcept { return m_delta; }
+
+    /**
+     * Reset accumulated delta information.
+     */
+    void reset_delta() noexcept { m_delta = {}; }
 
     /**
      * Load the database content from a snapshot.
@@ -38,7 +56,7 @@ class repo_t
     void load(const msgs::Snapshot *snapshot = nullptr, const user_ptr &user = nullptr);
 
     /**
-     * Apply an update to the database (comming from disk or another server).
+     * Apply an update to the database (coming from disk or another server).
      * 
      * This method alters the repository content. 
      * On success, the content is updated and revision increased.
@@ -47,11 +65,11 @@ class repo_t
      * @param[in] msg Update to apply.
      * @param[in] user User whose permissions are considered during loading (nullptr means no filter).
      * 
-     * @return true = update done, false = no update.
+     * @return The update_t object applied to the repository.
      * 
      * @exception nplex_exception Invalid update (ex: update.rev < repo.rev, or invalid-key).
      */
-    bool update(const msgs::Update *msg, const user_ptr &user = nullptr);
+    update_t update(const msgs::Update *msg, const user_ptr &user = nullptr);
 
     /**
      * Try to commit a transaction (coming from a client).
@@ -76,9 +94,9 @@ class repo_t
      * 
      * @param[in] timestamp Timestamp (in milliseconds).
      * 
-     * @return Number of entries purged.
+     * @return Number of removed-key records processed.
      */
-    std::uint32_t purge(millis_t timestamp = std::numeric_limits<millis_t>::max());
+    std::uint32_t purge(millis_t timestamp = millis_t::max());
 
     /**
      * Serialize the database content to a snapshot.
@@ -86,7 +104,7 @@ class repo_t
      * The content is filtered according to the user's permissions.
      * 
      * @param[in] builder FlatBufferBuilder to use.
-     * @param[in] user User whose permissions are considered during serialization (empty means no filter).
+     * @param[in] user User whose permissions are considered during serialization (nullptr means no filter).
      * 
      * @return Serialized snapshot content.
      */
@@ -110,6 +128,7 @@ class repo_t
     data_map_t m_data;                      // Key-value data store.
     user_map_t m_users;                     // Users list (with number of references)
     gto::cqueue<key_t> m_removed_keys;      // List of removed keys (can contain duplicates and reinserted keys)
+    delta_t m_delta;                        // Accumulated delta since last snapshot.
 
   private: // methods
 
@@ -171,7 +190,21 @@ class repo_t
     bool mark_as_removed(const key_t &key, const meta_ptr &meta);
 
     /**
-     * Internal function.
+     * Validate an update without applying it.
+     * Converts the update into an internal update structure.
+     * 
+     * @param[in] msg Update message.
+     * @param[in] user User used to filter keys (nullptr means no filter).
+     * 
+     * @return The internal update structure (with meta = nullptr if no visible modifications).
+     * 
+     * @exception nplex_exception Invalid update (ex: update.rev < repo.rev, or invalid-key).
+     */
+    update_t validate_update(const msgs::Update *msg, const user_ptr &user = nullptr);
+
+    /**
+     * Validate a commit request without applying it.
+     * Converts the request into an internal update structure.
      * 
      * @param[in] user User submitting the request.
      * @param[in] msg Submit request.
@@ -180,14 +213,14 @@ class repo_t
      * Pre-conditions: update is empty.
      * Post-conditions: update has a meta that must be released on error.
      */
-    msgs::SubmitCode try_commit_validate(const user_t &user, const msgs::SubmitRequest *msg, update_t &update);
+    msgs::SubmitCode validate_commit(const user_t &user, const msgs::SubmitRequest *msg, update_t &update);
 
     /**
      * Internal function to apply a validated update.
      * 
      * @param[in] update Update to apply.
      */
-    void try_commit_apply(const update_t &update);
+    void apply_update(const update_t &update);
 
 };
 

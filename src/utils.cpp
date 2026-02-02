@@ -86,3 +86,71 @@ std::string nplex::bytes_to_string(std::size_t bytes)
     else
         return fmt::format("{}GB", format_double(static_cast<double>(bytes) / (1024.0 * 1024 * 1024)));
 }
+
+std::size_t nplex::estimate_bytes(const update_dto_t &update)
+{
+    if (update.deletes.empty() && update.upserts.empty())
+        return 0;
+
+    std::size_t bytes = 0;
+
+    bytes += sizeof(std::uint64_t);             // rev
+    bytes += sizeof(std::uint64_t);             // timestamp
+    bytes += sizeof(std::uint32_t);             // type
+    bytes += sizeof(std::uint32_t);             // num upserts
+    bytes += sizeof(std::uint32_t);             // num deletes
+    bytes += sizeof(std::uint32_t);             // user length
+    bytes += update.user.size();                // user
+    bytes += sizeof(std::uint32_t);             // num upserts
+    bytes += sizeof(std::uint32_t);             // num deletes
+
+    for (const auto &pair : update.upserts)
+    {
+        bytes += sizeof(std::uint32_t);         // key length
+        bytes += pair.first.size();             // key data
+        bytes += sizeof(std::uint32_t);         // value length
+        bytes += pair.second.size();            // value data
+    }
+
+    for (const auto &key : update.deletes)
+    {
+        bytes += sizeof(std::uint32_t);         // key length
+        bytes += key.size();                    // key data
+    }
+
+    return bytes;
+}
+
+std::size_t nplex::estimate_bytes(const update_t &update)
+{
+    if (!update.meta || (update.upserts.empty() && update.deletes.empty()))
+        return 0;
+
+    std::size_t bytes = 0;
+
+    bytes += sizeof(std::uint64_t);             // rev
+    bytes += sizeof(std::uint64_t);             // timestamp
+    bytes += sizeof(std::uint32_t);             // type
+    bytes += sizeof(std::uint32_t);             // num upserts
+    bytes += sizeof(std::uint32_t);             // num deletes
+    bytes += sizeof(std::uint32_t);             // user length
+    bytes += update.meta->user.size();          // user
+    bytes += sizeof(std::uint32_t);             // num upserts
+    bytes += sizeof(std::uint32_t);             // num deletes
+
+    for (const auto &pair : update.upserts)
+    {
+        bytes += sizeof(std::uint32_t);         // key length
+        bytes += pair.first.size();             // key data
+        bytes += sizeof(std::uint32_t);         // value length
+        bytes += pair.second->data().size();    // value data
+    }
+
+    for (const auto &key : update.deletes)
+    {
+        bytes += sizeof(std::uint32_t);         // key length
+        bytes += key.size();                    // key data
+    }
+
+    return bytes;
+}

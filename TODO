@@ -1,8 +1,5 @@
 # TODO
 
-* Add error level support in strerror()
-* Add database-max-entries param
-* Add database-max-bytes param
 * Create timer to check if msg delivery exceeds X millis ?
 * repository_t -> data_store_t ?
 * Test that exception in writer thread stops the event loop

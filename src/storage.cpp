@@ -101,15 +101,12 @@ std::pair<nplex::rev_t, nplex::rev_t> nplex::storage_t::get_revs_range()
     // get version of first snapshot greater-eq than min_rev
     rev_t rev0 = ::get_snapshot_rev(m_path, min_rev, false);
 
-    if (!rev0)
-    {
-        if (min_rev > 1)
-            throw nplex_exception("No snapshot available in range [r{}, r{}]", min_rev, max_rev);
+    if (rev0 == 0 && min_rev > 1)
+        throw nplex_exception("No snapshot available in range [r{}, r{}]", min_rev, max_rev);
 
-        rev0 = min_rev;
-    }
+    rev_t rev_k = (min_rev == 1 ? 1 : rev0);
 
-    return {rev0, max_rev};
+    return {rev_k, max_rev};
 }
 
 std::string nplex::storage_t::read_snapshot(rev_t rev)

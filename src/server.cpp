@@ -193,7 +193,7 @@ void nplex::server_t::init_signals(const params_t &)
         throw nplex_exception(uv_strerror(rc));
 }
 
-#define TEST_DELAY_BETWEEN_UPDATES_MS 100
+#define TEST_DELAY_BETWEEN_UPDATES_MS 1000
 void nplex::server_t::init_test(const params_t &)
 {
     // TODO: Remove this testing code

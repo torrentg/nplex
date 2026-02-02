@@ -1,12 +1,20 @@
 #include <set>
 #include <chrono>
-#include <cstring>
 #include <cassert>
 #include <algorithm>
 #include "match.h"
 #include "utils.hpp"
 #include "exception.hpp"
 #include "repository.hpp"
+
+// ==========================================================
+// Internal to compilation unit
+// ==========================================================
+
+struct pending_upsert_t {
+    nplex::key_t key;
+    gto::cstring data;
+};
 
 // ==========================================================
 // repo_t methods
@@ -152,6 +160,8 @@ void nplex::repo_t::load(const msgs::Snapshot *snapshot, const user_ptr &user)
     m_data.clear();
     m_metas.clear();
     m_users.clear();
+    m_removed_keys.clear();
+    m_delta = {};
 
     if (!snapshot)
         return;
@@ -170,16 +180,33 @@ void nplex::repo_t::load(const msgs::Snapshot *snapshot, const user_ptr &user)
         }
     }
 
+    m_delta = {};
     m_rev = srev;
 }
 
-bool nplex::repo_t::update(const msgs::Update *msg, const user_ptr &user)
+nplex::update_t nplex::repo_t::update(const msgs::Update *msg, const user_ptr &user)
 {
-    if (!msg) {
-        assert(false);
-        return false;
+    if (!msg)
+        throw nplex_exception("Null update message");
+
+    auto update = validate_update(msg, user);
+    if (!update.meta)
+    {
+        // No visible modifications for this user: keep revision in sync only
+        rev_t urev = msg->rev();
+        if (urev > m_rev)
+            m_rev = urev;
+        return update;
     }
 
+    apply_update(update);
+    return update;
+}
+
+nplex::update_t nplex::repo_t::validate_update(const msgs::Update *msg, const user_ptr &user)
+{
+    std::vector<pending_upsert_t> pending_upserts;
+    std::vector<key_t> pending_deletes;
     auto upserts = msg->upserts();
     auto deletes = msg->deletes();
     rev_t urev = msg->rev();
@@ -189,10 +216,6 @@ bool nplex::repo_t::update(const msgs::Update *msg, const user_ptr &user)
 
     if (!msg->user() || msg->user()->size() == 0)
         throw nplex_exception("Malformed update message (r{})", urev);
-
-    auto meta = create_meta(urev, msg->user()->c_str(), msg->type());
-
-    m_rev = urev;
 
     if (upserts)
     {
@@ -209,9 +232,12 @@ bool nplex::repo_t::update(const msgs::Update *msg, const user_ptr &user)
                 continue;
 
             gto::cstring data = create_cstring(keyval->value());
-            auto value = std::make_shared<value_t>(data, meta);
 
-            upsert_entry(key, value);
+            // Reuse existing key storage when possible
+            auto it = m_data.find(key);
+            key_t ckey = (it != m_data.end() ? it->first : key_t{key});
+
+            pending_upserts.push_back(pending_upsert_t{std::move(ckey), std::move(data)});
         }
     }
 
@@ -227,17 +253,35 @@ bool nplex::repo_t::update(const msgs::Update *msg, const user_ptr &user)
             if (user && !user->is_authorized(NPLEX_READ, key->c_str()))
                 continue;
 
-            delete_entry(key->c_str());
+            auto it = m_data.find(key->c_str());
+
+            if (it == m_data.end())
+                continue;
+
+            pending_deletes.emplace_back(it->first);
         }
     }
 
-    if (meta->refs.empty()) {
-        update_meta(meta, key_t{}, meta_e::SUBTRACT);
-        return false;
+    update_t update;
+
+    // No visible modifications for this user -> return empty update
+    if (pending_upserts.empty() && pending_deletes.empty())
+        return update;
+
+    auto meta = create_meta(urev, msg->user()->c_str(), msg->type());
+    update.meta = meta;
+
+    update.upserts.reserve(pending_upserts.size());
+
+    for (auto &pu : pending_upserts)
+    {
+        auto value = std::make_shared<value_t>(pu.data, meta);
+        update.upserts.emplace_back(pu.key, std::move(value));
     }
 
-    m_metas[urev] = meta;
-    return true;
+    update.deletes = std::move(pending_deletes);
+
+    return update;
 }
 
 nplex::msgs::SubmitCode nplex::repo_t::try_commit(const user_t &user, const msgs::SubmitRequest *msg, update_t &update)
@@ -254,21 +298,16 @@ nplex::msgs::SubmitCode nplex::repo_t::try_commit(const user_t &user, const msgs
     update.upserts.clear();
     update.deletes.clear();
 
-    auto rc = try_commit_validate(user, msg, update);
+    auto rc = validate_commit(user, msg, update);
     if (rc != msgs::SubmitCode::ACCEPTED)
         return rc;
 
-    try_commit_apply(update);
+    apply_update(update);
     return rc;
 }
 
-nplex::msgs::SubmitCode nplex::repo_t::try_commit_validate(const user_t &user, const msgs::SubmitRequest *msg, update_t &update)
+nplex::msgs::SubmitCode nplex::repo_t::validate_commit(const user_t &user, const msgs::SubmitRequest *msg, update_t &update)
 {
-    struct pending_upsert_t {
-        key_t        key;
-        gto::cstring data;
-    };
-
     bool forced = (user.can_force && msg->force());
     std::set<key_t, gto::cstring_compare> keys;
     std::vector<pending_upsert_t> pending_upserts;
@@ -313,6 +352,9 @@ nplex::msgs::SubmitCode nplex::repo_t::try_commit_validate(const user_t &user, c
             {
                 if (!user.is_authorized(NPLEX_UPDATE, keyval->key()->c_str()))
                     return msgs::SubmitCode::REJECTED_PERMISSION;
+
+                if (!forced && it->second->rev() > crev)
+                    return msgs::SubmitCode::REJECTED_INTEGRITY;
             }
 
             key_t key = (it != m_data.end() ? it->first : key_t{keyval->key()->c_str()});
@@ -410,12 +452,14 @@ nplex::msgs::SubmitCode nplex::repo_t::try_commit_validate(const user_t &user, c
     return msgs::SubmitCode::ACCEPTED;
 }
 
-void nplex::repo_t::try_commit_apply(const update_t &update)
+void nplex::repo_t::apply_update(const update_t &update)
 {
     assert(update.meta);
 
     m_rev = update.meta->rev;
     m_metas[m_rev] = update.meta;
+    m_delta.bytes += estimate_bytes(update);
+    m_delta.count++;
 
     for (const auto &[key, value] : update.upserts)
         upsert_entry(key, value);
@@ -449,7 +493,7 @@ std::uint32_t nplex::repo_t::purge(millis_t timestamp)
 
         // Case: deletion is older than the timestamp
         if (it->second->timestamp() < timestamp) {
-            update_meta(it->second->m_meta, key_t{}, meta_e::SUBTRACT);
+            update_meta(it->second->m_meta, it->first, meta_e::SUBTRACT);
             m_data.erase(it);
             m_removed_keys.pop();
             count++;

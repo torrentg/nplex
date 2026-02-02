@@ -343,6 +343,10 @@ void nplex::context_t::on_updates_written_2()
         return;
 
     assert(m_rev_w < updates.front().meta->rev);
+
+    if (m_rev_0 == 0)
+        m_rev_0 = updates.front().meta->rev;
+
     m_rev_w = updates.back().meta->rev;
 
     publish(updates);
@@ -380,8 +384,30 @@ std::tuple<nplex::msgs::SubmitCode, nplex::rev_t> nplex::context_t::try_commit(c
     auto erev = update.meta->rev;
     persist(std::move(update));
 
-    // TODO: check for snapshot
+    check_for_snapshot();
     // TODO: repo cleanup (purge)
 
     return { rc, erev };
+}
+
+void nplex::context_t::check_for_snapshot()
+{
+    const auto &delta = m_repo.delta();
+
+    if (delta.count < m_max_updates_between_snapshots && delta.bytes < m_max_bytes_between_snapshots)
+        return;
+
+    auto rev = m_repo.rev();
+    SPDLOG_INFO("Creating snapshot at r{}", rev);
+
+    flatbuffers::FlatBufferBuilder builder;
+    auto snapshot = m_repo.serialize(builder);
+    builder.Finish(snapshot);
+
+    auto buf = builder.Release();
+
+    auto task = new write_snapshot_task_t(rev, std::move(buf), m_storage);
+    submit_task(task);
+
+    m_repo.reset_delta();
 }
