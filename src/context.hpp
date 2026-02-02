@@ -31,7 +31,6 @@ using session_set_t = std::set<session_ptr, shared_ptr_compare<session_t>>;
 
 struct context_t : public std::enable_shared_from_this<context_t>
 {
-    storage_ptr m_storage;                      // Storage functions (journal, snapshots, etc)
     repo_t m_repo;                              // Repository object (the key-value map)
 
     context_t(uv_loop_t *loop, const params_t &params);
@@ -40,6 +39,8 @@ struct context_t : public std::enable_shared_from_this<context_t>
     rev_t minimum_rev() const { return m_rev_0; }
     rev_t last_persisted_rev() const { return m_rev_w; }
     user_ptr get_user(const std::string &name) const;
+    storage_ptr storage() const { return m_storage; }
+    const repo_t & repo() const { return m_repo; }
     bool has_active_tasks_or_sessions() const { return (m_num_running_tasks != 0 || !m_sessions.empty()); }
 
     void open();
@@ -51,10 +52,12 @@ struct context_t : public std::enable_shared_from_this<context_t>
     void release_session(session_t *session);
     void on_updates_written_1(bool success, std::vector<update_t> &&updates);
     void on_updates_written_2();
+    std::tuple<msgs::SubmitCode, rev_t> try_commit(const msgs::SubmitRequest *msg, const user_t &user);
 
   private: // members
 
     uv_loop_t *m_loop;                                  // Reference to the event loop
+    storage_ptr m_storage;                              // Storage functions (journal, snapshots, etc)
     std::unique_ptr<ldb::journal_t> m_journal;          // Journal object
     std::unique_ptr<journal_writer> m_journal_writer;   // Journal writer thread
     std::vector<update_t> m_pending_publish;            // Updates waiting to be published
@@ -62,8 +65,10 @@ struct context_t : public std::enable_shared_from_this<context_t>
     std::unique_ptr<uv_async_t> m_async_updates_written;// Async handle for updates written notification
     std::unique_ptr<uv_async_t> m_async_stop_loop;      // Async handle to stop the loop
     user_map_t m_users;                                 // Users in config file (pwd, permissions, etc)
-    session_set_t m_sessions;                           // Current sessions
+    session_set_t m_sessions;                           // Set of current sessions
     std::uint32_t m_max_sessions = 0;                   // Maximum number of sessions (0 = unlimited)
+    std::uint32_t m_max_updates_between_snapshots = 0;  // Maximum updates between two snapshots (0 = unlimited).
+    std::uint32_t m_max_bytes_between_snapshots = 0;    // Maximum bytes between two snapshots (0 = unlimited).
     std::uint32_t m_num_running_tasks = 0;              // Number of running tasks
     bool m_running = false;                             // Event loop is running and nplex is operational
     rev_t m_rev_0 = 0;                                  // Minimum revision available

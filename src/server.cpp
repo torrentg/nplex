@@ -298,7 +298,7 @@ void nplex::server_t::simule_submit()
         MsgContent::SUBMIT_REQUEST, 
         CreateSubmitRequest(builder, 
             4,              // cid
-            m_context->m_repo.rev(),   // crev
+            m_context->last_persisted_rev(), // crev
             1,              // type
             builder.CreateVector(upserts),
             builder.CreateVector(deletes),
@@ -311,15 +311,5 @@ void nplex::server_t::simule_submit()
 
     auto submit_req = flatbuffers::GetRoot<msgs::Message>(builder.GetBufferPointer())->content_as_SUBMIT_REQUEST();
 
-    update_t update;
-    auto rc = m_context->m_repo.try_commit(*user, submit_req, update);
-
-    if (rc == msgs::SubmitCode::ACCEPTED) {
-        assert(m_context->m_repo.rev() == update.meta->rev);
-        SPDLOG_DEBUG("Update rev={}, user={}, type={}", m_context->m_repo.rev(), update.meta->user.c_str(), update.meta->type);
-        m_context->persist(std::move(update));
-    }
-    else {
-        SPDLOG_ERROR("Error try_commit = {}", static_cast<int>(rc));
-    }
+    m_context->try_commit(submit_req, *user);
 }

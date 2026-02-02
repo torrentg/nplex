@@ -213,6 +213,9 @@ nplex::connection_s::connection_s(session_t *session, uv_stream_t *stream)
 
     m_addr = addr_t(addr_str);
 
+    using namespace std::chrono;
+    m_stats.time0 = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
+
     return;
 
 CTOR_ERR:
@@ -290,6 +293,39 @@ bool nplex::connection_s::is_closed() const
     return uv_is_closing(get_handle(&m_tcp));
 }
 
+void nplex::connection_s::set_timer(uv_timer_t *&timer, std::uint32_t millis, uv_timer_cb timer_cb)
+{
+    int rc = 0;
+
+    if (millis == 0 && timer == nullptr)
+        return;
+
+    if (timer == nullptr)
+    {
+        timer = new uv_timer_t{};
+
+        if ((rc = uv_timer_init(m_tcp.loop, timer)) != 0) {
+            delete timer;
+            timer = nullptr;
+            disconnect(rc);
+            return;
+        }
+
+        timer->data = this;
+    }
+
+    uv_timer_stop(timer);
+
+    if (millis == 0) {
+        uv_close(get_handle(timer), ::cb_close_timer);
+        timer = nullptr;
+        return;
+    }
+
+    if ((rc = uv_timer_start(timer, timer_cb, millis, millis)) != 0)
+        disconnect(rc);
+}
+
 void nplex::connection_s::send(flatbuffers::DetachedBuffer &&buf)
 {
     int rc = 0;
@@ -334,39 +370,6 @@ void nplex::connection_t::config(std::uint32_t max_msg_bytes, std::uint32_t max_
     m_params.max_msg_bytes = (max_msg_bytes == 0 ? UINT32_MAX : max_msg_bytes);
     m_params.max_unack_msgs = (max_queue_length == 0 ? UINT32_MAX : max_queue_length);
     m_params.max_unack_bytes = (max_queue_bytes == 0 ? UINT32_MAX : max_queue_bytes);
-}
-
-void nplex::connection_t::set_timer(uv_timer_t *&timer, std::uint32_t millis, uv_timer_cb timer_cb)
-{
-    int rc = 0;
-
-    if (millis == 0 && timer == nullptr)
-        return;
-
-    if (timer == nullptr)
-    {
-        timer = new uv_timer_t{};
-
-        if ((rc = uv_timer_init(m_tcp.loop, timer)) != 0) {
-            delete timer;
-            timer = nullptr;
-            disconnect(rc);
-            return;
-        }
-
-        timer->data = static_cast<connection_s *>(this);
-    }
-
-    uv_timer_stop(timer);
-
-    if (millis == 0) {
-        uv_close(get_handle(timer), ::cb_close_timer);
-        timer = nullptr;
-        return;
-    }
-
-    if ((rc = uv_timer_start(timer, timer_cb, millis, millis)) != 0)
-        disconnect(rc);
 }
 
 void nplex::connection_t::set_keepalive(std::uint32_t millis)

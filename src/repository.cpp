@@ -30,8 +30,8 @@ nplex::meta_ptr nplex::repo_t::create_meta(rev_t rev, const char *username, std:
         user_it->second++;
     }
 
-    auto now = std::chrono::system_clock::now();
-    millis_t timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch());
+    using namespace std::chrono;
+    millis_t timestamp = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
 
     return std::make_shared<meta_t>(meta_t{rev, user, timestamp, type, {}});
 }
@@ -254,32 +254,30 @@ nplex::msgs::SubmitCode nplex::repo_t::try_commit(const user_t &user, const msgs
     update.upserts.clear();
     update.deletes.clear();
 
-    auto ret = try_commit_inner(user, msg, update);
+    auto rc = try_commit_validate(user, msg, update);
+    if (rc != msgs::SubmitCode::ACCEPTED)
+        return rc;
 
-    if (ret != msgs::SubmitCode::ACCEPTED)
-    {
-        if (update.meta)
-            update_meta(update.meta, key_t{}, meta_e::SUBTRACT);
-
-        update.meta = nullptr;
-        update.upserts.clear();
-        update.deletes.clear();
-    }
-
-    return ret;
+    try_commit_apply(update);
+    return rc;
 }
 
-nplex::msgs::SubmitCode nplex::repo_t::try_commit_inner(const user_t &user, const msgs::SubmitRequest *msg, update_t &update)
+nplex::msgs::SubmitCode nplex::repo_t::try_commit_validate(const user_t &user, const msgs::SubmitRequest *msg, update_t &update)
 {
+    struct pending_upsert_t {
+        key_t        key;
+        gto::cstring data;
+    };
+
     bool forced = (user.can_force && msg->force());
-    auto meta = create_meta(m_rev + 1, user.name.c_str(), msg->type());
     std::set<key_t, gto::cstring_compare> keys;
+    std::vector<pending_upsert_t> pending_upserts;
+    std::vector<key_t> pending_deletes;
+
     auto upserts = msg->upserts();
     auto deletes = msg->deletes();
     auto ensures = msg->ensures();
     rev_t crev = msg->crev();
-
-    update.meta = meta;
 
     if (upserts)
     {
@@ -319,8 +317,8 @@ nplex::msgs::SubmitCode nplex::repo_t::try_commit_inner(const user_t &user, cons
 
             key_t key = (it != m_data.end() ? it->first : key_t{keyval->key()->c_str()});
             auto data = create_cstring(keyval->value());
-            auto value = std::make_shared<value_t>(data, meta);
-            update.upserts.emplace_back(key, value);
+
+            pending_upserts.push_back(pending_upsert_t{key, std::move(data)});
             keys.insert(key);
         }
     }
@@ -348,12 +346,12 @@ nplex::msgs::SubmitCode nplex::repo_t::try_commit_inner(const user_t &user, cons
             if (!forced && it->second->m_meta->rev > crev)
                 return msgs::SubmitCode::REJECTED_INTEGRITY;
 
-            update.deletes.emplace_back(it->first);
+            pending_deletes.emplace_back(it->first);
             keys.insert(it->first);
         }
     }
 
-    if (update.upserts.empty() && update.deletes.empty() && !forced)
+    if (pending_upserts.empty() && pending_deletes.empty() && !forced)
         return msgs::SubmitCode::NO_MODIFICATIONS;
 
     if (ensures)
@@ -366,7 +364,7 @@ nplex::msgs::SubmitCode nplex::repo_t::try_commit_inner(const user_t &user, cons
                 return msgs::SubmitCode::ERROR_MESSAGE;
 
             const char *pattern = ensure->c_str();
-            std::string_view prefix = std::string_view{pattern, strcspn(pattern, "*?")};
+            std::string_view prefix{pattern, strcspn(pattern, "*?")};
 
             auto it = (prefix.empty() ? m_data.begin() : m_data.lower_bound(prefix));
             auto end = m_data.end();
@@ -394,18 +392,36 @@ nplex::msgs::SubmitCode nplex::repo_t::try_commit_inner(const user_t &user, cons
         }
     }
 
-    // Finally, we update the database
+    // Data validated - filling update
+    auto meta = create_meta(m_rev + 1, user.name.c_str(), msg->type());
+    update.meta = meta;
 
-    m_rev = meta->rev;
-    m_metas[m_rev] = meta;
+    update.upserts.clear();
+    update.upserts.reserve(pending_upserts.size());
+
+    for (auto &pu : pending_upserts)
+    {
+        auto value = std::make_shared<value_t>(pu.data, meta);
+        update.upserts.emplace_back(pu.key, std::move(value));
+    }
+
+    update.deletes = std::move(pending_deletes);
+
+    return msgs::SubmitCode::ACCEPTED;
+}
+
+void nplex::repo_t::try_commit_apply(const update_t &update)
+{
+    assert(update.meta);
+
+    m_rev = update.meta->rev;
+    m_metas[m_rev] = update.meta;
 
     for (const auto &[key, value] : update.upserts)
         upsert_entry(key, value);
 
     for (const auto &key : update.deletes)
-        mark_as_removed(key, meta);
-
-    return msgs::SubmitCode::ACCEPTED;
+        mark_as_removed(key, update.meta);
 }
 
 std::uint32_t nplex::repo_t::purge(millis_t timestamp)

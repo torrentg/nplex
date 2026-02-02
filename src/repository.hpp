@@ -16,84 +16,6 @@ namespace nplex {
  */
 class repo_t
 {
-    enum struct meta_e : std::uint8_t {
-      APPEND,
-      SUBTRACT
-    };
-
-  private:
-
-    rev_t m_rev = 0;
-    std::map<rev_t, meta_ptr> m_metas;
-    std::map<key_t, value_ptr, gto::cstring_compare> m_data;
-    std::map<gto::cstring, std::uint32_t, gto::cstring_compare> m_users; // value=number of metas referencing the user
-    gto::cqueue<key_t> m_removed_keys;   // can contain duplicates and reinserted keys
-
-    /**
-     * Creates a transaction metadata object.
-     * Using current time and the given params.
-     * Aggregating the user to user list if required.
-     * 
-     * @param[in] rev Revision.
-     * @param[in] username User name.
-     * @param[in] type Transaction type (user-defined value).
-     * 
-     * @return The inserted metadata.
-     */
-    meta_ptr create_meta(rev_t rev, const char *username, std::uint32_t type);
-
-    /**
-     * Update a metadata object.
-     * 
-     * On append mode, adds key as new reference.
-     * On subtract mode, removes key and if empty removes the meta itself.
-     * 
-     * @param[in] meta Metadata to update.
-     * @param[in] key Key to add/remove as reference.
-     * @param[in] mode Update mode.
-     */
-    void update_meta(const meta_ptr &meta, const key_t &key, meta_e mode);
-
-    /**
-     * Upsert an entry updating content accordingly.
-     * 
-     * @param[in] key Key to insert or update.
-     * @param[in] value Value to set.
-     * 
-     * @return true = change done, false = no change.
-     */
-    bool upsert_entry(const char *key, const value_ptr &value);
-    bool upsert_entry(const key_t &key, const value_ptr &value);
-
-    /**
-     * Delete an entry updating content accordingly.
-     * 
-     * @param[in] key Key to delete.
-     * 
-     * @return true = entry delete, false = otherwise.
-     */
-    bool delete_entry(const char *key);
-
-    /**
-     * Mark an entry as deleted.
-     * 
-     * Append the key to the removed keys set.
-     * 
-     * @param[in] key Key to delete.
-     * @param[in] meta Metadata of the transaction removing the key.
-     * 
-     * @return true = entry delete, false = otherwise.
-     */
-    bool mark_as_removed(const key_t &key, const meta_ptr &meta);
-
-    /**
-     * Internal function.
-     * 
-     * Pre-conditions: update is empty.
-     * Post-conditions: update has a meta that must be released on error.
-     */
-    msgs::SubmitCode try_commit_inner(const user_t &user, const msgs::SubmitRequest *msg, update_t &update);
-
   public:
 
     /**
@@ -169,6 +91,103 @@ class repo_t
      * @return Serialized snapshot content.
      */
     flatbuffers::Offset<msgs::Snapshot> serialize(flatbuffers::FlatBufferBuilder &builder, const user_ptr &user = nullptr) const;
+
+  private: // types
+
+    enum struct meta_e : std::uint8_t {
+      APPEND,
+      SUBTRACT
+    };
+
+    using user_map_t = std::map<gto::cstring, std::uint32_t, gto::cstring_compare>;
+    using data_map_t = std::map<key_t, value_ptr, gto::cstring_compare>;
+    using meta_map_t = std::map<rev_t, meta_ptr>;
+
+  private:  // members
+
+    rev_t m_rev = 0;                        // Current revision.
+    meta_map_t m_metas;                     // Metas indexed by revision.
+    data_map_t m_data;                      // Key-value data store.
+    user_map_t m_users;                     // Users list (with number of references)
+    gto::cqueue<key_t> m_removed_keys;      // List of removed keys (can contain duplicates and reinserted keys)
+
+  private: // methods
+
+    /**
+     * Creates a transaction metadata object.
+     * Using current time and the given params.
+     * Aggregating the user to user list if required.
+     * 
+     * @param[in] rev Revision.
+     * @param[in] username User name.
+     * @param[in] type Transaction type (user-defined value).
+     * 
+     * @return The inserted metadata.
+     */
+    meta_ptr create_meta(rev_t rev, const char *username, std::uint32_t type);
+
+    /**
+     * Update a metadata object.
+     * 
+     * On append mode, adds key as new reference.
+     * On subtract mode, removes key and if empty removes the meta itself.
+     * 
+     * @param[in] meta Metadata to update.
+     * @param[in] key Key to add/remove as reference.
+     * @param[in] mode Update mode.
+     */
+    void update_meta(const meta_ptr &meta, const key_t &key, meta_e mode);
+
+    /**
+     * Upsert an entry updating content accordingly.
+     * 
+     * @param[in] key Key to insert or update.
+     * @param[in] value Value to set.
+     * 
+     * @return true = change done, false = no change.
+     */
+    bool upsert_entry(const char *key, const value_ptr &value);
+    bool upsert_entry(const key_t &key, const value_ptr &value);
+
+    /**
+     * Delete an entry updating content accordingly.
+     * 
+     * @param[in] key Key to delete.
+     * 
+     * @return true = entry delete, false = otherwise.
+     */
+    bool delete_entry(const char *key);
+
+    /**
+     * Mark an entry as deleted.
+     * 
+     * Append the key to the removed keys set.
+     * 
+     * @param[in] key Key to delete.
+     * @param[in] meta Metadata of the transaction removing the key.
+     * 
+     * @return true = entry delete, false = otherwise.
+     */
+    bool mark_as_removed(const key_t &key, const meta_ptr &meta);
+
+    /**
+     * Internal function.
+     * 
+     * @param[in] user User submitting the request.
+     * @param[in] msg Submit request.
+     * @param[out] update Update to apply.
+     * 
+     * Pre-conditions: update is empty.
+     * Post-conditions: update has a meta that must be released on error.
+     */
+    msgs::SubmitCode try_commit_validate(const user_t &user, const msgs::SubmitRequest *msg, update_t &update);
+
+    /**
+     * Internal function to apply a validated update.
+     * 
+     * @param[in] update Update to apply.
+     */
+    void try_commit_apply(const update_t &update);
 
 };
 

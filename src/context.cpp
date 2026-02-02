@@ -142,7 +142,10 @@ static void cb_async_updates_result(uv_async_t *handle)
 nplex::context_t::context_t(uv_loop_t *loop, const params_t &params) : m_loop(loop)
 {
     m_users = ::create_users(params);
+
     m_max_sessions = (params.max_connections ? params.max_connections : UINT32_MAX);
+    m_max_updates_between_snapshots = (params.max_updates_between_snapshots ? params.max_updates_between_snapshots : UINT32_MAX);
+    m_max_bytes_between_snapshots = (params.max_bytes_between_snapshots ? params.max_bytes_between_snapshots : UINT32_MAX);
 
     auto path = params.datadir;
 
@@ -186,7 +189,8 @@ nplex::context_t::context_t(uv_loop_t *loop, const params_t &params) : m_loop(lo
                 SPDLOG_ERROR("Exception in journal writer: {}", e.what());
             }
             stop();
-        });
+        }
+    );
 }
 
 nplex::context_t::~context_t()
@@ -358,4 +362,26 @@ nplex::user_ptr nplex::context_t::get_user(const std::string &name) const
         return nullptr;
 
     return it->second;
+}
+
+std::tuple<nplex::msgs::SubmitCode, nplex::rev_t> nplex::context_t::try_commit(const msgs::SubmitRequest *msg, const user_t &user)
+{
+    update_t update;
+
+    auto rc = m_repo.try_commit(user, msg, update);
+    if (rc != msgs::SubmitCode::ACCEPTED) {
+        SPDLOG_DEBUG("Commit rejected: user={}, crev={}, rc={}", user.name, msg->crev(), static_cast<int>(rc));  
+        return { rc, 0 };
+    }
+
+    assert(m_repo.rev() == update.meta->rev);
+    SPDLOG_DEBUG("Commit accepted: rev={}, user={}, type={}", update.meta->rev, update.meta->user.c_str(), update.meta->type);
+
+    auto erev = update.meta->rev;
+    persist(std::move(update));
+
+    // TODO: check for snapshot
+    // TODO: repo cleanup (purge)
+
+    return { rc, erev };
 }

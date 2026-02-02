@@ -257,9 +257,9 @@ void nplex::session_t::process_snapshot_request(const msgs::SnapshotRequest *req
     }
 
     // case: requested current snapshot
-    if (rev == m_context->last_persisted_rev() && rev == m_context->m_repo.rev())
+    if (rev == m_context->last_persisted_rev() && rev == m_context->repo().rev())
     {
-        send_snapshot(cid, m_context->m_repo, m_user);
+        send_snapshot(cid, m_context->repo(), m_user);
         return;
     }
 
@@ -321,40 +321,16 @@ void nplex::session_t::process_submit_request(const nplex::msgs::SubmitRequest *
         return;
     }
 
-    update_t update;
+    auto [rc, erev] = m_context->try_commit(req, *m_user);
 
-    // try to commit the update
-    auto rc = m_context->m_repo.try_commit(*m_user, req, update);
-
-    // case: commit rejected
-    if (rc != msgs::SubmitCode::ACCEPTED) {
-        send(
-            create_submit_msg(
-                req->cid(), 
-                m_context->last_persisted_rev(),
-                rc,
-                0
-            )
-        );
-
-        return;
-    }
-
-    // case: commit accepted
     send(
         create_submit_msg(
             req->cid(), 
             m_context->last_persisted_rev(),
             rc,
-            m_context->m_repo.rev()
+            erev
         )
     );
-
-    // persist the update
-    assert(m_context->m_repo.rev() == update.meta->rev);
-    m_context->persist(std::move(update));
-
-    // TODO: repo cleanup (purge)
 }
 
 void nplex::session_t::process_ping_request(const nplex::msgs::PingRequest *req)

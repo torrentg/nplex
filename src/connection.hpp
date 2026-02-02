@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <uv.h>
 #include "addr.hpp"
 
@@ -7,6 +8,8 @@
 namespace flatbuffers {
     class DetachedBuffer;
 }
+
+using millis_t = std::chrono::milliseconds;
 
 namespace nplex {
 
@@ -23,6 +26,7 @@ struct con_params_t
 
 struct con_stats_t
 {
+    millis_t time0{0};                              // Timestamp connection was established (UTC millis since epoch)
     std::size_t unack_msgs = 0;                     // Number of msgs in the output queue
     std::size_t unack_bytes = 0;                    // Number of bytes in the output queue
     std::size_t recv_msgs = 0;                      // Total received messages
@@ -36,7 +40,7 @@ struct con_stats_t
  * 
  * These are the connection_t private members of connection_t that are 
  * accessed by public libuv callbacks.
- * 
+ *
  * m_tcp.data points to the session.
  * m_tcp.loop->data points to the context.
  */
@@ -65,7 +69,7 @@ struct connection_s
     void send(flatbuffers::DetachedBuffer &&buf);
     void report_peer_activity();
     void send_keepalive();
-
+    void set_timer(uv_timer_t *&timer, std::uint32_t millis, uv_timer_cb timer_cb);
     session_t * session() const { return reinterpret_cast<session_t *>(m_tcp.data); }
 };
 
@@ -75,13 +79,15 @@ struct connection_s
  * This class knows nothing about bussiness logic.
  * Deals with the event loop, messages, timers, etc.
  * 
+ * @note This class is not thread-safe.
+ * 
  * Main dutties are:
- * - Send messages
- * - Receive messages
+ * - Manage libuv resources
  * - Keep the connection alive (keepalive)
  * - Disconnect on peer inactivity (connection lost)
+ * - Send messages
+ * - Receive messages
  * - Handle disconnections
- * - Manage libuv resources
  * 
  * Callbacks to the session:
  * - session()->process_request()
@@ -94,12 +100,39 @@ class connection_t : private connection_s
 
     connection_t(session_t *session, uv_stream_t *stream) : connection_s(session, stream) {}
     ~connection_t() = default;
+
     connection_t(const connection_t&) = delete;
     connection_t& operator=(const connection_t&) = delete;
 
+    /**
+     * Get the remote addr object (peer address).
+     * 
+     * @return The peer address.
+     */
     const addr_t & addr() const { return m_addr; }
+
+    /**
+     * Get the connection parameters.
+     * 
+     * @return The connection parameters.
+     */
     const auto & params() const { return m_params; }
+
+    /**
+     * Get the connection statistics.
+     * 
+     * @return The connection statistics.
+     */
     const auto & stats() const { return m_stats; }
+
+    /**
+     * Get the disconnection cause.
+     * 
+     * @see ERR_* defines.
+     * @see uv_strerror().
+     * 
+     * @return The last error code.
+     */
     int error() const { return m_error; }
 
     /**
@@ -134,15 +167,41 @@ class connection_t : private connection_s
      */
     void set_connection_lost(std::uint32_t millis);
 
+    /**
+     * Check if the connection output queue is blocked.
+     * 
+     * @return true if blocked, false otherwise.
+     */
     using connection_s::is_blocked;
+
+    /**
+     * Check if the connection is closed.
+     * 
+     * @return true if closed, false otherwise.
+     */
     using connection_s::is_closed;
+
+    /**
+     * Disconnect the connection cancelling all pending operations.
+     * 
+     * @param[in] rc Disconnection cause (error code).
+     */
     using connection_s::disconnect;
+
+    /**
+     * Shutdown the connection gracefully (send pending messages).
+     * 
+     * @param[in] rc Disconnection cause (error code).
+     */
     using connection_s::shutdown;
+
+    /**
+     * Send a message to the peer.
+     * 
+     * @param[in] buf Message to send.
+     */
     using connection_s::send;
 
-  private:
-
-    void set_timer(uv_timer_t *&timer, std::uint32_t millis, uv_timer_cb timer_cb);
 };
 
 } // namespace nplex

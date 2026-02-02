@@ -43,9 +43,9 @@ struct task_t
 };
 
 /**
- * Create and sends a snapshot.
- *   - Retrieve nearest snapshot from disk
- *   - Apply updates until the given rev
+ * Create a snapshot and sends a response to the session.
+ *   - Retrieve nearest snapshot from disk (filtered by user)
+ *   - Apply updates until the given rev (filtered by user)
  *   - Creates the SnapshotResponse message
  *   - Sends the message over the network
  */

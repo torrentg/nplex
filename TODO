@@ -1,8 +1,6 @@
 # TODO
 
 * Add error level support in strerror()
-* Add snapshot-max-entries param
-* Add snapshot-max-bytes param
 * Add database-max-entries param
 * Add database-max-bytes param
 * Create timer to check if msg delivery exceeds X millis ?
@@ -11,6 +9,7 @@
 * context_t::sessions: replace set by unordered_set
 * Implement a cache of updates
 * Implement purge (cache + deleted keys) based on time/size
+* Add metrics (SNMP+AgentX, prometheus-cpp)
 
 ## Useful commands
 
