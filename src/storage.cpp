@@ -104,6 +104,9 @@ std::pair<nplex::rev_t, nplex::rev_t> nplex::storage_t::get_revs_range()
     if (rev0 == 0 && min_rev > 1)
         throw nplex_exception("No snapshot available in range [r{}, r{}]", min_rev, max_rev);
 
+    if (min_rev > 1 && min_rev <= rev0)
+        SPDLOG_INFO("Found unused journal entries, range = [{}-{}]", min_rev, rev0);
+
     rev_t rev_k = (min_rev == 1 ? 1 : rev0);
 
     return {rev_k, max_rev};

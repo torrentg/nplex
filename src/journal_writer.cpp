@@ -65,10 +65,10 @@ void nplex::journal_writer::stop()
         }
 
         m_cond.notify_all();
-
-        if (m_thread.joinable()) 
-            m_thread.join();
     }
+
+    if (m_thread.joinable()) 
+        m_thread.join();
 }
 
 void nplex::journal_writer::write(update_t &&upd)
