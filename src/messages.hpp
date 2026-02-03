@@ -114,11 +114,12 @@ enum class SubmitCode : int8_t {
   REJECTED_PERMISSION = 7,
   REJECTED_INTEGRITY = 8,
   REJECTED_ENSURE = 9,
+  REJECTED_OLD_REVISION = 10,
   MIN = ACCEPTED,
-  MAX = REJECTED_ENSURE
+  MAX = REJECTED_OLD_REVISION
 };
 
-inline const SubmitCode (&EnumValuesSubmitCode())[10] {
+inline const SubmitCode (&EnumValuesSubmitCode())[11] {
   static const SubmitCode values[] = {
     SubmitCode::ACCEPTED,
     SubmitCode::TRY_LATER,
@@ -129,13 +130,14 @@ inline const SubmitCode (&EnumValuesSubmitCode())[10] {
     SubmitCode::ERROR_MESSAGE,
     SubmitCode::REJECTED_PERMISSION,
     SubmitCode::REJECTED_INTEGRITY,
-    SubmitCode::REJECTED_ENSURE
+    SubmitCode::REJECTED_ENSURE,
+    SubmitCode::REJECTED_OLD_REVISION
   };
   return values;
 }
 
 inline const char * const *EnumNamesSubmitCode() {
-  static const char * const names[11] = {
+  static const char * const names[12] = {
     "ACCEPTED",
     "TRY_LATER",
     "NO_MODIFICATIONS",
@@ -146,13 +148,14 @@ inline const char * const *EnumNamesSubmitCode() {
     "REJECTED_PERMISSION",
     "REJECTED_INTEGRITY",
     "REJECTED_ENSURE",
+    "REJECTED_OLD_REVISION",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameSubmitCode(SubmitCode e) {
-  if (::flatbuffers::IsOutRange(e, SubmitCode::ACCEPTED, SubmitCode::REJECTED_ENSURE)) return "";
+  if (::flatbuffers::IsOutRange(e, SubmitCode::ACCEPTED, SubmitCode::REJECTED_OLD_REVISION)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesSubmitCode()[index];
 }

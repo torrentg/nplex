@@ -7,47 +7,51 @@
 #include "utils.hpp"
 #include "params.hpp"
 
-#define GENERAL_ADDR                        "addr"
-#define GENERAL_LOG_LEVEL                   "log-level"
-#define GENERAL_MAX_CLIENTS                 "max-clients"
-#define GENERAL_DISABLE_FSYNC               "disable-fsync"
-#define SECTION_USER_DEFAULTS               "user-defaults"
-#define USER_PASSWORD                       "password"
-#define USER_ACTIVE                         "active"
-#define USER_CAN_FORCE                      "can-force"
-#define USER_MAX_CONNECTIONS                "max-connections"
-#define USER_KEEPALIVE_MILLIS               "keepalive-millis"
-#define USER_MAX_MSG_BYTES                  "max-msg-bytes"
-#define USER_MAX_QUEUE_LENGTH               "max-queue-length"
-#define USER_MAX_QUEUE_BYTES                "max-queue-bytes"
-#define USER_TIMEOUT_FACTOR                 "timeout-factor"
-#define USER_ACL                            "acl"
-#define WRITE_QUEUE_MAX_LENGTH              "write-queue-max-length"
-#define WRITE_QUEUE_MAX_BYTES               "write-queue-max-bytes"
-#define FLUSH_MAX_ENTRIES                   "flush-max-entries"
-#define FLUSH_MAX_BYTES                     "flush-max-bytes"
-#define MAX_UPDATES_BETWEEN_SNAPSHOTS       "max-updates-between-snapshots"
-#define MAX_BYTES_BETWEEN_SNAPSHOTS         "max-bytes-between-snapshots"
+#define GENERAL_ADDR                            "addr"
+#define GENERAL_LOG_LEVEL                       "log-level"
+#define GENERAL_MAX_CLIENTS                     "max-clients"
+#define GENERAL_DISABLE_FSYNC                   "disable-fsync"
+#define SECTION_USER_DEFAULTS                   "user-defaults"
+#define USER_PASSWORD                           "password"
+#define USER_ACTIVE                             "active"
+#define USER_CAN_FORCE                          "can-force"
+#define USER_MAX_CONNECTIONS                    "max-connections"
+#define USER_KEEPALIVE_MILLIS                   "keepalive-millis"
+#define USER_MAX_MSG_BYTES                      "max-msg-bytes"
+#define USER_MAX_QUEUE_LENGTH                   "max-queue-length"
+#define USER_MAX_QUEUE_BYTES                    "max-queue-bytes"
+#define USER_TIMEOUT_FACTOR                     "timeout-factor"
+#define USER_ACL                                "acl"
+#define WRITE_QUEUE_MAX_LENGTH                  "write-queue-max-length"
+#define WRITE_QUEUE_MAX_BYTES                   "write-queue-max-bytes"
+#define FLUSH_MAX_ENTRIES                       "flush-max-entries"
+#define FLUSH_MAX_BYTES                         "flush-max-bytes"
+#define MAX_UPDATES_BETWEEN_SNAPSHOTS           "max-updates-between-snapshots"
+#define MAX_BYTES_BETWEEN_SNAPSHOTS             "max-bytes-between-snapshots"
+#define TOMBSTONE_RETENTION                     "tombstone-retention"
+#define MAX_TOMBSTONES                          "max-tombstones"
 
-#define DEFAULT_CHECK_JOURNAL               false
-#define DEFAULT_ADDR                        "localhost:14022"
-#define DEFAULT_LOG_LEVEL                   nplex::log_level_e::INFO
-#define DEFAULT_MAX_CONNECTIONS             256
-#define DEFAULT_DISABLE_FSYNC               false
-#define DEFAULT_QUEUE_MAX_LENGTH            1000
-#define DEFAULT_QUEUE_MAX_BYTES             (350 * 1024 * 1024)
-#define DEFAULT_FLUSH_MAX_ENTRIES           50
-#define DEFAULT_FLUSH_MAX_BYTES             (25 * 1024 * 1024)
-#define DEFAULT_USER_ACTIVE                 true
-#define DEFAULT_USER_CAN_FORCE              false
-#define DEFAULT_USER_MAX_CONNECTIONS        5
-#define DEFAULT_USER_KEEPALIVE_MILLIS       3000
-#define DEFAULT_USER_MAX_MSG_BYTES          (50 * 1024 * 1024)
-#define DEFAULT_USER_MAX_QUEUE_LENGTH       1000
-#define DEFAULT_USER_MAX_QUEUE_BYTES        (100 * 1024 * 1024)
-#define DEFAULT_USER_TIMEOUT_FACTOR         3.0
-#define DEFAULT_MAX_UPDATES_BETWEEN_SNAPSHOTS 50000
-#define DEFAULT_MAX_BYTES_BETWEEN_SNAPSHOTS   (100 * 1024 * 1024)
+#define DEFAULT_CHECK_JOURNAL                   false
+#define DEFAULT_ADDR                            "localhost:14022"
+#define DEFAULT_LOG_LEVEL                       nplex::log_level_e::INFO
+#define DEFAULT_MAX_CONNECTIONS                 256
+#define DEFAULT_DISABLE_FSYNC                   false
+#define DEFAULT_QUEUE_MAX_LENGTH                1000
+#define DEFAULT_QUEUE_MAX_BYTES                 (350 * 1024 * 1024)
+#define DEFAULT_FLUSH_MAX_ENTRIES               50
+#define DEFAULT_FLUSH_MAX_BYTES                 (25 * 1024 * 1024)
+#define DEFAULT_USER_ACTIVE                     true
+#define DEFAULT_USER_CAN_FORCE                  false
+#define DEFAULT_USER_MAX_CONNECTIONS            5
+#define DEFAULT_USER_KEEPALIVE_MILLIS           3000
+#define DEFAULT_USER_MAX_MSG_BYTES              (50 * 1024 * 1024)
+#define DEFAULT_USER_MAX_QUEUE_LENGTH           1000
+#define DEFAULT_USER_MAX_QUEUE_BYTES            (100 * 1024 * 1024)
+#define DEFAULT_USER_TIMEOUT_FACTOR             3.0
+#define DEFAULT_MAX_UPDATES_BETWEEN_SNAPSHOTS   50000
+#define DEFAULT_MAX_BYTES_BETWEEN_SNAPSHOTS     (100 * 1024 * 1024)
+#define DEFAULT_TOMBSTONE_RETENTION             1000
+#define DEFAULT_MAX_TOMBSTONES                  100000
 
 static std::string crud_to_string(std::uint8_t crud)
 {
@@ -208,6 +212,10 @@ static int cb_inih_inner(void *obj, const char *section, const char *name, const
             params->max_updates_between_snapshots = parse_uint32(value);
         } else if (strcmp(name, MAX_BYTES_BETWEEN_SNAPSHOTS) == 0) {
             params->max_bytes_between_snapshots = parse_bytes(value);
+        } else if (strcmp(name, TOMBSTONE_RETENTION) == 0) {
+            params->tombstone_retention = parse_uint32(value);
+        } else if (strcmp(name, MAX_TOMBSTONES) == 0) {
+            params->max_tombstones = parse_uint32(value);
         } else {
             throw std::invalid_argument(fmt::format("Unrecognized entry ({})", name));
         }
@@ -308,6 +316,8 @@ static void set_defaults(nplex::params_t &params)
     params.flush_max_bytes = DEFAULT_FLUSH_MAX_BYTES;
     params.max_updates_between_snapshots = DEFAULT_MAX_UPDATES_BETWEEN_SNAPSHOTS;
     params.max_bytes_between_snapshots = DEFAULT_MAX_BYTES_BETWEEN_SNAPSHOTS;
+    params.tombstone_retention = DEFAULT_TOMBSTONE_RETENTION;
+    params.max_tombstones = DEFAULT_MAX_TOMBSTONES;
 
     params.default_user.active = DEFAULT_USER_ACTIVE;
     params.default_user.can_force = DEFAULT_USER_CAN_FORCE;
@@ -357,6 +367,8 @@ void nplex::params_t::save(const fs::path &path) const
     ofs << FLUSH_MAX_BYTES << " = " << bytes_to_string(flush_max_bytes) << std::endl;
     ofs << MAX_UPDATES_BETWEEN_SNAPSHOTS << " = " << max_updates_between_snapshots << std::endl;
     ofs << MAX_BYTES_BETWEEN_SNAPSHOTS << " = " << bytes_to_string(max_bytes_between_snapshots) << std::endl;
+    ofs << TOMBSTONE_RETENTION << " = " << tombstone_retention << std::endl;
+    ofs << MAX_TOMBSTONES << " = " << max_tombstones << std::endl;
     ofs << std::endl;
 
     ofs << "[" << SECTION_USER_DEFAULTS << "]" << std::endl;

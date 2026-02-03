@@ -15,18 +15,20 @@ struct params_t
 {
     fs::path datadir;                           // Database directory.
     bool check_journal;                         // Check journal files at startup.
+    bool disable_fsync;                         // Disable fsync for write updates.
     addr_t addr;                                // IP address to listen on.
     log_level_e log_level;                      // Log level.
     std::uint32_t max_connections;              // Maximum number of allowed connections (0 = unlimited).
     user_t default_user;                        // Default user.
     std::vector<user_t> users;                  // List of users.
-    bool disable_fsync;                         // Disable fsync for write updates.
     std::uint32_t write_queue_max_length;       // Maximum messages in the output write queue (0 = unlimited).
     std::uint32_t write_queue_max_bytes;        // Maximum bytes in the output write queue (0 = unlimited).
     std::uint32_t flush_max_entries;            // Maximum entries before flushing write updates (0 = unlimited).
     std::uint32_t flush_max_bytes;              // Maximum bytes before flushing write updates (0 = unlimited).
     std::uint32_t max_updates_between_snapshots;// Maximum updates between two snapshots (0 = unlimited).
     std::uint32_t max_bytes_between_snapshots;  // Maximum bytes between two snapshots (0 = unlimited).
+    std::uint32_t tombstone_retention;          // Minimum number of revisions to keep tombstones for.
+    std::uint32_t max_tombstones;               // Maximum number of tombstones.
 
     params_t(const fs::path &path = fs::path());
 

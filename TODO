@@ -3,7 +3,6 @@
 * Create timer to check if msg delivery exceeds X millis ?
 * repository_t -> data_store_t ?
 * Implement a cache of updates
-* Implement purge (cache + deleted keys) based on time/size
 * Add metrics (SNMP+AgentX, prometheus-cpp)
 
 ## Useful commands

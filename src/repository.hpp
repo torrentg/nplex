@@ -32,6 +32,14 @@ class repo_t
     rev_t rev() const noexcept { return m_rev; }
 
     /**
+     * Configure tombstone retention parameters.
+     * 
+     * @param[in] retention Minimum number of revisions to keep tombstones for.
+     * @param[in] max_tombs Maximum number of tombstones.
+     */
+    void config_tombstones(std::uint32_t retention, std::uint32_t max_tombs) noexcept;
+
+    /**
      * Get info about accumulated updates since last snapshot.
      * 
      * @return The delta info.
@@ -90,15 +98,6 @@ class repo_t
     msgs::SubmitCode try_commit(const user_t &user, const msgs::SubmitRequest *msg, update_t &update);
 
     /**
-     * Purge removed entries with timestamp less-than a fixed value.
-     * 
-     * @param[in] timestamp Timestamp (in milliseconds).
-     * 
-     * @return Number of removed-key records processed.
-     */
-    std::uint32_t purge(millis_t timestamp = millis_t::max());
-
-    /**
      * Serialize the database content to a snapshot.
      * 
      * The content is filtered according to the user's permissions.
@@ -117,9 +116,15 @@ class repo_t
       SUBTRACT
     };
 
+    struct removed_key_t {
+        key_t key;                          // Removed key.
+        rev_t rev;                          // Revision when removed.
+    };
+
     using user_map_t = std::map<gto::cstring, std::uint32_t, gto::cstring_compare>;
     using data_map_t = std::map<key_t, value_ptr, gto::cstring_compare>;
     using meta_map_t = std::map<rev_t, meta_ptr>;
+    using rm_queue_t = gto::cqueue<removed_key_t>;
 
   private:  // members
 
@@ -127,8 +132,11 @@ class repo_t
     meta_map_t m_metas;                     // Metas indexed by revision.
     data_map_t m_data;                      // Key-value data store.
     user_map_t m_users;                     // Users list (with number of references)
-    gto::cqueue<key_t> m_removed_keys;      // List of removed keys (can contain duplicates and reinserted keys)
+    rm_queue_t m_removed_keys;              // List of removed keys (can contain duplicates and reinserted keys)
     delta_t m_delta;                        // Accumulated delta since last snapshot.
+    std::uint32_t m_tombstone_retention = 0;// Minimum number of revisions to keep tombstones for.
+    std::uint32_t m_max_tombstones = 0;     // Hard limit for number of tombstones.
+    rev_t m_min_rev = 0;                    // Minimum rev with guaranteed tombstone info.
 
   private: // methods
 
@@ -221,6 +229,17 @@ class repo_t
      * @param[in] update Update to apply.
      */
     void apply_update(const update_t &update);
+
+    /**
+     * Purge removed entries based on revision retention and tombstone limits.
+     * 
+     * Uses purge_min_revs and max_tombstones to decide which
+     * tombstones can be safely discarded. Stale entries are always
+     * removed. purge_min_revs has precedence over max_tombstones.
+     * 
+     * @return Number of tombstones removed.
+     */
+    std::uint32_t purge();
 
 };
 

@@ -7,6 +7,8 @@
 #include "exception.hpp"
 #include "repository.hpp"
 
+#define TOMBSTONE_GRANTED_NUM_REVS   5
+
 // ==========================================================
 // Internal to compilation unit
 // ==========================================================
@@ -19,6 +21,12 @@ struct pending_upsert_t {
 // ==========================================================
 // repo_t methods
 // ==========================================================
+
+void nplex::repo_t::config_tombstones(std::uint32_t retention, std::uint32_t max_tombs) noexcept 
+{
+    m_tombstone_retention = retention;
+    m_max_tombstones = max_tombs;
+}
 
 nplex::meta_ptr nplex::repo_t::create_meta(rev_t rev, const char *username, std::uint32_t type)
 {
@@ -149,7 +157,7 @@ bool nplex::repo_t::mark_as_removed(const key_t &key, const meta_ptr &meta)
 
     it->second->set_removed();
     it->second->m_meta = meta;
-    m_removed_keys.push(key);
+    m_removed_keys.push({key, meta->rev});
 
     return true;
 }
@@ -162,6 +170,7 @@ void nplex::repo_t::load(const msgs::Snapshot *snapshot, const user_ptr &user)
     m_users.clear();
     m_removed_keys.clear();
     m_delta = {};
+    m_min_rev = 0;
 
     if (!snapshot)
         return;
@@ -182,6 +191,7 @@ void nplex::repo_t::load(const msgs::Snapshot *snapshot, const user_ptr &user)
 
     m_delta = {};
     m_rev = srev;
+    m_min_rev = m_rev;
 }
 
 nplex::update_t nplex::repo_t::update(const msgs::Update *msg, const user_ptr &user)
@@ -291,8 +301,13 @@ nplex::msgs::SubmitCode nplex::repo_t::try_commit(const user_t &user, const msgs
     if (!msg)
         return msgs::SubmitCode::ERROR_MESSAGE;
 
-    if (msg->crev() > m_rev)
+    rev_t crev = msg->crev();
+
+    if (crev > m_rev)
         return msgs::SubmitCode::ERROR_INVALID_REVISION;
+
+    if (crev < m_min_rev)
+        return msgs::SubmitCode::REJECTED_OLD_REVISION;
 
     update.meta = nullptr;
     update.upserts.clear();
@@ -464,44 +479,80 @@ void nplex::repo_t::apply_update(const update_t &update)
     for (const auto &[key, value] : update.upserts)
         upsert_entry(key, value);
 
+    auto num_removed_keys = m_removed_keys.size();
+    
     for (const auto &key : update.deletes)
         mark_as_removed(key, update.meta);
+
+    if (m_removed_keys.size() > num_removed_keys)
+        purge();
 }
 
-std::uint32_t nplex::repo_t::purge(millis_t timestamp)
+std::uint32_t nplex::repo_t::purge()
 {
     std::uint32_t count = 0;
+    rev_t last_purged_rev = 0;
+
+    auto purge_entry = [&](auto it) {
+        last_purged_rev = it->second->rev();
+        update_meta(it->second->m_meta, it->first, meta_e::SUBTRACT);
+        m_data.erase(it);
+        m_removed_keys.pop();
+        count++;
+    };
 
     while (!m_removed_keys.empty())
     {
-        auto key = m_removed_keys.front();
+        auto [key, rev] = m_removed_keys.front();
         auto it = m_data.find(key);
 
-        // Case: removed key not found
+        // Security check
         if (it == m_data.end()) {
             m_removed_keys.pop();
             count++;
             continue;
         }
 
-        // Case: reinserted after deletion
-        if (!it->second->is_removed()) {
+        // Case: useless entry (modified after deletion)
+        if (rev != it->second->rev()) {
+            assert(rev < it->second->rev());
             m_removed_keys.pop();
             count++;
             continue;
         }
 
-        // Case: deletion is older than the timestamp
-        if (it->second->timestamp() < timestamp) {
-            update_meta(it->second->m_meta, it->first, meta_e::SUBTRACT);
-            m_data.erase(it);
-            m_removed_keys.pop();
-            count++;
+        // Invariants
+        assert(it->first == key);
+        assert(it->second->rev() == rev);
+        assert(it->second->is_removed());
+
+        // Case: entry at a distance greater than purge_min_revs
+        if (rev + m_tombstone_retention < m_rev) {
+            purge_entry(it);
             continue;
         }
 
-        // Case: deleted key is fresh
-        break;
+        // Case: revision removed from tombstones
+        if (last_purged_rev && rev == last_purged_rev) {
+            purge_entry(it);
+            continue;
+        }
+
+        // Case: max tombstones limit reached (hard)
+        if (m_removed_keys.size() <= m_max_tombstones)
+            break;
+
+        // Granting a minimum of N revisions
+        if (m_rev <= rev + TOMBSTONE_GRANTED_NUM_REVS)
+            break;
+
+        // Case: max_tombstones exceeded
+        purge_entry(it);
+    }
+
+    if (last_purged_rev > 0) {
+        assert(last_purged_rev < m_rev);
+        m_min_rev = last_purged_rev + 1;
     }
 
     return count;

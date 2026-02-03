@@ -26,7 +26,8 @@ enum SubmitCode : byte {
     ERROR_MESSAGE,
     REJECTED_PERMISSION,
     REJECTED_INTEGRITY,
-    REJECTED_ENSURE
+    REJECTED_ENSURE,
+    REJECTED_OLD_REVISION
 }
 
 // ========================================================
