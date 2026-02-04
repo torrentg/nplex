@@ -27,8 +27,9 @@ struct params_t
     std::uint32_t flush_max_bytes;              // Maximum bytes before flushing write updates (0 = unlimited).
     std::uint32_t max_updates_between_snapshots;// Maximum updates between two snapshots (0 = unlimited).
     std::uint32_t max_bytes_between_snapshots;  // Maximum bytes between two snapshots (0 = unlimited).
-    std::uint32_t tombstone_retention;          // Minimum number of revisions to keep tombstones for.
-    std::uint32_t max_tombstones;               // Maximum number of tombstones.
+    std::uint32_t tombstone_retention_max;      // Maximum number of revisions to keep tombstones for (0 = unlimited).
+    std::uint32_t tombstone_retention_min;      // Minimum number of revisions guaranteed to keep tombstones for.
+    std::uint32_t max_tombstones;               // Maximum number of tombstones (0 = unlimited).
 
     params_t(const fs::path &path = fs::path());
 

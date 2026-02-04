@@ -28,7 +28,8 @@
 #define FLUSH_MAX_BYTES                         "flush-max-bytes"
 #define MAX_UPDATES_BETWEEN_SNAPSHOTS           "max-updates-between-snapshots"
 #define MAX_BYTES_BETWEEN_SNAPSHOTS             "max-bytes-between-snapshots"
-#define TOMBSTONE_RETENTION                     "tombstone-retention"
+#define TOMBSTONE_RETENTION_MAX                 "tombstone-retention-max"
+#define TOMBSTONE_RETENTION_MIN                 "tombstone-retention-min"
 #define MAX_TOMBSTONES                          "max-tombstones"
 
 #define DEFAULT_CHECK_JOURNAL                   false
@@ -50,7 +51,8 @@
 #define DEFAULT_USER_TIMEOUT_FACTOR             3.0
 #define DEFAULT_MAX_UPDATES_BETWEEN_SNAPSHOTS   50000
 #define DEFAULT_MAX_BYTES_BETWEEN_SNAPSHOTS     (100 * 1024 * 1024)
-#define DEFAULT_TOMBSTONE_RETENTION             1000
+#define DEFAULT_TOMBSTONE_RETENTION_MAX         1000
+#define DEFAULT_TOMBSTONE_RETENTION_MIN         5
 #define DEFAULT_MAX_TOMBSTONES                  100000
 
 static std::string crud_to_string(std::uint8_t crud)
@@ -212,8 +214,10 @@ static int cb_inih_inner(void *obj, const char *section, const char *name, const
             params->max_updates_between_snapshots = parse_uint32(value);
         } else if (strcmp(name, MAX_BYTES_BETWEEN_SNAPSHOTS) == 0) {
             params->max_bytes_between_snapshots = parse_bytes(value);
-        } else if (strcmp(name, TOMBSTONE_RETENTION) == 0) {
-            params->tombstone_retention = parse_uint32(value);
+        } else if (strcmp(name, TOMBSTONE_RETENTION_MAX) == 0) {
+            params->tombstone_retention_max = parse_uint32(value);
+        } else if (strcmp(name, TOMBSTONE_RETENTION_MIN) == 0) {
+            params->tombstone_retention_min = parse_uint32(value);
         } else if (strcmp(name, MAX_TOMBSTONES) == 0) {
             params->max_tombstones = parse_uint32(value);
         } else {
@@ -254,9 +258,6 @@ static int cb_inih_inner(void *obj, const char *section, const char *name, const
     auto it = std::find_if(params->users.begin(), params->users.end(), [section](const user_t &usr) { 
         return (usr.name == section); 
     });
-
-    // TODO: trap duplicated users (=section)
-    // TODO: save section in params_t and check it here
 
     if (it == params->users.end()) {
         params->users.push_back(params->default_user);
@@ -316,7 +317,8 @@ static void set_defaults(nplex::params_t &params)
     params.flush_max_bytes = DEFAULT_FLUSH_MAX_BYTES;
     params.max_updates_between_snapshots = DEFAULT_MAX_UPDATES_BETWEEN_SNAPSHOTS;
     params.max_bytes_between_snapshots = DEFAULT_MAX_BYTES_BETWEEN_SNAPSHOTS;
-    params.tombstone_retention = DEFAULT_TOMBSTONE_RETENTION;
+    params.tombstone_retention_max = DEFAULT_TOMBSTONE_RETENTION_MAX;
+    params.tombstone_retention_min = DEFAULT_TOMBSTONE_RETENTION_MIN;
     params.max_tombstones = DEFAULT_MAX_TOMBSTONES;
 
     params.default_user.active = DEFAULT_USER_ACTIVE;
@@ -327,6 +329,10 @@ static void set_defaults(nplex::params_t &params)
     params.default_user.max_queue_length = DEFAULT_USER_MAX_QUEUE_LENGTH;
     params.default_user.max_queue_bytes = DEFAULT_USER_MAX_QUEUE_BYTES;
     params.default_user.timeout_factor = DEFAULT_USER_TIMEOUT_FACTOR;
+
+    // Sanity: ensure retention_min does not exceed retention_max when both are set.
+    if (params.tombstone_retention_max > 0 && params.tombstone_retention_min > params.tombstone_retention_max)
+        params.tombstone_retention_min = params.tombstone_retention_max;
 }
 
 nplex::params_t::params_t(const fs::path &path)
@@ -367,7 +373,8 @@ void nplex::params_t::save(const fs::path &path) const
     ofs << FLUSH_MAX_BYTES << " = " << bytes_to_string(flush_max_bytes) << std::endl;
     ofs << MAX_UPDATES_BETWEEN_SNAPSHOTS << " = " << max_updates_between_snapshots << std::endl;
     ofs << MAX_BYTES_BETWEEN_SNAPSHOTS << " = " << bytes_to_string(max_bytes_between_snapshots) << std::endl;
-    ofs << TOMBSTONE_RETENTION << " = " << tombstone_retention << std::endl;
+    ofs << TOMBSTONE_RETENTION_MAX << " = " << tombstone_retention_max << std::endl;
+    ofs << TOMBSTONE_RETENTION_MIN << " = " << tombstone_retention_min << std::endl;
     ofs << MAX_TOMBSTONES << " = " << max_tombstones << std::endl;
     ofs << std::endl;
 

@@ -4,6 +4,7 @@
 * repository_t -> data_store_t ?
 * Implement a cache of updates
 * Add metrics (SNMP+AgentX, prometheus-cpp)
+* Add admin API (nplexctl via uv_pipe_t, stats, conf, purge, rollback, rotate)
 
 ## Useful commands
 

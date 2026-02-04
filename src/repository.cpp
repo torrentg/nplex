@@ -7,8 +7,6 @@
 #include "exception.hpp"
 #include "repository.hpp"
 
-#define TOMBSTONE_GRANTED_NUM_REVS   5
-
 // ==========================================================
 // Internal to compilation unit
 // ==========================================================
@@ -22,9 +20,10 @@ struct pending_upsert_t {
 // repo_t methods
 // ==========================================================
 
-void nplex::repo_t::config_tombstones(std::uint32_t retention, std::uint32_t max_tombs) noexcept 
+void nplex::repo_t::config_tombstones(std::uint32_t retention_min, std::uint32_t retention_max, std::uint32_t max_tombs) noexcept 
 {
-    m_tombstone_retention = retention;
+    m_tombstone_retention_max = retention_max;
+    m_tombstone_retention_min = retention_min;
     m_max_tombstones = max_tombs;
 }
 
@@ -526,8 +525,8 @@ std::uint32_t nplex::repo_t::purge()
         assert(it->second->rev() == rev);
         assert(it->second->is_removed());
 
-        // Case: entry at a distance greater than purge_min_revs
-        if (rev + m_tombstone_retention < m_rev) {
+        // Case: entry at a distance greater than configured max retention
+        if (m_tombstone_retention_max > 0 && rev + m_tombstone_retention_max < m_rev) {
             purge_entry(it);
             continue;
         }
@@ -539,11 +538,12 @@ std::uint32_t nplex::repo_t::purge()
         }
 
         // Case: max tombstones limit reached (hard)
-        if (m_removed_keys.size() <= m_max_tombstones)
+        // 0 means unlimited tombstones.
+        if (m_max_tombstones == 0 || m_removed_keys.size() <= m_max_tombstones)
             break;
 
-        // Granting a minimum of N revisions
-        if (m_rev <= rev + TOMBSTONE_GRANTED_NUM_REVS)
+        // Granting a minimum number of revisions before enforcing max_tombstones
+        if (m_tombstone_retention_min > 0 && m_rev <= rev + m_tombstone_retention_min)
             break;
 
         // Case: max_tombstones exceeded

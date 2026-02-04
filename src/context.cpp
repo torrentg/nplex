@@ -167,7 +167,7 @@ nplex::context_t::context_t(uv_loop_t *loop, const params_t &params) : m_loop(lo
 
     // set repository content
     m_repo = m_storage->get_repo(m_rev_w);
-    m_repo.config_tombstones(params.tombstone_retention, params.max_tombstones);
+    m_repo.config_tombstones(params.tombstone_retention_min, params.tombstone_retention_max, params.max_tombstones);
 
     // async handle to stop the loop
     m_async_stop_loop = std::make_unique<uv_async_t>();
@@ -387,7 +387,6 @@ std::tuple<nplex::msgs::SubmitCode, nplex::rev_t> nplex::context_t::try_commit(c
     persist(std::move(update));
 
     check_for_snapshot();
-    // TODO: repo cleanup (purge)
 
     return { rc, erev };
 }
