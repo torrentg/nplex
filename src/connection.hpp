@@ -139,10 +139,10 @@ class connection_t : private connection_s
      * Configure the connection parameters.
      * 
      * @param[in] max_msg_bytes Maximum incoming message size (0 = unlimited).
-     * @param[in] max_queue_length Maximum number of messages in the output queue (0 = unlimited).
-     * @param[in] max_queue_bytes Maximum number of bytes in the output queue (0 = unlimited).
+     * @param[in] max_unack_msg Maximum number of unacknowledged messages (0 = unlimited).
+     * @param[in] max_unack_bytes Maximum number of unacknowledged bytes (0 = unlimited).
      */
-    void config(std::uint32_t max_msg_bytes, std::uint32_t max_queue_length, std::uint32_t max_queue_bytes);
+    void config(std::uint32_t max_msg_bytes, std::uint32_t max_unack_msg, std::uint32_t max_unack_bytes);
 
     /**
      * Enable or disable the keepalive feature.

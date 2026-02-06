@@ -57,9 +57,9 @@ struct meta_t
 {
     rev_t rev;                      //!< Revision at transaction creation.
     gto::cstring user;              //!< Transaction creator.
-    millis_t timestamp;             //!< Timestamp at transaction creation.
+    millis_t timestamp;             //!< Creation timestamp (milliseconds since Unix epoch, UTC).
     std::uint32_t type;             //!< Transaction type (user-defined).
-    std::set<key_t> refs;           //!< Keys modified by the transaction.
+    std::set<key_t> refs;           //!< Set of keys modified by the transaction.
 };
 
 using meta_ptr = std::shared_ptr<meta_t>;

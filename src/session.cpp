@@ -201,7 +201,7 @@ void nplex::session_t::process_login_request(const msgs::LoginRequest *req)
     m_user = user;
     m_user->num_connections++;
     m_id = fmt::format("{}@{}", m_user->name, m_con.addr().str());
-    m_con.config(m_user->max_msg_bytes, m_user->max_queue_length, m_user->max_queue_bytes);
+    m_con.config(m_user->max_msg_bytes, m_user->max_unack_msg, m_user->max_unack_bytes);
 
     // enable keepalive
     m_con.set_keepalive(m_user->keepalive_millis);

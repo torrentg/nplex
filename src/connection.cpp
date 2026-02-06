@@ -365,11 +365,11 @@ void nplex::connection_s::report_peer_activity()
 // connection_t methods
 // ==========================================================
 
-void nplex::connection_t::config(std::uint32_t max_msg_bytes, std::uint32_t max_queue_length, std::uint32_t max_queue_bytes)
+void nplex::connection_t::config(std::uint32_t max_msg_bytes, std::uint32_t max_unack_msg, std::uint32_t max_unack_bytes)
 {
     m_params.max_msg_bytes = (max_msg_bytes == 0 ? UINT32_MAX : max_msg_bytes);
-    m_params.max_unack_msgs = (max_queue_length == 0 ? UINT32_MAX : max_queue_length);
-    m_params.max_unack_bytes = (max_queue_bytes == 0 ? UINT32_MAX : max_queue_bytes);
+    m_params.max_unack_msgs = (max_unack_msg == 0 ? UINT32_MAX : max_unack_msg);
+    m_params.max_unack_bytes = (max_unack_bytes == 0 ? UINT32_MAX : max_unack_bytes);
 }
 
 void nplex::connection_t::set_keepalive(std::uint32_t millis)

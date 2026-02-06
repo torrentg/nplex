@@ -24,8 +24,8 @@ struct user_t
     // session values
     std::uint32_t keepalive_millis = 0;     // Delay between keepalive messages (0 = disabled).
     std::uint32_t max_msg_bytes = 0;        // Maximum incomming message size (0 = unlimited).
-    std::uint32_t max_queue_length = 0;     // Maximum number of messages in the output queue (0 = unlimited).
-    std::uint32_t max_queue_bytes = 0;      // Maximum number of bytes in the output queue (0 = unlimited).
+    std::uint32_t max_unack_msg = 0;        // Maximum number of unacknowledged messages (0 = unlimited).
+    std::uint32_t max_unack_bytes = 0;      // Maximum number of unacknowledged bytes (0 = unlimited).
     float timeout_factor = 3.0f;            // Timeout factor (> 1.0).
 
     std::uint32_t num_connections = 0;      // Number of active connections.

@@ -18,8 +18,8 @@
 #define USER_MAX_CONNECTIONS                    "max-connections"
 #define USER_KEEPALIVE_MILLIS                   "keepalive-millis"
 #define USER_MAX_MSG_BYTES                      "max-msg-bytes"
-#define USER_MAX_QUEUE_LENGTH                   "max-queue-length"
-#define USER_MAX_QUEUE_BYTES                    "max-queue-bytes"
+#define USER_MAX_UNACK_MSG                      "max-unack-msg"
+#define USER_MAX_UNACK_BYTES                    "max-unack-bytes"
 #define USER_TIMEOUT_FACTOR                     "timeout-factor"
 #define USER_ACL                                "acl"
 #define WRITE_QUEUE_MAX_LENGTH                  "write-queue-max-length"
@@ -46,8 +46,8 @@
 #define DEFAULT_USER_MAX_CONNECTIONS            5
 #define DEFAULT_USER_KEEPALIVE_MILLIS           3000
 #define DEFAULT_USER_MAX_MSG_BYTES              (50 * 1024 * 1024)
-#define DEFAULT_USER_MAX_QUEUE_LENGTH           1000
-#define DEFAULT_USER_MAX_QUEUE_BYTES            (100 * 1024 * 1024)
+#define DEFAULT_USER_MAX_UNACK_MSG              1000
+#define DEFAULT_USER_MAX_UNACK_BYTES            (100 * 1024 * 1024)
 #define DEFAULT_USER_TIMEOUT_FACTOR             3.0
 #define DEFAULT_MAX_UPDATES_BETWEEN_SNAPSHOTS   50000
 #define DEFAULT_MAX_BYTES_BETWEEN_SNAPSHOTS     (100 * 1024 * 1024)
@@ -239,10 +239,10 @@ static int cb_inih_inner(void *obj, const char *section, const char *name, const
             params->default_user.keepalive_millis = parse_uint32(value);
         } else if (strcmp(name, USER_MAX_MSG_BYTES) == 0) {
             params->default_user.max_msg_bytes = parse_bytes(value);
-        } else if (strcmp(name, USER_MAX_QUEUE_LENGTH) == 0) {
-            params->default_user.max_queue_length = parse_uint32(value);
-        } else if (strcmp(name, USER_MAX_QUEUE_BYTES) == 0) {
-            params->default_user.max_queue_bytes = parse_bytes(value);
+        } else if (strcmp(name, USER_MAX_UNACK_MSG) == 0) {
+            params->default_user.max_unack_msg = parse_uint32(value);
+        } else if (strcmp(name, USER_MAX_UNACK_BYTES) == 0) {
+            params->default_user.max_unack_bytes = parse_bytes(value);
         } else if (strcmp(name, USER_TIMEOUT_FACTOR) == 0) {
             params->default_user.timeout_factor = parse_float(value);
             if (params->default_user.timeout_factor != 0.0f &&
@@ -277,10 +277,10 @@ static int cb_inih_inner(void *obj, const char *section, const char *name, const
         it->keepalive_millis = parse_uint32(value);
     } else if (strcmp(name, USER_MAX_MSG_BYTES) == 0) {
         it->max_msg_bytes = parse_bytes(value);
-    } else if (strcmp(name, USER_MAX_QUEUE_LENGTH) == 0) {
-        it->max_queue_length = parse_uint32(value);
-    } else if (strcmp(name, USER_MAX_QUEUE_BYTES) == 0) {
-        it->max_queue_bytes = parse_bytes(value);
+    } else if (strcmp(name, USER_MAX_UNACK_MSG) == 0) {
+        it->max_unack_msg = parse_uint32(value);
+    } else if (strcmp(name, USER_MAX_UNACK_BYTES) == 0) {
+        it->max_unack_bytes = parse_bytes(value);
     } else if (strcmp(name, USER_TIMEOUT_FACTOR) == 0) {
         it->timeout_factor = parse_float(value);
         if (it->timeout_factor != 0.0f && it->timeout_factor <= 1.0f)
@@ -326,8 +326,8 @@ static void set_defaults(nplex::params_t &params)
     params.default_user.max_connections = DEFAULT_USER_MAX_CONNECTIONS;
     params.default_user.keepalive_millis = DEFAULT_USER_KEEPALIVE_MILLIS;
     params.default_user.max_msg_bytes = DEFAULT_USER_MAX_MSG_BYTES;
-    params.default_user.max_queue_length = DEFAULT_USER_MAX_QUEUE_LENGTH;
-    params.default_user.max_queue_bytes = DEFAULT_USER_MAX_QUEUE_BYTES;
+    params.default_user.max_unack_msg = DEFAULT_USER_MAX_UNACK_MSG;
+    params.default_user.max_unack_bytes = DEFAULT_USER_MAX_UNACK_BYTES;
     params.default_user.timeout_factor = DEFAULT_USER_TIMEOUT_FACTOR;
 
     // Sanity: ensure retention_min does not exceed retention_max when both are set.
@@ -385,8 +385,8 @@ void nplex::params_t::save(const fs::path &path) const
     ofs << USER_KEEPALIVE_MILLIS << " = " << default_user.keepalive_millis << std::endl;
     ofs << USER_TIMEOUT_FACTOR << " = " << fmt::format("{:.1f}", default_user.timeout_factor) << std::endl;
     ofs << USER_MAX_MSG_BYTES << " = " << bytes_to_string(default_user.max_msg_bytes) << std::endl;
-    ofs << USER_MAX_QUEUE_LENGTH << " = " << default_user.max_queue_length << std::endl;
-    ofs << USER_MAX_QUEUE_BYTES << " = " << bytes_to_string(default_user.max_queue_bytes) << std::endl;
+    ofs << USER_MAX_UNACK_MSG << " = " << default_user.max_unack_msg << std::endl;
+    ofs << USER_MAX_UNACK_BYTES << " = " << bytes_to_string(default_user.max_unack_bytes) << std::endl;
     ofs << std::endl;
 
     for (const auto &user : users)
@@ -408,10 +408,10 @@ void nplex::params_t::save(const fs::path &path) const
             ofs << USER_TIMEOUT_FACTOR << " = " << fmt::format("{:.1f}", user.timeout_factor) << std::endl;
         if (user.max_msg_bytes != default_user.max_msg_bytes)
             ofs << USER_MAX_MSG_BYTES << " = " << bytes_to_string(user.max_msg_bytes) << std::endl;
-        if (user.max_queue_length != default_user.max_queue_length)
-            ofs << USER_MAX_QUEUE_LENGTH << " = " << user.max_queue_length << std::endl;
-        if (user.max_queue_bytes != default_user.max_queue_bytes)
-            ofs << USER_MAX_QUEUE_BYTES << " = " << bytes_to_string(user.max_queue_bytes) << std::endl;
+        if (user.max_unack_msg != default_user.max_unack_msg)
+            ofs << USER_MAX_UNACK_MSG << " = " << user.max_unack_msg << std::endl;
+        if (user.max_unack_bytes != default_user.max_unack_bytes)
+            ofs << USER_MAX_UNACK_BYTES << " = " << bytes_to_string(user.max_unack_bytes) << std::endl;
 
         for (const auto &acl : user.permissions)
             if (!acl.pattern.empty())
