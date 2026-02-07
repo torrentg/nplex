@@ -213,8 +213,8 @@ DetachedBuffer nplex::create_login_msg(std::size_t cid, LoginCode code, rev_t re
             code,
             rev0,
             crev,
-            (user ? user->can_force : false),
-            (user ? user->keepalive_millis : 0),
+            (user ? user->params.can_force : false),
+            (user ? user->params.connection.keepalive_millis : 0),
             (user ? builder.CreateVector(permissions) : 0)
         ).Union()
     );

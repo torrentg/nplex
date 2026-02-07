@@ -3,6 +3,7 @@
 #include <chrono>
 #include <uv.h>
 #include "addr.hpp"
+#include "params.hpp"
 
 // Forward declaration
 namespace flatbuffers {
@@ -16,15 +17,7 @@ namespace nplex {
 // Forward declarations
 class session_t;
 
-struct con_params_t
-{
-    std::size_t max_msg_bytes = UINT32_MAX;         // maximum incomming message size
-    std::size_t max_unack_msgs = UINT32_MAX;        // maximum number of msgs in the output queue
-    std::size_t max_unack_bytes = UINT32_MAX;       // maximum number of bytes in the output queue
-
-};
-
-struct con_stats_t
+struct connection_stats_t
 {
     millis_t time0{0};                              // Timestamp connection was established (UTC millis since epoch)
     std::size_t unack_msgs = 0;                     // Number of msgs in the output queue
@@ -52,8 +45,8 @@ struct connection_s
     uv_timer_t *m_timer_keepalive = nullptr;        // keepalive timer
     char m_input_buffer[UINT16_MAX] = {0};          // input buffer used by read()
     std::string m_input_msg;                        // current incoming message
-    con_params_t m_params;                          // connection parameters
-    con_stats_t m_stats;                            // connection statistics
+    connection_params_t m_params;                   // connection parameters
+    connection_stats_t m_stats;                     // connection statistics
     int m_error = 0;                                // disconnection cause
 
     connection_s(session_t *session, uv_stream_t *stream);
@@ -138,34 +131,30 @@ class connection_t : private connection_s
     /**
      * Configure the connection parameters.
      * 
-     * @param[in] max_msg_bytes Maximum incoming message size (0 = unlimited).
-     * @param[in] max_unack_msg Maximum number of unacknowledged messages (0 = unlimited).
-     * @param[in] max_unack_bytes Maximum number of unacknowledged bytes (0 = unlimited).
+     * @param[in] params Connection parameters.
      */
-    void config(std::uint32_t max_msg_bytes, std::uint32_t max_unack_msg, std::uint32_t max_unack_bytes);
+    void config(const connection_params_t &params);
 
     /**
      * Enable or disable the keepalive feature.
      * 
-     * If no messages was sent in the last `millis` milliseconds, then a keepalive message is sent.
-     * 
-     * @param[in] millis Max gap between messages (0 = disable keepalive).
+     * If no messages was sent in the last keepalive_millis, then a keepalive message is sent.
      */
-    void set_keepalive(std::uint32_t millis);
+    void enable_keepalive();
+    void disable_keepalive();
 
     /**
      * Enable or disable the connection-lost feature.
      * 
-     * Disconnects the connection if no peer activity in the last `millis` milliseconds.
-     * Use this functionality with the keepalive feature.
+     * Disconnects the connection if no peer activity in the last X milliseconds,
+     * where X is calculated as keepalive_millis * timeout_factor.
      * 
      * Peer activity is:
-     *   - Peer ackowledges a message from local.
+     *   - Peer ackowledges a message from local (ex: keepalive msg).
      *   - Local receives a message from peer.
-     * 
-     * @param[in] millis Maximum millis without peer activity (0 = disable connection-lost).
      */
-    void set_connection_lost(std::uint32_t millis);
+    void enable_connection_lost();
+    void disable_connection_lost();
 
     /**
      * Check if the connection output queue is blocked.

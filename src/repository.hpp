@@ -4,6 +4,7 @@
 #include "cqueue.hpp"
 #include "common.hpp"
 #include "messages.hpp"
+#include "params.hpp"
 #include "user.hpp"
 
 namespace nplex {
@@ -34,11 +35,9 @@ class repo_t
     /**
      * Configure tombstone retention parameters.
      * 
-     * @param[in] retention_min Minimum number of revisions guaranteed to keep tombstones for.
-     * @param[in] retention_max Maximum number of revisions to keep tombstones for (0 = unlimited).
-     * @param[in] max_tombs     Maximum number of tombstones (0 = unlimited).
+     * @param[in] params Tombstone paramenters.
      */
-    void config_tombstones(std::uint32_t retention_min, std::uint32_t retention_max, std::uint32_t max_tombs) noexcept;
+    void config(const repo_params_t &params) noexcept;
 
     /**
      * Get info about accumulated updates since last snapshot.
@@ -135,9 +134,7 @@ class repo_t
     user_map_t m_users;                          // Users list (with number of references)
     rm_queue_t m_removed_keys;                   // List of removed keys (can contain duplicates and reinserted keys)
     delta_t m_delta;                             // Accumulated delta since last snapshot.
-    std::uint32_t m_tombstone_retention_max = 0; // Maximum number of revisions to keep tombstones for (0 = unlimited).
-    std::uint32_t m_tombstone_retention_min = 0; // Minimum number of revisions guaranteed to keep tombstones for.
-    std::uint32_t m_max_tombstones = 0;          // Hard limit for number of tombstones (0 = unlimited).
+    repo_params_t m_params;                      // Repository parameters.
     rev_t m_min_rev = 0;                         // Minimum rev with guaranteed tombstone info.
 
   private: // methods

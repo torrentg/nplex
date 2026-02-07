@@ -2,51 +2,52 @@
 
 #include <string>
 #include <vector>
-#include <filesystem>
-#include "common.hpp"
-#include "user.hpp"
-#include "addr.hpp" 
-
-namespace fs = std::filesystem;
+#include "addr.hpp"
 
 namespace nplex {
 
-struct params_t
+struct context_params_t
 {
-    fs::path datadir;                           // Database directory.
-    bool check_journal;                         // Check journal files at startup.
-    bool disable_fsync;                         // Disable fsync for write updates.
-    addr_t addr;                                // IP address to listen on.
-    log_level_e log_level;                      // Log level.
-    std::uint32_t max_connections;              // Maximum number of allowed connections (0 = unlimited).
-    user_t default_user;                        // Default user.
-    std::vector<user_t> users;                  // List of users.
-    std::uint32_t write_queue_max_length;       // Maximum messages in the output write queue (0 = unlimited).
-    std::uint32_t write_queue_max_bytes;        // Maximum bytes in the output write queue (0 = unlimited).
-    std::uint32_t flush_max_entries;            // Maximum entries before flushing write updates (0 = unlimited).
-    std::uint32_t flush_max_bytes;              // Maximum bytes before flushing write updates (0 = unlimited).
-    std::uint32_t max_updates_between_snapshots;// Maximum updates between two snapshots (0 = unlimited).
-    std::uint32_t max_bytes_between_snapshots;  // Maximum bytes between two snapshots (0 = unlimited).
-    std::uint32_t tombstone_retention_max;      // Maximum number of revisions to keep tombstones for (0 = unlimited).
-    std::uint32_t tombstone_retention_min;      // Minimum number of revisions guaranteed to keep tombstones for.
-    std::uint32_t max_tombstones;               // Maximum number of tombstones (0 = unlimited).
+    addr_t addr;                                    // IP address to listen on.
+    std::uint32_t max_sessions = 0;                 // Maximum number of simultaneous active sessions (0 = unlimited).
+    std::uint32_t snapshot_max_entries = 0;         // Maximum number of updates between two snapshots (0 = unlimited).
+    std::uint32_t snapshot_max_bytes = 0;           // Maximum bytes between two snapshots (0 = unlimited).
+    std::uint32_t cache_max_entries = 0;            // Maximum number of entries in the cache (0 = unlimited).
+    std::uint32_t cache_max_bytes = 0;              // Maximum bytes in the cache (0 = unlimited).
+};
 
-    params_t(const fs::path &path = fs::path());
+struct connection_params_t
+{
+    std::uint32_t max_msg_bytes = 0;                // Maximum incomming message size (0 = unlimited).
+    std::uint32_t max_unack_msgs = 0;               // Maximum number of unack msgs (0 = unlimited).
+    std::uint32_t max_unack_bytes = 0;              // Maximum number of unack bytes (0 = unlimited).
+    std::uint32_t keepalive_millis = 0;             // Delay between keepalive messages (0 = disabled).
+    float timeout_factor = 3.0f;                    // Timeout factor (> 1.0).
+};
 
-    /**
-    * Load the configuration from an INI file.
-    * @param[in] path Path to the configuration file to load.
-    * @exception std::exception Any error (file not found, invalid format, etc.).
-     */
-    void load(const fs::path &path);
+struct user_params_t
+{
+    bool active = false;                            // User is active or disabled.
+    bool can_force = false;                         // Can force to accept dirty transactions.
+    std::uint32_t max_connections = 0;              // Maximum number of simultaneous connections (0 = unlimited).
+    connection_params_t connection;                 // Connection parameters.
+};
 
-    /**
-    * Save the configuration to an INI file.
-    * Overwrite the existing file or create a new one if it does not exist.
-    * @param[in] path Path to write the configuration to.
-    * @exception std::exception Any error (not writable, no space left, etc.).
-     */
-    void save(const fs::path &path) const;
+struct journal_params_t
+{
+    bool check = false;                             // Check journal files at startup.
+    bool fsync = true;                              // Enable/disable fsync for write updates.
+    std::uint32_t write_queue_max_entries = 0;      // Maximum entries pending to be written (0 = unlimited).
+    std::uint32_t write_queue_max_bytes = 0;        // Maximum bytes pending to be written (0 = unlimited).
+    std::uint32_t flush_max_entries = 0;            // Maximum entries per batch write (0 = unlimited).
+    std::uint32_t flush_max_bytes = 0;              // Maximum bytes per batch write (0 = unlimited).
+};
+
+struct repo_params_t
+{
+    std::uint32_t retention_max = 0;                // Maximum number of revisions to keep for.
+    std::uint32_t retention_min = 0;                // Minimum number of revisions guaranteed to keep for.
+    std::uint32_t max_tombstones = 0;               // Maximum number of tombstones (0 = unlimited).
 };
 
 } // namespace nplex

@@ -9,11 +9,11 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
-#include "params.hpp"
-#include "addr.hpp"
-#include "utils.hpp"
-#include "server.hpp"
 #include "common.hpp"
+#include "config.hpp"
+#include "utils.hpp"
+#include "addr.hpp"
+#include "server.hpp"
 
 using namespace std;
 using namespace nplex;
@@ -106,8 +106,8 @@ static void install_signal_handler(int signal, void (*handle)(int))
 
 int main(int argc, char *argv[])
 {
-    fs::path datadir_arg;
     addr_t addr_arg;
+    fs::path datadir_arg;
     log_level_e log_level_arg = log_level_e::NONE;
     bool check_journal_arg = false;
     bool disable_fsync_arg = false;
@@ -225,7 +225,7 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    params_t params;
+    config_t config;
 
     try
     {
@@ -234,30 +234,29 @@ int main(int argc, char *argv[])
         if (!fs::exists(config_file))
         {
             if (addr_arg.port())
-                params.addr = addr_arg;
+                config.context.addr = addr_arg;
 
             if (log_level_arg != log_level_e::NONE)
-                params.log_level = log_level_arg;
+                config.log_level = log_level_arg;
 
             if (has_disable_fsync_arg)
-                params.disable_fsync = disable_fsync_arg;
+                config.journal.fsync = !disable_fsync_arg;
 
-            params.save(config_file);
+            config.save(config_file);
         }
 
-        params.load(config_file);
+        config.load(config_file);
 
         if (addr_arg.port())
-            params.addr = addr_arg;
+            config.context.addr = addr_arg;
 
         if (log_level_arg != log_level_e::NONE)
-            params.log_level = log_level_arg;
+            config.log_level = log_level_arg;
 
         if (has_disable_fsync_arg)
-            params.disable_fsync = disable_fsync_arg;
+            config.journal.fsync = !disable_fsync_arg;
 
-        params.datadir = std::filesystem::current_path();
-        params.check_journal = check_journal_arg;
+        config.journal.check = check_journal_arg;
     }
     catch(const std::exception &e) {
         std::cerr << "Error accessing " << datadir_arg / CONFIG_FILENAME << ": " << e.what() << std::endl;
@@ -273,10 +272,10 @@ int main(int argc, char *argv[])
         );
 
         spdlog::flush_on(spdlog::level::debug);
-        spdlog::set_level(to_spdlog(params.log_level));
+        spdlog::set_level(to_spdlog(config.log_level));
 
         // @see https://github.com/gabime/spdlog/wiki/3.-Custom-formatting#pattern-flags
-        if (params.log_level <= log_level_e::DEBUG)
+        if (config.log_level <= log_level_e::DEBUG)
             spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%t] [%s:%#] [%-5l] %v");
         else
             spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%-5l] %v");
@@ -297,7 +296,7 @@ int main(int argc, char *argv[])
     }
 
     try {
-        server.init(params);
+        server.init(config);
         signal(SIGPIPE, SIG_IGN); // SIGTERM and SIGINT are handled in server.cpp
         server.run();
         return EXIT_SUCCESS;

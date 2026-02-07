@@ -7,8 +7,9 @@
 #include <functional>
 #include <condition_variable>
 #include <flatbuffers/flatbuffers.h>
-#include "params.hpp"
 #include "cqueue.hpp"
+#include "common.hpp"
+#include "params.hpp"
 
 // Forward references
 namespace ldb {
@@ -52,7 +53,7 @@ class journal_writer
      */
     using error_callback_t = std::function<void(std::exception_ptr)>;
 
-    journal_writer(ldb::journal_t &journal, const params_t &params);
+    journal_writer(ldb::journal_t &journal, const journal_params_t &params);
     ~journal_writer();
 
     journal_writer(const journal_writer&) = delete;
@@ -102,19 +103,16 @@ class journal_writer
     };
 
     ldb::journal_t &m_journal;                      // Reference to the journal object
+    journal_params_t m_params;                      // Journal parameters
 
     gto::cqueue<cmd_t> m_queue;                     // Queue of pending write commands
     std::size_t m_bytes_in_queue = 0;               // Total bytes in the queue
-    std::size_t m_queue_max_length;                 // Maximum number of messages in the write queue (always > 0).
-    std::size_t m_queue_max_bytes;                  // Maximum number of bytes in the write queue (always > 0).
 
     std::thread m_thread;                           // Writer thread
     std::atomic<bool> m_running{false};             // Running flag
     std::condition_variable m_cond;                 // Used by producer to notify consumer that m_queue is not empty
     std::mutex m_mutex;                             // Protects m_queue and m_bytes_in_queue
 
-    std::size_t m_flush_max_entries;                // Maximum number of entries to flush (always > 0).
-    std::size_t m_flush_max_bytes;                  // Maximum number of bytes to flush (always > 0).
     result_callback_t m_result_cb;                  // Callback invoked on each write completion
     error_callback_t m_error_cb;                    // Callback invoked on exception
 

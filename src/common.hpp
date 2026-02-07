@@ -36,8 +36,7 @@
 #define ERR_MAX_CONN            1008
 #define ERR_API_VERSION         1009
 #define ERR_CONNECTION_LOST     1010
-#define ERR_QUEUE_LENGTH        1011
-#define ERR_QUEUE_BYTES         1012
+#define ERR_UNACK               1011
 
 #define UNUSED(x)               (void)(x)
 

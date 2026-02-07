@@ -2,12 +2,12 @@
 
 #include <uv.h>
 #include <memory>
-#include "params.hpp"
 
 namespace nplex {
 
 // Forward declarations
 struct context_t;
+struct config_t;
 
 class server_t 
 {
@@ -20,7 +20,7 @@ class server_t
      * 
      * @exception std::exception Any error (network error, etc).
      */
-    void init(const params_t &params);
+    void init(const config_t &config);
 
     /**
      * Run the server.
@@ -39,11 +39,11 @@ class server_t
     std::unique_ptr<uv_signal_t> m_sigterm;   // used to manage the SIGTERM signal (terminate)
     std::shared_ptr<context_t> m_context;     // see context_ptr
 
-    void init_event_loop(const params_t &params);
-    void init_signals(const params_t &);
-    void init_context(const params_t &params);
-    void init_network(const params_t &params);
-    void init_test(const params_t &params);
+    void init_event_loop(const config_t &config);
+    void init_signals(const config_t &config);
+    void init_context(const config_t &config);
+    void init_network(const config_t &config);
+    void init_test(const config_t &config);
 };
 
 } // namespace nplex

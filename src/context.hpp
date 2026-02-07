@@ -9,6 +9,7 @@
 #include <uv.h>
 #include "repository.hpp"
 #include "session.hpp"
+#include "params.hpp"
 #include "utils.hpp"
 
 // Forward declarations.
@@ -22,7 +23,7 @@ namespace nplex {
 struct task_t;
 struct user_t;
 class storage_t;
-struct params_t;
+struct config_t;
 class journal_writer;
 using user_ptr = std::shared_ptr<user_t>;
 using storage_ptr = std::shared_ptr<storage_t>;
@@ -31,7 +32,7 @@ struct context_t : public std::enable_shared_from_this<context_t>
 {
     repo_t m_repo;                              // Repository object (the key-value map)
 
-    context_t(uv_loop_t *loop, const params_t &params);
+    context_t(uv_loop_t *loop, const config_t &config);
     ~context_t();
 
     rev_t minimum_rev() const { return m_rev_0; }
@@ -67,11 +68,9 @@ struct context_t : public std::enable_shared_from_this<context_t>
     std::mutex m_pending_publish_mutex;                 // Mutex for pending publish updates
     std::unique_ptr<uv_async_t> m_async_updates_written;// Async handle for updates written notification
     std::unique_ptr<uv_async_t> m_async_stop_loop;      // Async handle to stop the loop
-    user_map_t m_users;                                 // Users in config file (pwd, permissions, etc)
+    context_params_t m_params;                          // Context parameters (network + snapshot)
     session_set_t m_sessions;                           // Set of current sessions
-    std::uint32_t m_max_sessions = 0;                   // Maximum number of sessions (0 = unlimited)
-    std::uint32_t m_max_updates_between_snapshots = 0;  // Maximum updates between two snapshots (0 = unlimited).
-    std::uint32_t m_max_bytes_between_snapshots = 0;    // Maximum bytes between two snapshots (0 = unlimited).
+    user_map_t m_users;                                 // Users in config file (pwd, permissions, etc)
     std::uint32_t m_num_running_tasks = 0;              // Number of running tasks
     bool m_running = false;                             // Event loop is running and nplex is operational
     rev_t m_rev_0 = 0;                                  // Minimum revision available

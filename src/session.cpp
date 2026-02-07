@@ -31,9 +31,18 @@ nplex::session_t::session_t(const context_ptr &context, uv_stream_t *stream) :
     assert(stream->loop);
     assert(stream->loop->data);
 
-    m_con.config(MAX_MSG_BYTES_FROM_NO_USER, 0, 0);
-    m_con.set_connection_lost(TIMEOUT_NO_USER);
     m_id = m_con.addr().str();
+
+    connection_params_t default_params = {
+        .max_msg_bytes = MAX_MSG_BYTES_FROM_NO_USER,
+        .max_unack_msgs = 3,
+        .max_unack_bytes = (3 * 1024),
+        .keepalive_millis = TIMEOUT_NO_USER,
+        .timeout_factor = 1.0f
+    };
+
+    m_con.config(default_params);
+    m_con.enable_connection_lost();
 }
 
 void nplex::session_t::release()
@@ -70,7 +79,7 @@ void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
     if (m_con.is_blocked())
     {
         SPDLOG_INFO("{} exceeded output queue limits (shutdown)", m_id);
-        m_con.shutdown(ERR_QUEUE_LENGTH);
+        m_con.shutdown(ERR_UNACK);
         return;
     }
 
@@ -187,7 +196,7 @@ void nplex::session_t::process_login_request(const msgs::LoginRequest *req)
         return;
     }
 
-    if (user->max_connections && user->num_connections >= user->max_connections) {
+    if (user->params.max_connections && user->num_connections >= user->params.max_connections) {
         send(
             create_login_msg(
                 req->cid(), 
@@ -201,15 +210,10 @@ void nplex::session_t::process_login_request(const msgs::LoginRequest *req)
     m_user = user;
     m_user->num_connections++;
     m_id = fmt::format("{}@{}", m_user->name, m_con.addr().str());
-    m_con.config(m_user->max_msg_bytes, m_user->max_unack_msg, m_user->max_unack_bytes);
+    m_con.config(m_user->params.connection);
 
-    // enable keepalive
-    m_con.set_keepalive(m_user->keepalive_millis);
-
-    // enable connection-lost
-    auto keepalive_millis = static_cast<double>(m_user->keepalive_millis);
-    auto millis = static_cast<std::uint32_t>(keepalive_millis * m_user->timeout_factor);
-    m_con.set_connection_lost(millis);
+    m_con.enable_keepalive();
+    m_con.enable_connection_lost();
 
     SPDLOG_INFO("New session: {}", m_id);
 
@@ -391,8 +395,7 @@ const char * nplex::session_t::strerror() const
         case ERR_MAX_CONN: return "maximum total connections reached";
         case ERR_API_VERSION: return "unsupported API version";
         case ERR_CONNECTION_LOST: return "connection lost";
-        case ERR_QUEUE_LENGTH: return "max queue length exceeded";
-        case ERR_QUEUE_BYTES: return "max queue bytes exceeded";
+        case ERR_UNACK: return "max unack limits exceeded";
         default: return "unknown error";
     }
 }

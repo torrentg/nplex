@@ -5,9 +5,10 @@
 #include <filesystem>
 #include <sys/socket.h>
 #include <spdlog/spdlog.h>
-#include "context.hpp"
-#include "messaging.hpp"
 #include "exception.hpp"
+#include "messaging.hpp"
+#include "context.hpp"
+#include "config.hpp"
 #include "server.hpp"
 
 #define MAX_QUEUED_CONNECTIONS 128
@@ -136,16 +137,16 @@ static void cb_tcp_connection(uv_stream_t *stream, int status)
 // server_t methods
 // ==========================================================
 
-void nplex::server_t::init(const params_t &params)
+void nplex::server_t::init(const config_t &config)
 {
     SPDLOG_INFO("Initializing Nplex server ...");
 
     try {
-        init_event_loop(params);
-        init_context(params);
-        init_signals(params);
-        init_network(params);
-        init_test(params);
+        init_event_loop(config);
+        init_context(config);
+        init_signals(config);
+        init_network(config);
+        init_test(config);
     } catch (...) {
         m_loop.reset();
         m_context.reset();
@@ -156,7 +157,7 @@ void nplex::server_t::init(const params_t &params)
     }
 }
 
-void nplex::server_t::init_event_loop(const params_t &)
+void nplex::server_t::init_event_loop(const config_t &)
 {
     int rc = 0;
 
@@ -166,13 +167,13 @@ void nplex::server_t::init_event_loop(const params_t &)
         throw nplex_exception(uv_strerror(rc));
 }
 
-void nplex::server_t::init_context(const params_t &params)
+void nplex::server_t::init_context(const config_t &config)
 {
-    m_context = std::make_shared<context_t>(m_loop.get(), params);
+    m_context = std::make_shared<context_t>(m_loop.get(), config);
     m_loop->data = m_context.get();
 }
 
-void nplex::server_t::init_signals(const params_t &)
+void nplex::server_t::init_signals(const config_t &)
 {
     int rc = 0;
 
@@ -194,7 +195,7 @@ void nplex::server_t::init_signals(const params_t &)
 }
 
 #define TEST_DELAY_BETWEEN_UPDATES_MS 1000
-void nplex::server_t::init_test(const params_t &)
+void nplex::server_t::init_test(const config_t &)
 {
     // TODO: Remove this testing code
     uv_timer_t *timer = (uv_timer_t *) malloc(sizeof(uv_timer_t));
@@ -206,10 +207,10 @@ void nplex::server_t::init_test(const params_t &)
     }, TEST_DELAY_BETWEEN_UPDATES_MS, TEST_DELAY_BETWEEN_UPDATES_MS);
 }
 
-void nplex::server_t::init_network(const params_t &params)
+void nplex::server_t::init_network(const config_t &config)
 {
     int rc = 0;
-    struct sockaddr_storage addr_in = ::get_sockaddr(m_loop.get(), params.addr);
+    struct sockaddr_storage addr_in = ::get_sockaddr(m_loop.get(), config.context.addr);
 
     m_tcp = std::make_unique<uv_tcp_t>();
     m_tcp->data = this;
@@ -223,11 +224,13 @@ void nplex::server_t::init_network(const params_t &params)
     if ((rc = uv_listen(reinterpret_cast<uv_stream_t *>(m_tcp.get()), MAX_QUEUED_CONNECTIONS, ::cb_tcp_connection)) != 0)
         throw nplex_exception(uv_strerror(rc));
 
-    SPDLOG_INFO("Nplex listening on {}", params.addr.str());
+    SPDLOG_INFO("Nplex listening on {}", config.context.addr.str());
 }
 
 void nplex::server_t::run() noexcept
 {
+    std::exception_ptr excp;
+
     if (!m_loop || !m_context)
         return;
 
@@ -237,6 +240,7 @@ void nplex::server_t::run() noexcept
         uv_run(m_loop.get(), UV_RUN_DEFAULT);
     }
     catch (const std::exception &e) {
+        excp = std::current_exception();
         SPDLOG_ERROR("{}", e.what());
     }
 
@@ -260,6 +264,9 @@ void nplex::server_t::run() noexcept
     m_loop.reset();
 
     SPDLOG_INFO("Nplex server terminated");
+
+    if (excp)
+        std::rethrow_exception(excp);
 }
 
 // TODO: remove this test function

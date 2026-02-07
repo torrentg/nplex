@@ -20,11 +20,12 @@ struct pending_upsert_t {
 // repo_t methods
 // ==========================================================
 
-void nplex::repo_t::config_tombstones(std::uint32_t retention_min, std::uint32_t retention_max, std::uint32_t max_tombs) noexcept 
+void nplex::repo_t::config(const repo_params_t &params) noexcept 
 {
-    m_tombstone_retention_max = retention_max;
-    m_tombstone_retention_min = retention_min;
-    m_max_tombstones = max_tombs;
+    assert(params.retention_min <= params.retention_max);
+    assert(params.max_tombstones > 0);
+
+    m_params = params;
 }
 
 nplex::meta_ptr nplex::repo_t::create_meta(rev_t rev, const char *username, std::uint32_t type)
@@ -295,7 +296,7 @@ nplex::update_t nplex::repo_t::validate_update(const msgs::Update *msg, const us
 
 nplex::msgs::SubmitCode nplex::repo_t::try_commit(const user_t &user, const msgs::SubmitRequest *msg, update_t &update)
 {
-    assert(user.active);
+    assert(user.params.active);
 
     if (!msg)
         return msgs::SubmitCode::ERROR_MESSAGE;
@@ -322,7 +323,7 @@ nplex::msgs::SubmitCode nplex::repo_t::try_commit(const user_t &user, const msgs
 
 nplex::msgs::SubmitCode nplex::repo_t::validate_commit(const user_t &user, const msgs::SubmitRequest *msg, update_t &update)
 {
-    bool forced = (user.can_force && msg->force());
+    bool forced = (user.params.can_force && msg->force());
     std::set<key_t, gto::cstring_compare> keys;
     std::vector<pending_upsert_t> pending_upserts;
     std::vector<key_t> pending_deletes;
@@ -526,7 +527,7 @@ std::uint32_t nplex::repo_t::purge()
         assert(it->second->is_removed());
 
         // Case: entry at a distance greater than configured max retention
-        if (m_tombstone_retention_max > 0 && rev + m_tombstone_retention_max < m_rev) {
+        if (m_params.retention_max > 0 && rev + m_params.retention_max < m_rev) {
             purge_entry(it);
             continue;
         }
@@ -539,11 +540,11 @@ std::uint32_t nplex::repo_t::purge()
 
         // Case: max tombstones limit reached (hard)
         // 0 means unlimited tombstones.
-        if (m_max_tombstones == 0 || m_removed_keys.size() <= m_max_tombstones)
+        if (m_params.max_tombstones == 0 || m_removed_keys.size() <= m_params.max_tombstones)
             break;
 
         // Granting a minimum number of revisions before enforcing max_tombstones
-        if (m_tombstone_retention_min > 0 && m_rev <= rev + m_tombstone_retention_min)
+        if (m_params.retention_min > 0 && m_rev <= rev + m_params.retention_min)
             break;
 
         // Case: max_tombstones exceeded

@@ -365,24 +365,40 @@ void nplex::connection_s::report_peer_activity()
 // connection_t methods
 // ==========================================================
 
-void nplex::connection_t::config(std::uint32_t max_msg_bytes, std::uint32_t max_unack_msg, std::uint32_t max_unack_bytes)
+void nplex::connection_t::config(const connection_params_t &params)
 {
-    m_params.max_msg_bytes = (max_msg_bytes == 0 ? UINT32_MAX : max_msg_bytes);
-    m_params.max_unack_msgs = (max_unack_msg == 0 ? UINT32_MAX : max_unack_msg);
-    m_params.max_unack_bytes = (max_unack_bytes == 0 ? UINT32_MAX : max_unack_bytes);
+    assert(params.max_msg_bytes > 0);
+    assert(params.max_unack_msgs > 0);
+    assert(params.max_unack_bytes > 0);
+    assert(params.timeout_factor >= 1.0f);
+
+    m_params = params;
 }
 
-void nplex::connection_t::set_keepalive(std::uint32_t millis)
+void nplex::connection_t::enable_keepalive()
 {
-    set_timer(m_timer_keepalive, millis, [](auto timer) {
+    set_timer(m_timer_keepalive, m_params.keepalive_millis, [](auto timer) {
         static_cast<connection_s *>(timer->data)->send_keepalive();
         uv_timer_again(timer);
     });
 }
 
-void nplex::connection_t::set_connection_lost(std::uint32_t millis)
+void nplex::connection_t::disable_keepalive()
 {
+    set_timer(m_timer_keepalive, 0, nullptr);
+}
+
+void nplex::connection_t::enable_connection_lost()
+{
+    auto keepalive_millis = static_cast<double>(m_params.keepalive_millis);
+    auto millis = static_cast<std::uint32_t>(keepalive_millis * m_params.timeout_factor);
+
     set_timer(m_timer_disconnect, millis, [](auto timer) {
         static_cast<connection_s *>(timer->data)->disconnect(ERR_CONNECTION_LOST);
     });
+}
+
+void nplex::connection_t::disable_connection_lost()
+{
+    set_timer(m_timer_disconnect, 0, nullptr);
 }

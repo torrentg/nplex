@@ -5,7 +5,7 @@
 #include "journal_writer.hpp"
 #include "exception.hpp"
 #include "storage.hpp"
-#include "params.hpp"
+#include "config.hpp"
 #include "tasks.hpp"
 #include "user.hpp"
 #include "context.hpp"
@@ -16,16 +16,11 @@
 
 static bool is_valid_user(const nplex::user_t &user)
 {
-    if (!user.active)
+    if (!user.params.active)
         return false;
 
     if (user.password.empty()) {
         SPDLOG_WARN("User {} discarded (no password)", user.name);
-        return false;
-    }
-
-    if (user.timeout_factor != 0.0f && user.timeout_factor <= 1.0f) {
-        SPDLOG_WARN("User {} discarded (invalid timeout factor)", user.name);
         return false;
     }
 
@@ -42,14 +37,14 @@ static bool is_valid_user(const nplex::user_t &user)
     return true;
 }
 
-static std::map<std::string, nplex::user_ptr> create_users(const nplex::params_t &params)
+static std::map<std::string, nplex::user_ptr> create_users(const std::vector<nplex::user_t> &users)
 {
     using namespace nplex;
 
     std::map<std::string, nplex::user_ptr> ret;
     std::vector<std::string> valid_users;
 
-    for (const auto &user : params.users)
+    for (const auto &user : users)
     {
         if (!::is_valid_user(user))
             continue;
@@ -139,35 +134,27 @@ static void cb_async_updates_result(uv_async_t *handle)
 // context_t methods
 // ==========================================================
 
-nplex::context_t::context_t(uv_loop_t *loop, const params_t &params) : m_loop(loop)
+nplex::context_t::context_t(uv_loop_t *loop, const config_t &config) : m_loop(loop)
 {
-    m_users = ::create_users(params);
+    m_users = ::create_users(config.users);
 
-    m_max_sessions = (params.max_connections ? params.max_connections : UINT32_MAX);
-    m_max_updates_between_snapshots = (params.max_updates_between_snapshots ? params.max_updates_between_snapshots : UINT32_MAX);
-    m_max_bytes_between_snapshots = (params.max_bytes_between_snapshots ? params.max_bytes_between_snapshots : UINT32_MAX);
+    m_params = config.context;
 
-    auto path = params.datadir;
+    auto path = std::filesystem::current_path();
 
-    if (!fs::exists(path))
-        throw nplex::nplex_exception(fmt::format("Storage directory does not exist ({})", path.string()));
-
-    if (!fs::is_directory(path))
-        throw nplex::nplex_exception(fmt::format("Invalid storage directory ({})", path.string()));
-
-    m_journal = std::make_unique<ldb::journal_t>(path, JOURNAL_NAME, params.check_journal);
-    m_journal->set_fsync(!params.disable_fsync);
+    m_journal = std::make_unique<ldb::journal_t>(path, JOURNAL_NAME, config.journal.check);
+    m_journal->set_fsync(config.journal.fsync);
 
     m_storage = std::make_shared<storage_t>(*m_journal, path);
 
-    m_journal_writer = std::make_unique<journal_writer>(*m_journal, params);
+    m_journal_writer = std::make_unique<journal_writer>(*m_journal, config.journal);
 
     std::tie(m_rev_0, m_rev_w) = m_storage->get_revs_range();
     SPDLOG_INFO("Data range: [r{}, r{}]", m_rev_0, m_rev_w);
 
     // set repository content
     m_repo = m_storage->get_repo(m_rev_w);
-    m_repo.config_tombstones(params.tombstone_retention_min, params.tombstone_retention_max, params.max_tombstones);
+    m_repo.config(config.repo);
 
     // async handle to stop the loop
     m_async_stop_loop = std::make_unique<uv_async_t>();
@@ -275,8 +262,8 @@ void nplex::context_t::append_session(uv_stream_t *stream)
     if (!m_running)
         return;
 
-    if (m_sessions.size() >= m_max_sessions) {
-        SPDLOG_WARN("Incomming connection rejected (max {} clients reached)", m_max_sessions);
+    if (m_sessions.size() >= m_params.max_sessions) {
+        SPDLOG_WARN("Incomming connection rejected (max {} clients reached)", m_params.max_sessions);
         return;
     }
 
@@ -395,7 +382,7 @@ void nplex::context_t::check_for_snapshot()
 {
     const auto &delta = m_repo.delta();
 
-    if (delta.count < m_max_updates_between_snapshots && delta.bytes < m_max_bytes_between_snapshots)
+    if (delta.count < m_params.snapshot_max_entries && delta.bytes < m_params.snapshot_max_bytes)
         return;
 
     auto rev = m_repo.rev();

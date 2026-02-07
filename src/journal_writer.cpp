@@ -20,12 +20,12 @@ static inline std::uint32_t get_param(std::uint32_t value) {
 // journal_writer methods
 // ==========================================================
 
-nplex::journal_writer::journal_writer(ldb::journal_t &journal, const params_t &params) : m_journal(journal)
+nplex::journal_writer::journal_writer(ldb::journal_t &journal, const journal_params_t &params) : m_journal(journal), m_params(params)
 {
-    m_queue_max_length  = get_param(params.write_queue_max_length);
-    m_queue_max_bytes   = get_param(params.write_queue_max_bytes);
-    m_flush_max_entries = get_param(params.flush_max_entries);
-    m_flush_max_bytes   = get_param(params.flush_max_bytes);
+    assert(m_params.write_queue_max_entries > 0);
+    assert(m_params.write_queue_max_bytes > 0);
+    assert(m_params.flush_max_entries > 0);
+    assert(m_params.flush_max_bytes > 0);
 }
 
 nplex::journal_writer::~journal_writer()
@@ -86,10 +86,10 @@ void nplex::journal_writer::write(update_t &&upd)
 
         assert(!m_queue.empty() || m_bytes_in_queue == 0);
 
-        if (m_queue.size() >= m_queue_max_length)
+        if (m_queue.size() >= m_params.write_queue_max_entries)
             throw nplex_exception("journal_writer queue full (entries)");
 
-        if ((m_bytes_in_queue + entry_size) > m_queue_max_bytes)
+        if ((m_bytes_in_queue + entry_size) > m_params.write_queue_max_bytes)
             throw nplex_exception("journal_writer queue full (bytes)");
 
         m_queue.push(cmd_t{std::move(upd), std::move(buffer)});
@@ -136,10 +136,10 @@ void nplex::journal_writer::run()
             {
                 auto bytes = it->buffer.size();
 
-                if (!batch.empty() && batch.size() >= m_flush_max_entries)
+                if (!batch.empty() && batch.size() >= m_params.flush_max_entries)
                     break;
 
-                if (!batch.empty() && bytes_batch + bytes > m_flush_max_bytes)
+                if (!batch.empty() && bytes_batch + bytes > m_params.flush_max_bytes)
                     break;
 
                 ldb_entry_t entry = {
