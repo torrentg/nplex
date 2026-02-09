@@ -169,7 +169,7 @@ void nplex::repo_t::load(const msgs::Snapshot *snapshot, const user_ptr &user)
     m_metas.clear();
     m_users.clear();
     m_removed_keys.clear();
-    m_delta = {};
+    m_stats = {};
     m_min_rev = 0;
 
     if (!snapshot)
@@ -189,7 +189,7 @@ void nplex::repo_t::load(const msgs::Snapshot *snapshot, const user_ptr &user)
         }
     }
 
-    m_delta = {};
+    m_stats = {};
     m_rev = srev;
     m_min_rev = m_rev;
 }
@@ -473,14 +473,14 @@ void nplex::repo_t::apply_update(const update_t &update)
 
     m_rev = update.meta->rev;
     m_metas[m_rev] = update.meta;
-    m_delta.bytes += estimate_bytes(update);
-    m_delta.count++;
+    m_stats.bytes += estimate_bytes(update);
+    m_stats.count++;
 
     for (const auto &[key, value] : update.upserts)
         upsert_entry(key, value);
 
     auto num_removed_keys = m_removed_keys.size();
-    
+
     for (const auto &key : update.deletes)
         mark_as_removed(key, update.meta);
 

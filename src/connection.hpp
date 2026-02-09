@@ -86,6 +86,7 @@ struct connection_s
  * - session()->process_request()
  * - session()->process_delivery()
  * - session()->send_keepalive()
+ * - session()->release()
  */
 class connection_t : private connection_s
 {

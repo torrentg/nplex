@@ -369,7 +369,7 @@ std::tuple<nplex::msgs::SubmitCode, nplex::rev_t> nplex::context_t::try_commit(c
 
     auto rc = m_repo.try_commit(user, msg, update);
     if (rc != msgs::SubmitCode::ACCEPTED) {
-        SPDLOG_DEBUG("Commit rejected: user={}, crev={}, rc={}", user.name, msg->crev(), static_cast<int>(rc));  
+        SPDLOG_DEBUG("Commit rejected: user={}, crev={}, rc={}", user.name, msg->crev(), static_cast<int>(rc));
         return { rc, 0 };
     }
 
@@ -386,9 +386,9 @@ std::tuple<nplex::msgs::SubmitCode, nplex::rev_t> nplex::context_t::try_commit(c
 
 void nplex::context_t::check_for_snapshot()
 {
-    const auto &delta = m_repo.delta();
+    const auto &stats = m_repo.stats();
 
-    if (delta.count < m_params.snapshot_max_entries && delta.bytes < m_params.snapshot_max_bytes)
+    if (stats.count < m_params.snapshot_max_entries && stats.bytes < m_params.snapshot_max_bytes)
         return;
 
     auto rev = m_repo.rev();
@@ -403,7 +403,7 @@ void nplex::context_t::check_for_snapshot()
     auto task = new write_snapshot_task_t(rev, std::move(buf), m_storage);
     submit_task(task);
 
-    m_repo.reset_delta();
+    m_repo.reset_stats();
 }
 
 void nplex::context_t::update_cache(const std::span<update_t> &updates)

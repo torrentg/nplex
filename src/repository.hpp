@@ -18,7 +18,7 @@ class repo_t
 {
   public: // types
 
-    struct delta_t {
+    struct repo_stats_t {
         std::size_t count = 0;        // Number of updates from last snapshot
         std::size_t bytes = 0;        // Total accumulated size of updates (approx)
     };
@@ -42,14 +42,14 @@ class repo_t
     /**
      * Get info about accumulated updates since last snapshot.
      * 
-     * @return The delta info.
+     * @return The repo stats.
      */
-    const delta_t & delta() const noexcept { return m_delta; }
+    const repo_stats_t & stats() const noexcept { return m_stats; }
 
     /**
-     * Reset accumulated delta information.
+     * Reset repository statistics.
      */
-    void reset_delta() noexcept { m_delta = {}; }
+    void reset_stats() noexcept { m_stats = {}; }
 
     /**
      * Load the database content from a snapshot.
@@ -133,8 +133,8 @@ class repo_t
     data_map_t m_data;                           // Key-value data store.
     user_map_t m_users;                          // Users list (with number of references)
     rm_queue_t m_removed_keys;                   // List of removed keys (can contain duplicates and reinserted keys)
-    delta_t m_delta;                             // Accumulated delta since last snapshot.
     repo_params_t m_params;                      // Repository parameters.
+    repo_stats_t m_stats;                        // Repository statistics.
     rev_t m_min_rev = 0;                         // Minimum rev with guaranteed tombstone info.
 
   private: // methods

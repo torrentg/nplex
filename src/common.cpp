@@ -5,4 +5,4 @@
 // ==========================================================
 
 const gto::cstring nplex::value_t::EMPTY = "";
-const gto::cstring nplex::value_t::REMOVED = "REMOVED";
+const gto::cstring nplex::value_t::REMOVED = "<REMOVED>";
