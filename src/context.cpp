@@ -139,6 +139,11 @@ nplex::context_t::context_t(uv_loop_t *loop, const config_t &config) : m_loop(lo
     m_users = ::create_users(config.users);
 
     m_params = config.context;
+    assert(m_params.max_sessions);
+    assert(m_params.snapshot_max_entries);
+    assert(m_params.snapshot_max_bytes);
+    assert(m_params.cache_max_entries);
+    assert(m_params.cache_max_bytes);
 
     auto path = std::filesystem::current_path();
 
@@ -338,6 +343,7 @@ void nplex::context_t::on_updates_written_2()
 
     m_rev_w = updates.back().meta->rev;
 
+    update_cache(updates);
     publish(updates);
 }
 
@@ -398,4 +404,60 @@ void nplex::context_t::check_for_snapshot()
     submit_task(task);
 
     m_repo.reset_delta();
+}
+
+void nplex::context_t::update_cache(const std::span<update_t> &updates)
+{
+    if (updates.empty())
+        return;
+
+    // Append new updates to cache
+    assert(m_cache.empty() || m_cache.back().meta->rev + 1 == updates.front().meta->rev);
+
+    for (const auto &upd : updates)
+    {
+        m_cache_bytes += estimate_bytes(upd);
+        m_cache.push_back(upd);
+    }
+
+    // Purge old updates if cache limits are exceeded
+    while (!m_cache.empty())
+    {
+        if (m_cache.size() <= m_params.cache_max_entries && m_cache_bytes <= m_params.cache_max_bytes)
+            break;
+
+        const auto upd = m_cache.pop();
+        auto bytes = estimate_bytes(upd);
+
+        assert(m_cache_bytes >= bytes);
+        m_cache_bytes -= bytes;
+    }
+
+    assert(!m_cache.empty() || m_cache_bytes == 0);
+}
+
+std::span<const nplex::update_t> nplex::context_t::get_cached_updates(rev_t from_rev, size_t max_bytes) const
+{
+    if (m_cache.empty() || from_rev < m_cache.front().meta->rev || from_rev > m_cache.back().meta->rev)
+        return {};
+
+    size_t pos = from_rev - m_cache.front().meta->rev;
+    assert(pos < m_cache.size());
+
+    // we need to return a contiguous span of updates starting at pos, 
+    // but cqueue does not guarantee that the internal buffer is contiguous, 
+    // so we need to find the largest contiguous range starting at pos
+
+    auto ptr0 = &m_cache[pos];
+    size_t bytes = estimate_bytes(*ptr0);
+
+    for (size_t i = pos + 1; i < m_cache.size(); ++i)
+    {
+        bytes += estimate_bytes(m_cache[i]);
+
+        if (&m_cache[i] < ptr0 || max_bytes < bytes)
+            return std::span<const update_t>{ptr0, i - pos};
+    }
+
+    return std::span<const update_t>{ptr0, m_cache.size() - pos};
 }

@@ -7,6 +7,7 @@
 #include <mutex>
 #include <string>
 #include <uv.h>
+#include "cqueue.hpp"
 #include "repository.hpp"
 #include "session.hpp"
 #include "params.hpp"
@@ -52,6 +53,7 @@ struct context_t : public std::enable_shared_from_this<context_t>
     void on_updates_written_1(bool success, std::vector<update_t> &&updates);
     void on_updates_written_2();
     std::tuple<msgs::SubmitCode, rev_t> try_commit(const msgs::SubmitRequest *msg, const user_t &user);
+    std::span<const update_t> get_cached_updates(rev_t from_rev, std::size_t max_bytes) const;
 
   private: // types
 
@@ -75,12 +77,15 @@ struct context_t : public std::enable_shared_from_this<context_t>
     bool m_running = false;                             // Event loop is running and nplex is operational
     rev_t m_rev_0 = 0;                                  // Minimum revision available
     rev_t m_rev_w = 0;                                  // Last revision written to storage 
+    gto::cqueue<update_t> m_cache;                      // Cached updates in revision order
+    std::size_t m_cache_bytes = 0;                      // Approximate serialized size of cached updates
 
   private: // methods
 
     void stop();                                        // Stops the event loop
     void publish(const std::span<update_t> &updates);   // Publishes updates to all sessions
     void check_for_snapshot();                          // Checks if a new snapshot is needed
+    void update_cache(const std::span<update_t> &);     // Update in-memory cache with new commits
 };
 
 using context_ptr = std::shared_ptr<context_t>;

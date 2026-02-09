@@ -2,7 +2,6 @@
 
 * Create timer to check if msg delivery exceeds X millis ?
 * repository_t -> data_store_t ?
-* Implement a cache of updates
 * Add metrics (SNMP+AgentX, prometheus-cpp)
 * Add admin API (nplexctl via uv_pipe_t, stats, conf, purge, rollback, rotate)
 

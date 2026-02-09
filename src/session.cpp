@@ -366,12 +366,21 @@ void nplex::session_t::do_sync(std::size_t cid)
     }
 
     std::uint32_t max_bytes = static_cast<std::uint32_t>(params.max_unack_bytes - stats.unack_bytes);
+    rev_t from_rev = m_lrev + 1;
 
-    // TODO: check if info in cache
+    // First, try to serve updates from the in-memory cache.
+    auto updates = m_context->get_cached_updates(from_rev, max_bytes);
 
+    if (!updates.empty())
+    {
+        push_changes(updates);
+        m_sync_in_progress = false;
+        return;
+    }
+
+    // Fallback: launch async sync task which will read from storage.
     sync_task_t *task = new sync_task_t(shared_from_this(), m_lrev, m_updates_cid, MAX_ITEMS_IN_SYNC, max_bytes);
     m_context->submit_task(task);
-
     m_sync_in_progress = true;
 }
 
@@ -426,7 +435,7 @@ void nplex::session_t::send_snapshot(std::size_t cid, const repo_t &repo, const 
     );
 }
 
-void nplex::session_t::send_updates(std::size_t cid, rev_t from_rev, rev_t to_rev, const std::span<update_dto_t> &updates)
+void nplex::session_t::send_updates(std::size_t cid, rev_t from_rev, rev_t to_rev, const std::span<const update_dto_t> &updates)
 {
     if (is_closed() || cid != m_updates_cid || updates.empty()) {
         m_sync_in_progress = false;
@@ -461,7 +470,7 @@ void nplex::session_t::send_updates(std::size_t cid, rev_t from_rev, rev_t to_re
     m_sync_in_progress = false;
 }
 
-void nplex::session_t::push_changes(const std::span<update_t> &updates)
+void nplex::session_t::push_changes(const std::span<const update_t> &updates)
 {
     if (is_closed() || m_updates_cid == 0 || updates.empty())
         return;
@@ -476,10 +485,10 @@ void nplex::session_t::push_changes(const std::span<update_t> &updates)
     {
         for (; it != updates.end(); ++it)
         {
-            builder.append(*it, m_user);
-
             if (builder.bytes() >= MAX_BYTES_IN_PUSH)
                 break;
+
+            builder.append(*it, m_user);
 
             m_lrev = it->meta->rev;
         }
