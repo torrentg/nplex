@@ -33,6 +33,14 @@ nplex::journal_writer::~journal_writer()
     stop();
 }
 
+bool nplex::journal_writer::is_blocked() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+
+    return (m_queue.size() >= m_params.write_queue_max_entries) || 
+           ((m_bytes_in_queue + 1) > m_params.write_queue_max_bytes);
+}
+
 void nplex::journal_writer::start(result_callback_t &&result_cb, error_callback_t &&error_cb)
 {
     m_result_cb = std::move(result_cb);
@@ -85,12 +93,6 @@ void nplex::journal_writer::write(update_t &&upd)
         std::lock_guard<std::mutex> lock(m_mutex);
 
         assert(!m_queue.empty() || m_bytes_in_queue == 0);
-
-        if (m_queue.size() >= m_params.write_queue_max_entries)
-            throw nplex_exception("journal_writer queue full (entries)");
-
-        if ((m_bytes_in_queue + entry_size) > m_params.write_queue_max_bytes)
-            throw nplex_exception("journal_writer queue full (bytes)");
 
         m_queue.push(cmd_t{std::move(upd), std::move(buffer)});
         m_bytes_in_queue += entry_size;
@@ -206,7 +208,7 @@ void nplex::journal_writer::run()
                 m_result_cb(false, std::move(updates));
 
             if (ldb_rc != LDB_OK && m_error_cb)
-                m_error_cb(std::make_exception_ptr(ldb_strerror(ldb_rc)));
+                m_error_cb(std::make_exception_ptr(nplex_exception(ldb_strerror(ldb_rc))));
 
             assert(!m_queue.empty() || m_bytes_in_queue == 0);
         }

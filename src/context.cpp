@@ -365,6 +365,9 @@ nplex::user_ptr nplex::context_t::get_user(const std::string &name) const
 
 std::tuple<nplex::msgs::SubmitCode, nplex::rev_t> nplex::context_t::try_commit(const msgs::SubmitRequest *msg, const user_t &user)
 {
+    if (m_journal_writer->is_blocked())
+        return { msgs::SubmitCode::TRY_LATER, 0 };
+
     update_t update;
 
     auto rc = m_repo.try_commit(user, msg, update);

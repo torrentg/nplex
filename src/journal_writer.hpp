@@ -60,6 +60,14 @@ class journal_writer
     journal_writer& operator=(const journal_writer&) = delete;
 
     /**
+     * Checks if the writer queue is full.
+     * 
+     * @return true = writer queue is full, 
+     *         false = writer queue is not full.
+     */
+    bool is_blocked() const;
+
+    /**
      * Starts the journal writer thread.
      * 
      * If the thread is already started, does nothing.
@@ -111,7 +119,7 @@ class journal_writer
     std::thread m_thread;                           // Writer thread
     std::atomic<bool> m_running{false};             // Running flag
     std::condition_variable m_cond;                 // Used by producer to notify consumer that m_queue is not empty
-    std::mutex m_mutex;                             // Protects m_queue and m_bytes_in_queue
+    mutable std::mutex m_mutex;                     // Protects m_queue and m_bytes_in_queue
 
     result_callback_t m_result_cb;                  // Callback invoked on each write completion
     error_callback_t m_error_cb;                    // Callback invoked on exception
