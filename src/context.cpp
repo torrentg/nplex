@@ -343,11 +343,11 @@ void nplex::context_t::on_updates_written_2()
 
     m_rev_w = updates.back().meta->rev;
 
-    update_cache(updates);
     publish(updates);
+    update_cache(updates);
 }
 
-void nplex::context_t::publish(const std::span<update_t> &updates)
+void nplex::context_t::publish(std::span<const update_t> updates)
 {
     for (auto &session : m_sessions)
         session->push_changes(updates);
@@ -409,7 +409,7 @@ void nplex::context_t::check_for_snapshot()
     m_repo.reset_stats();
 }
 
-void nplex::context_t::update_cache(const std::span<update_t> &updates)
+void nplex::context_t::update_cache(std::vector<update_t> &updates)
 {
     if (updates.empty())
         return;
@@ -417,10 +417,10 @@ void nplex::context_t::update_cache(const std::span<update_t> &updates)
     // Append new updates to cache
     assert(m_cache.empty() || m_cache.back().meta->rev + 1 == updates.front().meta->rev);
 
-    for (const auto &upd : updates)
+    for (auto &upd : updates)
     {
         m_cache_bytes += estimate_bytes(upd);
-        m_cache.push_back(upd);
+        m_cache.push_back(std::move(upd));
     }
 
     // Purge old updates if cache limits are exceeded

@@ -83,9 +83,9 @@ struct context_t : public std::enable_shared_from_this<context_t>
   private: // methods
 
     void stop();                                        // Stops the event loop
-    void publish(const std::span<update_t> &updates);   // Publishes updates to all sessions
+    void publish(std::span<const update_t> updates);    // Publishes updates to all sessions
     void check_for_snapshot();                          // Checks if a new snapshot is needed
-    void update_cache(const std::span<update_t> &);     // Update in-memory cache with new commits
+    void update_cache(std::vector<update_t> &updates);  // Update in-memory cache with new commits
 };
 
 using context_ptr = std::shared_ptr<context_t>;

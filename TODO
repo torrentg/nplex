@@ -4,6 +4,10 @@
 * repository_t -> data_store_t ?
 * Add metrics (SNMP+AgentX, prometheus-cpp)
 * Add admin API (nplexctl via uv_pipe_t, stats, conf, purge, rollback, rotate)
+* Replace snapshot_req(rev) by snapshot_req(rev, [glob])?
+* Replace updates_req(rev) by updates_req(rev, [glob])?
+* Support multiple simultaneous update_reqs? add update_cancel?
+* Add keepalive_ms and timeout_factor into login_req ?
 
 ## Useful commands
 
