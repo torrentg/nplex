@@ -101,11 +101,11 @@ struct update_t {
 
 struct update_dto_t {
     rev_t rev = 0;
-    std::string user;
+    std::string user{};
     std::uint64_t timestamp = 0;
     std::uint32_t type = 0;
-    std::vector<std::pair<std::string, std::string>> upserts;
-    std::vector<std::string> deletes;
+    std::vector<std::pair<std::string, std::string>> upserts{};
+    std::vector<std::string> deletes{};
 };
 
 enum log_level_e : std::uint8_t {

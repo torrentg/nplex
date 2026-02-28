@@ -205,6 +205,9 @@ nplex::connection_s::connection_s(session_t *session, uv_stream_t *stream)
     if ((rc = uv_accept(stream, get_stream(&m_tcp))) != 0)
         goto CTOR_ERR;
 
+    if ((rc = uv_tcp_nodelay(&m_tcp, 1)) != 0) // disable nagle
+        goto CTOR_ERR;
+
     if ((rc = uv_read_start(get_stream(&m_tcp), ::cb_tcp_alloc, ::cb_tcp_read)) != 0)
         goto CTOR_ERR;
 

@@ -91,7 +91,7 @@ void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
         SPDLOG_DEBUG("Sent {} to {} ({})", msgs::EnumNameMsgContent(type), m_id, bytes_to_string(bytes));
 }
 
-void nplex::session_t::process_delivery(const msgs::Message *msg)
+void nplex::session_t::process_delivery([[maybe_unused]] const msgs::Message *msg)
 {
     assert(msg);
     assert(msg->content());
@@ -371,10 +371,8 @@ void nplex::session_t::do_sync(std::size_t cid)
     // First, try to serve updates from the in-memory cache.
     auto updates = m_context->get_cached_updates(from_rev, max_bytes);
 
-    if (!updates.empty())
-    {
-        push_changes(updates);
-        m_sync_in_progress = false;
+    if (!updates.empty()) {
+        push_changes(updates, true);
         return;
     }
 
@@ -435,7 +433,7 @@ void nplex::session_t::send_snapshot(std::size_t cid, const repo_t &repo, const 
     );
 }
 
-void nplex::session_t::send_updates(std::size_t cid, rev_t from_rev, rev_t to_rev, const std::span<const update_dto_t> &updates)
+void nplex::session_t::send_updates(std::size_t cid, [[maybe_unused]] rev_t from_rev, rev_t to_rev, const std::span<const update_dto_t> &updates)
 {
     if (is_closed() || cid != m_updates_cid || updates.empty()) {
         m_sync_in_progress = false;
@@ -444,9 +442,9 @@ void nplex::session_t::send_updates(std::size_t cid, rev_t from_rev, rev_t to_re
 
     assert(m_lrev == 0 || m_lrev + 1 == from_rev);
 
+    rev_t crev = m_context->last_persisted_rev();
     updates_builder_t builder;
     auto it = updates.begin();
-    rev_t rev = m_lrev;
 
     while (it != updates.end())
     {
@@ -455,22 +453,33 @@ void nplex::session_t::send_updates(std::size_t cid, rev_t from_rev, rev_t to_re
             if (builder.bytes() >= MAX_BYTES_IN_PUSH)
                 break;
 
-            assert(it->rev >= from_rev && it->rev <= to_rev);
-            assert(it->rev > rev);
-            rev = it->rev;
+            assert(m_lrev < it->rev);
+            assert(from_rev <= it->rev && it->rev <= to_rev);
+            m_lrev = it->rev;
 
             builder.append(*it);
         }
 
         if (!builder.empty())
-            send(builder.finish(m_updates_cid, m_context->last_persisted_rev()));
+            send(builder.finish(m_updates_cid, crev));
     }
 
     m_lrev = to_rev;
+
+    // Case: synced and last update was not sent
+    if (m_lrev == crev && updates.back().rev != to_rev) {
+        update_dto_t dto = {
+            .rev = crev,
+            .user = "admin"
+        };
+        builder.append(dto, nullptr, true);
+        send(builder.finish(m_updates_cid, crev));
+    }
+
     m_sync_in_progress = false;
 }
 
-void nplex::session_t::push_changes(const std::span<const update_t> &updates)
+void nplex::session_t::push_changes(const std::span<const update_t> &updates, bool force)
 {
     if (is_closed() || m_updates_cid == 0 || updates.empty())
         return;
@@ -478,6 +487,7 @@ void nplex::session_t::push_changes(const std::span<const update_t> &updates)
     if (m_lrev + 1 != updates.front().meta->rev)
         return;
 
+    rev_t crev = m_context->last_persisted_rev();
     updates_builder_t builder;
     auto it = updates.begin();
 
@@ -488,12 +498,12 @@ void nplex::session_t::push_changes(const std::span<const update_t> &updates)
             if (builder.bytes() >= MAX_BYTES_IN_PUSH)
                 break;
 
-            builder.append(*it, m_user);
-
             m_lrev = it->meta->rev;
+
+            builder.append(*it, m_user, (force && m_lrev == crev));
         }
 
         if (!builder.empty())
-            send(builder.finish(m_updates_cid, m_context->last_persisted_rev()));
+            send(builder.finish(m_updates_cid, crev));
     }
 }

@@ -14,7 +14,9 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(CMAKE_BUILD_TYPE Debug)
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Debug)
+endif()
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
 find_package(
@@ -71,16 +73,16 @@ add_compile_options(
 )
 
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-add_compile_options(
-    -Wduplicated-branches
-    -Wduplicated-cond
-    -Wuseless-cast
-    -Wlogical-op
-)
+    add_compile_options(
+        -Wduplicated-branches
+        -Wduplicated-cond
+        -Wuseless-cast
+        -Wlogical-op
+    )
 endif()
 
 option(ENABLE_SANITIZERS "Enables AddressSanitizer and UndefinedBehaviorSanitizer." OFF)
-if (ENABLE_SANITIZERS)
+if(ENABLE_SANITIZERS)
     add_compile_options(
         -fno-omit-frame-pointer
         -fsanitize=address
@@ -92,7 +94,7 @@ if (ENABLE_SANITIZERS)
 endif()
 
 option(ENABLE_COVERAGE "Compile and link code for coverage" OFF)
-if (ENABLE_COVERAGE)
+if(ENABLE_COVERAGE)
     add_compile_options(
         --coverage
         -O0

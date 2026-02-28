@@ -194,17 +194,20 @@ void nplex::server_t::init_signals(const config_t &)
         throw nplex_exception(uv_strerror(rc));
 }
 
-#define TEST_DELAY_BETWEEN_UPDATES_MS 1000
+// TODO: Remove this testing code
+#define TEST_DELAY_BETWEEN_UPDATES_MS 0
 void nplex::server_t::init_test(const config_t &)
 {
-    // TODO: Remove this testing code
-    uv_timer_t *timer = (uv_timer_t *) malloc(sizeof(uv_timer_t));
-    timer->data = this;
-    uv_timer_init(m_loop.get(), timer);
-    uv_timer_start(timer, [](uv_timer_t *x) {
-        auto server = (nplex::server_t *) x->data;
-        server->simule_submit();
-    }, TEST_DELAY_BETWEEN_UPDATES_MS, TEST_DELAY_BETWEEN_UPDATES_MS);
+    if (TEST_DELAY_BETWEEN_UPDATES_MS > 0)
+    {
+        uv_timer_t *timer = (uv_timer_t *) malloc(sizeof(uv_timer_t));
+        timer->data = this;
+        uv_timer_init(m_loop.get(), timer);
+        uv_timer_start(timer, [](uv_timer_t *x) {
+            auto server = (nplex::server_t *) x->data;
+            server->simule_submit();
+        }, TEST_DELAY_BETWEEN_UPDATES_MS, TEST_DELAY_BETWEEN_UPDATES_MS);
+    }
 }
 
 void nplex::server_t::init_network(const config_t &config)
