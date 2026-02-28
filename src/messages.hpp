@@ -107,16 +107,16 @@ enum class SubmitCode : int8_t {
   ACCEPTED = 0,
   TRY_LATER = 1,
   NO_MODIFICATIONS = 2,
-  ERROR_INVALID_REVISION = 3,
-  ERROR_INVALID_KEY = 4,
-  ERROR_DUPLICATE_KEY = 5,
-  ERROR_MESSAGE = 6,
-  REJECTED_PERMISSION = 7,
-  REJECTED_INTEGRITY = 8,
-  REJECTED_ENSURE = 9,
-  REJECTED_OLD_REVISION = 10,
+  REJECTED_PERMISSION = 3,
+  REJECTED_OLD_REVISION = 4,
+  REJECTED_INTEGRITY = 5,
+  REJECTED_ENSURE = 6,
+  ERROR_INVALID_REVISION = 7,
+  ERROR_DUPLICATE_KEY = 8,
+  ERROR_INVALID_KEY = 9,
+  INVALID_MESSAGE = 10,
   MIN = ACCEPTED,
-  MAX = REJECTED_OLD_REVISION
+  MAX = INVALID_MESSAGE
 };
 
 inline const SubmitCode (&EnumValuesSubmitCode())[11] {
@@ -124,14 +124,14 @@ inline const SubmitCode (&EnumValuesSubmitCode())[11] {
     SubmitCode::ACCEPTED,
     SubmitCode::TRY_LATER,
     SubmitCode::NO_MODIFICATIONS,
-    SubmitCode::ERROR_INVALID_REVISION,
-    SubmitCode::ERROR_INVALID_KEY,
-    SubmitCode::ERROR_DUPLICATE_KEY,
-    SubmitCode::ERROR_MESSAGE,
     SubmitCode::REJECTED_PERMISSION,
+    SubmitCode::REJECTED_OLD_REVISION,
     SubmitCode::REJECTED_INTEGRITY,
     SubmitCode::REJECTED_ENSURE,
-    SubmitCode::REJECTED_OLD_REVISION
+    SubmitCode::ERROR_INVALID_REVISION,
+    SubmitCode::ERROR_DUPLICATE_KEY,
+    SubmitCode::ERROR_INVALID_KEY,
+    SubmitCode::INVALID_MESSAGE
   };
   return values;
 }
@@ -141,21 +141,21 @@ inline const char * const *EnumNamesSubmitCode() {
     "ACCEPTED",
     "TRY_LATER",
     "NO_MODIFICATIONS",
-    "ERROR_INVALID_REVISION",
-    "ERROR_INVALID_KEY",
-    "ERROR_DUPLICATE_KEY",
-    "ERROR_MESSAGE",
     "REJECTED_PERMISSION",
+    "REJECTED_OLD_REVISION",
     "REJECTED_INTEGRITY",
     "REJECTED_ENSURE",
-    "REJECTED_OLD_REVISION",
+    "ERROR_INVALID_REVISION",
+    "ERROR_DUPLICATE_KEY",
+    "ERROR_INVALID_KEY",
+    "INVALID_MESSAGE",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameSubmitCode(SubmitCode e) {
-  if (::flatbuffers::IsOutRange(e, SubmitCode::ACCEPTED, SubmitCode::REJECTED_OLD_REVISION)) return "";
+  if (::flatbuffers::IsOutRange(e, SubmitCode::ACCEPTED, SubmitCode::INVALID_MESSAGE)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesSubmitCode()[index];
 }

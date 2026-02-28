@@ -299,7 +299,7 @@ nplex::msgs::SubmitCode nplex::repo_t::try_commit(const user_t &user, const msgs
     assert(user.params.active);
 
     if (!msg)
-        return msgs::SubmitCode::ERROR_MESSAGE;
+        return msgs::SubmitCode::INVALID_MESSAGE;
 
     rev_t crev = msg->crev();
 
@@ -340,7 +340,7 @@ nplex::msgs::SubmitCode nplex::repo_t::validate_commit(const user_t &user, const
             auto keyval = upserts->Get(i);
 
             if (!keyval || !keyval->value())
-                return msgs::SubmitCode::ERROR_MESSAGE;
+                return msgs::SubmitCode::INVALID_MESSAGE;
 
             if (!keyval->key() || !is_valid_key(keyval->key()->c_str()))
                 return msgs::SubmitCode::ERROR_INVALID_KEY;
@@ -418,7 +418,7 @@ nplex::msgs::SubmitCode nplex::repo_t::validate_commit(const user_t &user, const
             auto ensure = ensures->Get(i);
 
             if (!ensure || ensure->size() == 0)
-                return msgs::SubmitCode::ERROR_MESSAGE;
+                return msgs::SubmitCode::INVALID_MESSAGE;
 
             const char *pattern = ensure->c_str();
             std::string_view prefix{pattern, strcspn(pattern, "*?")};
