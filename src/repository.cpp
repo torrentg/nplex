@@ -28,7 +28,7 @@ void nplex::repo_t::config(const repo_params_t &params) noexcept
     m_params = params;
 }
 
-nplex::meta_ptr nplex::repo_t::create_meta(rev_t rev, const char *username, std::uint32_t type)
+nplex::meta_ptr nplex::repo_t::create_meta(rev_t rev, const char *username, std::uint32_t type, millis_t timestamp)
 {
     assert(username);
 
@@ -45,9 +45,6 @@ nplex::meta_ptr nplex::repo_t::create_meta(rev_t rev, const char *username, std:
         user = user_it->first;
         user_it->second++;
     }
-
-    using namespace std::chrono;
-    millis_t timestamp = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
 
     return std::make_shared<meta_t>(meta_t{rev, user, timestamp, type, {}});
 }
@@ -278,7 +275,7 @@ nplex::update_t nplex::repo_t::validate_update(const msgs::Update *msg, const us
     if (pending_upserts.empty() && pending_deletes.empty())
         return update;
 
-    auto meta = create_meta(urev, msg->user()->c_str(), msg->type());
+    auto meta = create_meta(urev, msg->user()->c_str(), msg->type(), millis_t{msg->timestamp()});
     update.meta = meta;
 
     update.upserts.reserve(pending_upserts.size());
@@ -450,9 +447,11 @@ nplex::msgs::SubmitCode nplex::repo_t::validate_commit(const user_t &user, const
     }
 
     // Data validated - filling update
-    auto meta = create_meta(m_rev + 1, user.name.c_str(), msg->type());
-    update.meta = meta;
+    using namespace std::chrono;
+    millis_t timestamp = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
+    auto meta = create_meta(m_rev + 1, user.name.c_str(), msg->type(), timestamp);
 
+    update.meta = meta;
     update.upserts.clear();
     update.upserts.reserve(pending_upserts.size());
 

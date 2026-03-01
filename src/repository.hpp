@@ -150,7 +150,7 @@ class repo_t
      * 
      * @return The inserted metadata.
      */
-    meta_ptr create_meta(rev_t rev, const char *username, std::uint32_t type);
+    meta_ptr create_meta(rev_t rev, const char *username, std::uint32_t type, millis_t timestamp);
 
     /**
      * Update a metadata object.

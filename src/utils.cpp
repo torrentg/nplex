@@ -1,3 +1,6 @@
+#include <ctime>
+#include <sstream>
+#include <iomanip>
 #include <arpa/inet.h>
 #include <fmt/core.h>
 #include "utf8.h"
@@ -153,4 +156,23 @@ std::size_t nplex::estimate_bytes(const update_t &update)
     }
 
     return bytes;
+}
+
+std::string nplex::to_iso8601(std::chrono::milliseconds ms_since_epoch)
+{
+    using namespace std::chrono;
+
+    auto secs = duration_cast<seconds>(ms_since_epoch); 
+    auto millis = duration_cast<milliseconds>(ms_since_epoch - secs).count(); 
+
+    std::ostringstream oss; 
+    std::time_t t = secs.count(); 
+    std::tm tm_utc; 
+
+    gmtime_r(&t, &tm_utc);
+
+    oss << std::put_time(&tm_utc, "%Y-%m-%dT%H:%M:%S"); 
+    oss << '.' << std::setw(3) << std::setfill('0') << millis << 'Z'; 
+
+    return oss.str();
 }

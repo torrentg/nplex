@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <flatbuffers/flatbuffers.h>
 #include "common.hpp"
 
@@ -67,5 +68,14 @@ std::string bytes_to_string(std::size_t bytes);
 // Estimate the number of bytes an update will take when serialized
 std::size_t estimate_bytes(const update_dto_t &update);
 std::size_t estimate_bytes(const update_t &update);
+
+/**
+ * Convert milliseconds since epoch to ISO 8601 format (e.g. "2024-06-30T12:34:56.789Z").
+ * 
+ * @param ms_since_epoch Milliseconds since epoch.
+ * 
+ * @return ISO 8601 formatted string.
+ */
+std::string to_iso8601(std::chrono::milliseconds ms_since_epoch);
 
 } // namespace nplex
