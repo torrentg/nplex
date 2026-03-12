@@ -235,7 +235,7 @@ nplex::update_t nplex::repo_t::validate_update(const msgs::Update *msg, const us
 
             auto key = keyval->key()->c_str();
 
-            if (user && !user->is_authorized(NPLEX_READ, key))
+            if (user && !user->is_authorized(CRUD_READ, key))
                 continue;
 
             gto::cstring data = create_cstring(keyval->value());
@@ -257,7 +257,7 @@ nplex::update_t nplex::repo_t::validate_update(const msgs::Update *msg, const us
             if (!key || !key->c_str())
                 throw nplex_exception("Malformed update message (r{})", urev);
 
-            if (user && !user->is_authorized(NPLEX_READ, key->c_str()))
+            if (user && !user->is_authorized(CRUD_READ, key->c_str()))
                 continue;
 
             auto it = m_data.find(key->c_str());
@@ -349,12 +349,12 @@ nplex::msgs::SubmitCode nplex::repo_t::validate_commit(const user_t &user, const
 
             if (it == m_data.end())
             {
-                if (!user.is_authorized(NPLEX_CREATE, keyval->key()->c_str()))
+                if (!user.is_authorized(CRUD_CREATE, keyval->key()->c_str()))
                     return msgs::SubmitCode::REJECTED_PERMISSION;
             }
             else if (it->second->is_removed())
             {
-                if (!user.is_authorized(NPLEX_CREATE, keyval->key()->c_str()))
+                if (!user.is_authorized(CRUD_CREATE, keyval->key()->c_str()))
                     return msgs::SubmitCode::REJECTED_PERMISSION;
 
                 if (!forced && it->second->rev() > crev)
@@ -362,7 +362,7 @@ nplex::msgs::SubmitCode nplex::repo_t::validate_commit(const user_t &user, const
             }
             else
             {
-                if (!user.is_authorized(NPLEX_UPDATE, keyval->key()->c_str()))
+                if (!user.is_authorized(CRUD_UPDATE, keyval->key()->c_str()))
                     return msgs::SubmitCode::REJECTED_PERMISSION;
 
                 if (!forced && it->second->rev() > crev)
@@ -386,7 +386,7 @@ nplex::msgs::SubmitCode nplex::repo_t::validate_commit(const user_t &user, const
             if (!key || !is_valid_key(key->c_str()))
                 return msgs::SubmitCode::ERROR_INVALID_KEY;
 
-            if (!user.is_authorized(NPLEX_DELETE, key->c_str()))
+            if (!user.is_authorized(CRUD_DELETE, key->c_str()))
                 return msgs::SubmitCode::REJECTED_PERMISSION;
 
             if (keys.contains(key->c_str()))
@@ -433,7 +433,7 @@ nplex::msgs::SubmitCode nplex::repo_t::validate_commit(const user_t &user, const
                     continue;
                 }
 
-                if (!user.is_authorized(NPLEX_READ, it->first.c_str())) {
+                if (!user.is_authorized(CRUD_READ, it->first.c_str())) {
                     ++it;
                     continue;
                 }
@@ -571,7 +571,7 @@ flatbuffers::Offset<nplex::msgs::Snapshot> nplex::repo_t::serialize(flatbuffers:
 
         for (auto &key : meta->refs)
         {
-            if (user && !user->is_authorized(NPLEX_READ, key))
+            if (user && !user->is_authorized(CRUD_READ, key))
                 continue;
 
             auto it = m_data.find(key);

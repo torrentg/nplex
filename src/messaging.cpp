@@ -19,7 +19,7 @@ static flatbuffers::Offset<nplex::msgs::Update> serialize_update(flatbuffers::Fl
 
     for (const auto &[key, value] : update.upserts)
     {
-        if (user && !user->is_authorized(NPLEX_READ, key))
+        if (user && !user->is_authorized(CRUD_READ, key))
             continue;
 
         auto kv = CreateKeyValue(
@@ -36,7 +36,7 @@ static flatbuffers::Offset<nplex::msgs::Update> serialize_update(flatbuffers::Fl
 
     for (const auto &key : update.deletes)
     {
-        if (user && !user->is_authorized(NPLEX_READ, key))
+        if (user && !user->is_authorized(CRUD_READ, key))
             continue;
 
         deletes.push_back(builder.CreateString(key));
@@ -63,7 +63,7 @@ static flatbuffers::Offset<nplex::msgs::Update> serialize_update(flatbuffers::Fl
 
     for (const auto &[key, value] : update.upserts)
     {
-        if (user && !user->is_authorized(NPLEX_READ, key.c_str()))
+        if (user && !user->is_authorized(CRUD_READ, key.c_str()))
             continue;
 
         auto kv = CreateKeyValue(
@@ -80,7 +80,7 @@ static flatbuffers::Offset<nplex::msgs::Update> serialize_update(flatbuffers::Fl
 
     for (const auto &key : update.deletes)
     {
-        if (user && !user->is_authorized(NPLEX_READ, key.c_str()))
+        if (user && !user->is_authorized(CRUD_READ, key.c_str()))
             continue;
 
         deletes.push_back(builder.CreateString(key));
@@ -338,7 +338,7 @@ nplex::update_dto_t nplex::deserialize_update(const Update *msg, const user_ptr 
             if (!kv || !kv->key() || !kv->key()->c_str() || !kv->value())
                 continue;
 
-            if (user && !user->is_authorized(NPLEX_READ, kv->key()->c_str()))
+            if (user && !user->is_authorized(CRUD_READ, kv->key()->c_str()))
                 continue;
 
             update.upserts.push_back({
@@ -355,7 +355,7 @@ nplex::update_dto_t nplex::deserialize_update(const Update *msg, const user_ptr 
             if (!key || !key->c_str())
                 continue;
 
-            if (user && !user->is_authorized(NPLEX_READ, key->c_str()))
+            if (user && !user->is_authorized(CRUD_READ, key->c_str()))
                 continue;
 
             update.deletes.push_back(key->c_str());

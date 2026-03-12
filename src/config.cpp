@@ -70,10 +70,10 @@ namespace nplex {
 static std::string crud_to_string(std::uint8_t crud)
 {
     return std::string{
-        ((crud & NPLEX_CREATE) ? 'c' : '-'),
-        ((crud & NPLEX_READ)   ? 'r' : '-'),
-        ((crud & NPLEX_UPDATE) ? 'u' : '-'),
-        ((crud & NPLEX_DELETE) ? 'd' : '-')
+        ((crud & CRUD_CREATE) ? 'c' : '-'),
+        ((crud & CRUD_READ)   ? 'r' : '-'),
+        ((crud & CRUD_UPDATE) ? 'u' : '-'),
+        ((crud & CRUD_DELETE) ? 'd' : '-')
     };
 }
 
@@ -94,10 +94,10 @@ static std::uint8_t parse_crud(const std::string_view &str)
 
         switch (c)
         {
-            case 'c': crud |= NPLEX_CREATE; break;
-            case 'r': crud |= NPLEX_READ;   break;
-            case 'u': crud |= NPLEX_UPDATE; break;
-            case 'd': crud |= NPLEX_DELETE; break;
+            case 'c': crud |= CRUD_CREATE; break;
+            case 'r': crud |= CRUD_READ;   break;
+            case 'u': crud |= CRUD_UPDATE; break;
+            case 'd': crud |= CRUD_DELETE; break;
             default: break;
         }
     }

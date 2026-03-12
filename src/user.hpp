@@ -23,15 +23,11 @@ struct user_t
      * Check if the user is authorized to perform all the requested
      * operations on a key according to the user's permissions.
      *
-     * ACLs are evaluated in order, and the last ACL whose pattern matches
-     * the key determines the final result (later ACLs override previous ones).
-     * If the last matching ACL does not allow all the requested operations,
-     * the result is false.
+     * ACLs are evaluated in order, and the first ACL whose pattern matches
+     * the key determines the final result (later ACLs are ignored).
      *
-     * Note that if the user is disabled, the function will always return false.
-     *
-     * @param[in] mode Bitwise combination of NPLEX_CREATE, NPLEX_READ,
-     *                 NPLEX_UPDATE, NPLEX_DELETE indicating the requested
+     * @param[in] mode Bitwise combination of CRUD_CREATE, CRUD_READ,
+     *                 CRUD_UPDATE, CRUD_DELETE indicating the requested
      *                 operations.
      * @param[in] key  The key on which the operation is to be performed.
      *

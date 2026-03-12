@@ -195,7 +195,7 @@ void nplex::server_t::init_signals(const config_t &)
 }
 
 // TODO: Remove this testing code
-#define TEST_DELAY_BETWEEN_UPDATES_MS 0
+#define TEST_DELAY_BETWEEN_UPDATES_MS 1000
 void nplex::server_t::init_test(const config_t &)
 {
     if (TEST_DELAY_BETWEEN_UPDATES_MS > 0)
@@ -293,14 +293,14 @@ void nplex::server_t::simule_submit()
         CreateKeyValue(
             builder, 
             builder.CreateString("key1"), 
-            builder.CreateVector(reinterpret_cast<const uint8_t *>("value1"), 7)
+            builder.CreateVector(reinterpret_cast<const uint8_t *>("value1"), 6)
         )
     );
     upserts.push_back(
         CreateKeyValue(
             builder, 
             builder.CreateString("key2"), 
-            builder.CreateVector(reinterpret_cast<const uint8_t *>("value2"), 7)
+            builder.CreateVector(reinterpret_cast<const uint8_t *>("value2"), 6)
         )
     );
 

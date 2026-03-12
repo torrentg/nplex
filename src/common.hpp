@@ -19,10 +19,10 @@
 #define JOURNAL_NAME            "journal"
 #define SNAPSHOT_FILENAME       "snapshot-{}.dat"
 
-#define NPLEX_CREATE            1
-#define NPLEX_READ              2
-#define NPLEX_UPDATE            4
-#define NPLEX_DELETE            8
+#define CRUD_CREATE             0x01
+#define CRUD_READ               0x02
+#define CRUD_UPDATE             0x04
+#define CRUD_DELETE             0x08
 
 // Error codes (values less than 1000 are considered libuv errors)
 #define ERR_CLOSED_BY_LOCAL     1000

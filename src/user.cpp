@@ -3,7 +3,7 @@
 
 bool nplex::user_t::is_authorized(uint8_t mode, const char *key) const
 {
-    if (!params.active || !key || !mode)
+    if (!key || !mode)
         return false;
 
     if (permissions.empty())
@@ -16,8 +16,9 @@ bool nplex::user_t::is_authorized(uint8_t mode, const char *key) const
         if (!glob_match(key, acl.pattern.c_str()))
             continue;
 
-        // Last matching ACL wins; require ALL requested operations to be allowed.
+        // First matching ACL wins; require ALL requested operations to be allowed.
         authorized = ((mode & acl.mode) == mode);
+        break;
     }
 
     return authorized;
