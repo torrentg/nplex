@@ -24,11 +24,11 @@ namespace nplex {
 #define USER_CAN_FORCE                          "can-force"
 #define USER_MAX_CONNECTIONS                    "max-connections"
 #define USER_KEEPALIVE_MILLIS                   "keepalive-millis"
-#define USER_MAX_MSG_BYTES                      "max-msg-bytes"
 #define USER_MAX_UNACK_MSG                      "max-unack-msg"
 #define USER_MAX_UNACK_BYTES                    "max-unack-bytes"
 #define USER_TIMEOUT_FACTOR                     "timeout-factor"
 #define USER_ACL                                "acl"
+#define MAX_MSG_BYTES                           "max-msg-bytes"
 #define WRITE_QUEUE_MAX_LENGTH                  "write-queue-max-length"
 #define WRITE_QUEUE_MAX_BYTES                   "write-queue-max-bytes"
 #define FLUSH_MAX_ENTRIES                       "flush-max-entries"
@@ -46,7 +46,8 @@ namespace nplex {
 #define DEFAULT_LOG_LEVEL                       nplex::log_level_e::INFO
 #define DEFAULT_DISABLE_FSYNC                   false
 #define DEFAULT_NETWORK_ADDR                    "localhost:14022"
-#define DEFAULT_MAX_SESSIONS                    256
+#define DEFAULT_MAX_SESSIONS                    64
+#define DEFAULT_MAX_MSG_BYTES                   (2 * 1024 * 1024)
 #define DEFAULT_QUEUE_MAX_LENGTH                1000
 #define DEFAULT_QUEUE_MAX_BYTES                 (350 * 1024 * 1024)
 #define DEFAULT_FLUSH_MAX_ENTRIES               50
@@ -55,15 +56,14 @@ namespace nplex {
 #define DEFAULT_USER_CAN_FORCE                  false
 #define DEFAULT_USER_MAX_CONNECTIONS            5
 #define DEFAULT_USER_KEEPALIVE_MILLIS           3000
-#define DEFAULT_USER_MAX_MSG_BYTES              (50 * 1024 * 1024)
 #define DEFAULT_USER_MAX_UNACK_MSG              1000
 #define DEFAULT_USER_MAX_UNACK_BYTES            (100 * 1024 * 1024)
 #define DEFAULT_USER_TIMEOUT_FACTOR             3.0
 #define DEFAULT_MAX_UPDATES_BETWEEN_SNAPSHOTS   50000
 #define DEFAULT_MAX_BYTES_BETWEEN_SNAPSHOTS     (100 * 1024 * 1024)
-#define DEFAULT_TOMBSTONE_RETENTION_MAX         1000
+#define DEFAULT_TOMBSTONE_RETENTION_MAX         20000
 #define DEFAULT_TOMBSTONE_RETENTION_MIN         5
-#define DEFAULT_MAX_TOMBSTONES                  100000
+#define DEFAULT_MAX_TOMBSTONES                  1500
 #define DEFAULT_CACHE_MAX_ENTRIES               50000
 #define DEFAULT_CACHE_MAX_BYTES                 (500 * 1024 * 1024)
 
@@ -211,8 +211,9 @@ static int cb_inih_inner(void *obj, const char *section, const char *name, const
         } else if (strcmp(name, MAX_SESSIONS) == 0) {
             cfg->context.max_sessions = parse_uint32(value);
         } else if (strcmp(name, DISABLE_FSYNC) == 0) {
-            // Backwards-compat: disable-fsync=true -> fsync=false
             cfg->journal.fsync = !parse_bool(value);
+        } else if (strcmp(name, MAX_MSG_BYTES) == 0) {
+            cfg->context.max_msg_bytes = parse_bytes(value);
         } else if (strcmp(name, WRITE_QUEUE_MAX_LENGTH) == 0) {
             cfg->journal.write_queue_max_entries = parse_uint32(value);
         } else if (strcmp(name, WRITE_QUEUE_MAX_BYTES) == 0) {
@@ -252,8 +253,6 @@ static int cb_inih_inner(void *obj, const char *section, const char *name, const
             cfg->default_user.params.max_connections = parse_uint32(value);
         } else if (strcmp(name, USER_KEEPALIVE_MILLIS) == 0) {
             cfg->default_user.params.connection.keepalive_millis = parse_uint32(value);
-        } else if (strcmp(name, USER_MAX_MSG_BYTES) == 0) {
-            cfg->default_user.params.connection.max_msg_bytes = parse_bytes(value);
         } else if (strcmp(name, USER_MAX_UNACK_MSG) == 0) {
             cfg->default_user.params.connection.max_unack_msgs = parse_uint32(value);
         } else if (strcmp(name, USER_MAX_UNACK_BYTES) == 0) {
@@ -290,8 +289,6 @@ static int cb_inih_inner(void *obj, const char *section, const char *name, const
         it->params.max_connections = parse_uint32(value);
     } else if (strcmp(name, USER_KEEPALIVE_MILLIS) == 0) {
         it->params.connection.keepalive_millis = parse_uint32(value);
-    } else if (strcmp(name, USER_MAX_MSG_BYTES) == 0) {
-        it->params.connection.max_msg_bytes = parse_bytes(value);
     } else if (strcmp(name, USER_MAX_UNACK_MSG) == 0) {
         it->params.connection.max_unack_msgs = parse_uint32(value);
     } else if (strcmp(name, USER_MAX_UNACK_BYTES) == 0) {
@@ -326,6 +323,7 @@ static void set_defaults(config_t &cfg)
     // Network defaults
     cfg.context.addr = addr_t{DEFAULT_NETWORK_ADDR};
     cfg.context.max_sessions = DEFAULT_MAX_SESSIONS;
+    cfg.context.max_msg_bytes = DEFAULT_MAX_MSG_BYTES;
 
     // Journal defaults
     cfg.journal.check = DEFAULT_CHECK_JOURNAL;
@@ -353,7 +351,6 @@ static void set_defaults(config_t &cfg)
     cfg.default_user.params.can_force = DEFAULT_USER_CAN_FORCE;
     cfg.default_user.params.max_connections = DEFAULT_USER_MAX_CONNECTIONS;
     cfg.default_user.params.connection.keepalive_millis = DEFAULT_USER_KEEPALIVE_MILLIS;
-    cfg.default_user.params.connection.max_msg_bytes = DEFAULT_USER_MAX_MSG_BYTES;
     cfg.default_user.params.connection.max_unack_msgs = DEFAULT_USER_MAX_UNACK_MSG;
     cfg.default_user.params.connection.max_unack_bytes = DEFAULT_USER_MAX_UNACK_BYTES;
     cfg.default_user.params.connection.timeout_factor = DEFAULT_USER_TIMEOUT_FACTOR;
@@ -374,6 +371,7 @@ static void normalize_unlimited(T &value)
 static void normalize(config_t &cfg)
 {
     normalize_unlimited(cfg.context.max_sessions);
+    normalize_unlimited(cfg.context.max_msg_bytes);
     normalize_unlimited(cfg.context.snapshot_max_entries);
     normalize_unlimited(cfg.context.snapshot_max_bytes);
     normalize_unlimited(cfg.context.cache_max_entries);
@@ -390,7 +388,6 @@ static void normalize(config_t &cfg)
 
         auto &con = user.params.connection;
 
-        normalize_unlimited(con.max_msg_bytes);
         normalize_unlimited(con.max_unack_msgs);
         normalize_unlimited(con.max_unack_bytes);
     }
@@ -433,6 +430,7 @@ void config_t::save(const fs::path &filepath) const
     ofs << std::endl;
 
     ofs << MAX_SESSIONS << " = " << context.max_sessions << std::endl;
+    ofs << MAX_MSG_BYTES << " = " << bytes_to_string(context.max_msg_bytes) << std::endl;
     ofs << WRITE_QUEUE_MAX_LENGTH << " = " << journal.write_queue_max_entries << std::endl;
     ofs << WRITE_QUEUE_MAX_BYTES << " = " << bytes_to_string(journal.write_queue_max_bytes) << std::endl;
     ofs << FLUSH_MAX_ENTRIES << " = " << journal.flush_max_entries << std::endl;
@@ -452,7 +450,6 @@ void config_t::save(const fs::path &filepath) const
     ofs << USER_MAX_CONNECTIONS << " = " << default_user.params.max_connections << std::endl;
     ofs << USER_KEEPALIVE_MILLIS << " = " << default_user.params.connection.keepalive_millis << std::endl;
     ofs << USER_TIMEOUT_FACTOR << " = " << fmt::format("{:.1f}", default_user.params.connection.timeout_factor) << std::endl;
-    ofs << USER_MAX_MSG_BYTES << " = " << bytes_to_string(default_user.params.connection.max_msg_bytes) << std::endl;
     ofs << USER_MAX_UNACK_MSG << " = " << default_user.params.connection.max_unack_msgs << std::endl;
     ofs << USER_MAX_UNACK_BYTES << " = " << bytes_to_string(default_user.params.connection.max_unack_bytes) << std::endl;
     ofs << std::endl;
@@ -474,8 +471,6 @@ void config_t::save(const fs::path &filepath) const
             ofs << USER_KEEPALIVE_MILLIS << " = " << user.params.connection.keepalive_millis << std::endl;
         if (user.params.connection.timeout_factor != default_user.params.connection.timeout_factor)
             ofs << USER_TIMEOUT_FACTOR << " = " << fmt::format("{:.1f}", user.params.connection.timeout_factor) << std::endl;
-        if (user.params.connection.max_msg_bytes != default_user.params.connection.max_msg_bytes)
-            ofs << USER_MAX_MSG_BYTES << " = " << bytes_to_string(user.params.connection.max_msg_bytes) << std::endl;
         if (user.params.connection.max_unack_msgs != default_user.params.connection.max_unack_msgs)
             ofs << USER_MAX_UNACK_MSG << " = " << user.params.connection.max_unack_msgs << std::endl;
         if (user.params.connection.max_unack_bytes != default_user.params.connection.max_unack_bytes)

@@ -41,6 +41,7 @@ struct context_t : public std::enable_shared_from_this<context_t>
     user_ptr get_user(const std::string &name) const;
     storage_ptr storage() const { return m_storage; }
     const repo_t & repo() const { return m_repo; }
+    const context_params_t & params() const { return m_params; }
     bool has_active_tasks_or_sessions() const { return (m_num_running_tasks != 0 || !m_sessions.empty()); }
 
     void open();

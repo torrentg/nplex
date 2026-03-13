@@ -8,8 +8,6 @@
 #include "session.hpp"
 #include "tasks.hpp"
 
-// maximum message size (in bytes) for a not logged user
-#define MAX_MSG_BYTES_FROM_NO_USER 1024
 // maximum time (in millis) for a not logged user
 #define TIMEOUT_NO_USER 5000
 // maximum (approx) bytes in an UpdatesPush message
@@ -34,7 +32,6 @@ nplex::session_t::session_t(const context_ptr &context, uv_stream_t *stream) :
     m_id = m_con.addr().str();
 
     connection_params_t default_params = {
-        .max_msg_bytes = MAX_MSG_BYTES_FROM_NO_USER,
         .max_unack_msgs = 3,
         .max_unack_bytes = (3 * 1024),
         .keepalive_millis = TIMEOUT_NO_USER,
@@ -495,7 +492,7 @@ void nplex::session_t::push_changes(const std::span<const update_t> &updates, bo
     {
         for (; it != updates.end(); ++it)
         {
-            if (builder.bytes() >= MAX_BYTES_IN_PUSH)
+            if (builder.bytes() >= m_context->params().max_msg_bytes)
                 break;
 
             m_lrev = it->meta->rev;

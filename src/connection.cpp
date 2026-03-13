@@ -7,6 +7,10 @@
 #include "session.hpp"
 #include "connection.hpp"
 
+// OOM protection against corrupted messages and DoS attacks
+#define MAX_RCV_MSG_BYTES (100 * 1024 * 1024) // 100 MiB
+#define MAX_RCV_MSG_BYTES_NO_USER (10 * 1024) // 10 KiB
+
 // ==========================================================
 // Internal (static) functions
 // ==========================================================
@@ -68,6 +72,8 @@ static void cb_tcp_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
     using namespace nplex;
 
     auto obj = reinterpret_cast<nplex::connection_s *>(stream);
+    bool has_user = (obj->session()->user() != nullptr);
+    std::size_t max_len = (has_user ? MAX_RCV_MSG_BYTES : MAX_RCV_MSG_BYTES_NO_USER);
 
     if (nread == 0)
         return;
@@ -91,7 +97,7 @@ static void cb_tcp_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
         const char *ptr = obj->m_input_msg.data();
         std::uint32_t len = ntohl_ptr(ptr);
 
-        if (len > obj->m_params.max_msg_bytes) {
+        if (len > max_len) {
             obj->disconnect(ERR_MSG_SIZE);
             return;
         }
@@ -370,7 +376,6 @@ void nplex::connection_s::report_peer_activity()
 
 void nplex::connection_t::config(const connection_params_t &params)
 {
-    assert(params.max_msg_bytes > 0);
     assert(params.max_unack_msgs > 0);
     assert(params.max_unack_bytes > 0);
     assert(params.timeout_factor >= 1.0f);

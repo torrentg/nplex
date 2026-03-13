@@ -9,6 +9,7 @@ struct context_params_t
 {
     addr_t addr;                                    // IP address to listen on.
     std::uint32_t max_sessions = 0;                 // Maximum number of simultaneous active sessions (0 = unlimited).
+    std::uint32_t max_msg_bytes = 0;                // Maximum output message size (0 = unlimited).
     std::uint32_t snapshot_max_entries = 0;         // Maximum number of updates between two snapshots (0 = unlimited).
     std::uint32_t snapshot_max_bytes = 0;           // Maximum bytes between two snapshots (0 = unlimited).
     std::uint32_t cache_max_entries = 0;            // Maximum number of entries in the cache (0 = unlimited).
@@ -17,7 +18,6 @@ struct context_params_t
 
 struct connection_params_t
 {
-    std::uint32_t max_msg_bytes = 0;                // Maximum incomming message size (0 = unlimited).
     std::uint32_t max_unack_msgs = 0;               // Maximum number of unack msgs (0 = unlimited).
     std::uint32_t max_unack_bytes = 0;              // Maximum number of unack bytes (0 = unlimited).
     std::uint32_t keepalive_millis = 0;             // Delay between keepalive messages (0 = disabled).
