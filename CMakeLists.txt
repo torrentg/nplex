@@ -119,24 +119,24 @@ target_sources(
     nplex
     PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/deps/ini.c
-    ${CMAKE_CURRENT_LIST_DIR}/deps/match.c
     ${CMAKE_CURRENT_LIST_DIR}/deps/journal.c
+    ${CMAKE_CURRENT_LIST_DIR}/deps/match.c
     ${CMAKE_CURRENT_LIST_DIR}/src/addr.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/common.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/config.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/connection.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/context.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/journal_writer.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/main.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/messages.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/messaging.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/src/repository.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/src/connection.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/server.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/session.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/storage.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/src/journal_writer.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/src/config.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/src/server.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/store.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/tasks.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/src/utils.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/user.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/src/main.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/utils.cpp
 )
 
 add_compile_definitions(

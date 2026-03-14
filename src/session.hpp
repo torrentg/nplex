@@ -42,7 +42,7 @@ class session_t : public std::enable_shared_from_this<session_t>
     void disconnect(int rc);
     void process_request(const msgs::Message *msg);
     void process_delivery(const msgs::Message *msg);
-    void send_snapshot(std::size_t cid, const repo_t &repo, const user_ptr &user = nullptr);
+    void send_snapshot(std::size_t cid, const store_t &store, const user_ptr &user = nullptr);
     void send_updates(std::size_t cid, rev_t from_rev, rev_t to_rev, const std::span<const update_dto_t> &updates);
     void push_changes(const std::span<const update_t> &updates, bool force = false);
     void do_sync(std::size_t cid);

@@ -240,9 +240,9 @@ READ_END:
     return count;
 }
 
-nplex::repo_t nplex::storage_t::get_repo(rev_t rev, const user_ptr &user)
+nplex::store_t nplex::storage_t::get_store(rev_t rev, const user_ptr &user)
 {
-    repo_t repo;
+    store_t repo;
 
     // step1: retrieve nearest snapshot (less-eq than rev)
     std::string str = read_snapshot(rev);
@@ -266,7 +266,7 @@ nplex::repo_t nplex::storage_t::get_repo(rev_t rev, const user_ptr &user)
     read_entries(repo.rev() + 1, func);
 
     if (repo.rev() != rev)
-        throw nplex_exception("Failed to load repository at revision {}", rev);
+        throw nplex_exception("Failed to load store at revision {}", rev);
 
     return repo;
 }

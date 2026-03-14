@@ -157,9 +157,9 @@ nplex::context_t::context_t(uv_loop_t *loop, const config_t &config) : m_loop(lo
     std::tie(m_rev_0, m_rev_w) = m_storage->get_revs_range();
     SPDLOG_INFO("Data range: [r{}, r{}]", m_rev_0, m_rev_w);
 
-    // set repository content
-    m_repo = m_storage->get_repo(m_rev_w);
-    m_repo.config(config.repo);
+    // set store content
+    m_store = m_storage->get_store(m_rev_w);
+    m_store.config(config.store);
 
     // async handle to stop the loop
     m_async_stop_loop = std::make_unique<uv_async_t>();
@@ -370,13 +370,13 @@ std::tuple<nplex::msgs::SubmitCode, nplex::rev_t> nplex::context_t::try_commit(c
 
     update_t update;
 
-    auto rc = m_repo.try_commit(user, msg, update);
+    auto rc = m_store.try_commit(user, msg, update);
     if (rc != msgs::SubmitCode::ACCEPTED) {
         SPDLOG_DEBUG("Commit rejected: user={}, crev={}, rc={}", user.name, msg->crev(), static_cast<int>(rc));
         return { rc, 0 };
     }
 
-    assert(m_repo.rev() == update.meta->rev);
+    assert(m_store.rev() == update.meta->rev);
     SPDLOG_DEBUG("Commit accepted: rev={}, user={}, type={}", update.meta->rev, update.meta->user.c_str(), update.meta->type);
 
     auto erev = update.meta->rev;
@@ -389,16 +389,16 @@ std::tuple<nplex::msgs::SubmitCode, nplex::rev_t> nplex::context_t::try_commit(c
 
 void nplex::context_t::check_for_snapshot()
 {
-    const auto &stats = m_repo.stats();
+    const auto &stats = m_store.stats();
 
     if (stats.count < m_params.snapshot_max_entries && stats.bytes < m_params.snapshot_max_bytes)
         return;
 
-    auto rev = m_repo.rev();
+    auto rev = m_store.rev();
     SPDLOG_INFO("Creating snapshot at r{}", rev);
 
     flatbuffers::FlatBufferBuilder builder;
-    auto snapshot = m_repo.serialize(builder);
+    auto snapshot = m_store.serialize(builder);
     builder.Finish(snapshot);
 
     auto buf = builder.Release();
@@ -406,7 +406,7 @@ void nplex::context_t::check_for_snapshot()
     auto task = new write_snapshot_task_t(rev, std::move(buf), m_storage);
     submit_task(task);
 
-    m_repo.reset_stats();
+    m_store.reset_stats();
 }
 
 void nplex::context_t::update_cache(std::vector<update_t> &updates)

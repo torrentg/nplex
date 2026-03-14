@@ -5,7 +5,7 @@
 #include "match.h"
 #include "utils.hpp"
 #include "exception.hpp"
-#include "repository.hpp"
+#include "store.hpp"
 
 // ==========================================================
 // Internal to compilation unit
@@ -17,10 +17,10 @@ struct pending_upsert_t {
 };
 
 // ==========================================================
-// repo_t methods
+// store methods
 // ==========================================================
 
-void nplex::repo_t::config(const repo_params_t &params) noexcept 
+void nplex::store_t::config(const store_params_t &params) noexcept 
 {
     assert(params.retention_min <= params.retention_max);
     assert(params.max_tombstones > 0);
@@ -28,7 +28,7 @@ void nplex::repo_t::config(const repo_params_t &params) noexcept
     m_params = params;
 }
 
-nplex::meta_ptr nplex::repo_t::create_meta(rev_t rev, const char *username, std::uint32_t type, millis_t timestamp)
+nplex::meta_ptr nplex::store_t::create_meta(rev_t rev, const char *username, std::uint32_t type, millis_t timestamp)
 {
     assert(username);
 
@@ -49,7 +49,7 @@ nplex::meta_ptr nplex::repo_t::create_meta(rev_t rev, const char *username, std:
     return std::make_shared<meta_t>(meta_t{rev, user, timestamp, type, {}});
 }
 
-void nplex::repo_t::update_meta(const meta_ptr &meta, const key_t &key, meta_e mode)
+void nplex::store_t::update_meta(const meta_ptr &meta, const key_t &key, meta_e mode)
 {
     assert(meta);
 
@@ -76,7 +76,7 @@ void nplex::repo_t::update_meta(const meta_ptr &meta, const key_t &key, meta_e m
     m_metas.erase(meta->rev);
 }
 
-bool nplex::repo_t::upsert_entry(const char *key, const value_ptr &value)
+bool nplex::store_t::upsert_entry(const char *key, const value_ptr &value)
 {
     assert(key);
     assert(value);
@@ -105,7 +105,7 @@ bool nplex::repo_t::upsert_entry(const char *key, const value_ptr &value)
     return true;
 }
 
-bool nplex::repo_t::upsert_entry(const key_t &key, const value_ptr &value)
+bool nplex::store_t::upsert_entry(const key_t &key, const value_ptr &value)
 {
     auto it = m_data.find(key);
 
@@ -124,7 +124,7 @@ bool nplex::repo_t::upsert_entry(const key_t &key, const value_ptr &value)
     return true;
 }
 
-bool nplex::repo_t::delete_entry(const char *key)
+bool nplex::store_t::delete_entry(const char *key)
 {
     assert(key);
 
@@ -140,7 +140,7 @@ bool nplex::repo_t::delete_entry(const char *key)
     return true;
 }
 
-bool nplex::repo_t::mark_as_removed(const key_t &key, const meta_ptr &meta)
+bool nplex::store_t::mark_as_removed(const key_t &key, const meta_ptr &meta)
 {
     auto it = m_data.find(key);
 
@@ -159,7 +159,7 @@ bool nplex::repo_t::mark_as_removed(const key_t &key, const meta_ptr &meta)
     return true;
 }
 
-void nplex::repo_t::load(const msgs::Snapshot *snapshot, const user_ptr &user)
+void nplex::store_t::load(const msgs::Snapshot *snapshot, const user_ptr &user)
 {
     m_rev = 0;
     m_data.clear();
@@ -191,7 +191,7 @@ void nplex::repo_t::load(const msgs::Snapshot *snapshot, const user_ptr &user)
     m_min_rev = m_rev;
 }
 
-nplex::update_t nplex::repo_t::update(const msgs::Update *msg, const user_ptr &user)
+nplex::update_t nplex::store_t::update(const msgs::Update *msg, const user_ptr &user)
 {
     if (!msg)
         throw nplex_exception("Null update message");
@@ -210,7 +210,7 @@ nplex::update_t nplex::repo_t::update(const msgs::Update *msg, const user_ptr &u
     return update;
 }
 
-nplex::update_t nplex::repo_t::validate_update(const msgs::Update *msg, const user_ptr &user)
+nplex::update_t nplex::store_t::validate_update(const msgs::Update *msg, const user_ptr &user)
 {
     std::vector<pending_upsert_t> pending_upserts;
     std::vector<key_t> pending_deletes;
@@ -291,7 +291,7 @@ nplex::update_t nplex::repo_t::validate_update(const msgs::Update *msg, const us
     return update;
 }
 
-nplex::msgs::SubmitCode nplex::repo_t::try_commit(const user_t &user, const msgs::SubmitRequest *msg, update_t &update)
+nplex::msgs::SubmitCode nplex::store_t::try_commit(const user_t &user, const msgs::SubmitRequest *msg, update_t &update)
 {
     assert(user.params.active);
 
@@ -318,7 +318,7 @@ nplex::msgs::SubmitCode nplex::repo_t::try_commit(const user_t &user, const msgs
     return rc;
 }
 
-nplex::msgs::SubmitCode nplex::repo_t::validate_commit(const user_t &user, const msgs::SubmitRequest *msg, update_t &update)
+nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_t &user, const msgs::SubmitRequest *msg, update_t &update)
 {
     bool forced = (user.params.can_force && msg->force());
     std::set<key_t, gto::cstring_compare> keys;
@@ -466,7 +466,7 @@ nplex::msgs::SubmitCode nplex::repo_t::validate_commit(const user_t &user, const
     return msgs::SubmitCode::ACCEPTED;
 }
 
-void nplex::repo_t::apply_update(const update_t &update)
+void nplex::store_t::apply_update(const update_t &update)
 {
     assert(update.meta);
 
@@ -487,7 +487,7 @@ void nplex::repo_t::apply_update(const update_t &update)
         purge();
 }
 
-std::uint32_t nplex::repo_t::purge()
+std::uint32_t nplex::store_t::purge()
 {
     std::uint32_t count = 0;
     rev_t last_purged_rev = 0;
@@ -558,7 +558,7 @@ std::uint32_t nplex::repo_t::purge()
     return count;
 }
 
-flatbuffers::Offset<nplex::msgs::Snapshot> nplex::repo_t::serialize(flatbuffers::FlatBufferBuilder &builder, const user_ptr &user) const
+flatbuffers::Offset<nplex::msgs::Snapshot> nplex::store_t::serialize(flatbuffers::FlatBufferBuilder &builder, const user_ptr &user) const
 {
     std::vector<flatbuffers::Offset<msgs::Update>> updates;
     std::vector<flatbuffers::Offset<msgs::KeyValue>> upserts;

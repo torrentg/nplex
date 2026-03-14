@@ -42,7 +42,7 @@ struct journal_params_t
     std::uint32_t flush_max_bytes = 0;              // Maximum bytes per batch write (0 = unlimited).
 };
 
-struct repo_params_t
+struct store_params_t
 {
     std::uint32_t retention_max = 0;                // Maximum number of revisions to keep for.
     std::uint32_t retention_min = 0;                // Minimum number of revisions guaranteed to keep for.

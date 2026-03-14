@@ -3,7 +3,7 @@
 #include <uv.h>
 #include "common.hpp"
 #include "messages.hpp"
-#include "repository.hpp"
+#include "store.hpp"
 #include "user.hpp"
 
 namespace nplex {
@@ -84,7 +84,7 @@ flatbuffers::DetachedBuffer create_ping_msg(std::size_t cid, rev_t crev, const s
 flatbuffers::DetachedBuffer create_login_msg(std::size_t cid, msgs::LoginCode code, rev_t rev0 = 0, rev_t crev = 0, const user_ptr &user = nullptr);
 flatbuffers::DetachedBuffer create_keepalive_msg(rev_t crev);
 flatbuffers::DetachedBuffer create_submit_msg(std::size_t cid, rev_t crev, msgs::SubmitCode code, rev_t erev = 0);
-flatbuffers::DetachedBuffer create_snapshot_msg(std::size_t cid, rev_t crev, rev_t rev0, bool accepted, const repo_t &repo, const user_ptr &user = nullptr);
+flatbuffers::DetachedBuffer create_snapshot_msg(std::size_t cid, rev_t crev, rev_t rev0, bool accepted, const store_t &store, const user_ptr &user = nullptr);
 flatbuffers::DetachedBuffer create_updates_msg(std::size_t cid, rev_t crev, rev_t rev0, bool accepted);
 
 flatbuffers::DetachedBuffer serialize_update(const update_t &update);

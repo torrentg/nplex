@@ -18,7 +18,7 @@ struct config_t
 
     context_params_t context;       // Context parameters (network + snapshot + cache).
     journal_params_t journal;       // Journal parameters.
-    repo_params_t repo;             // Repository parameters.
+    store_params_t store;           // Store parameters.
 
     user_t default_user;            // Default user parameters.
     std::vector<user_t> users;      // List of users.

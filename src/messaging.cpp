@@ -291,11 +291,11 @@ flatbuffers::DetachedBuffer nplex::create_submit_msg(std::size_t cid, rev_t crev
     return builder.Release();
 }
 
-flatbuffers::DetachedBuffer nplex::create_snapshot_msg(std::size_t cid, rev_t crev, rev_t rev0, bool accepted, const repo_t &repo, const user_ptr &user)
+flatbuffers::DetachedBuffer nplex::create_snapshot_msg(std::size_t cid, rev_t crev, rev_t rev0, bool accepted, const store_t &store, const user_ptr &user)
 {
     FlatBufferBuilder builder;
 
-    auto snapshot_offset = (accepted ? repo.serialize(builder, user) : 0);
+    auto snapshot_offset = (accepted ? store.serialize(builder, user) : 0);
 
     auto msg = CreateMessage(builder, 
         MsgContent::SNAPSHOT_RESPONSE,

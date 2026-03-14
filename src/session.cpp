@@ -249,7 +249,7 @@ void nplex::session_t::process_snapshot_request(const msgs::SnapshotRequest *req
                 m_context->last_persisted_rev(),
                 m_context->minimum_rev(),
                 false,
-                repo_t{},
+                m_context->store(),
                 nullptr
             )
         );
@@ -258,9 +258,9 @@ void nplex::session_t::process_snapshot_request(const msgs::SnapshotRequest *req
     }
 
     // case: requested current snapshot
-    if (rev == m_context->last_persisted_rev() && rev == m_context->repo().rev())
+    if (rev == m_context->last_persisted_rev() && rev == m_context->store().rev())
     {
-        send_snapshot(cid, m_context->repo(), m_user);
+        send_snapshot(cid, m_context->store(), m_user);
         return;
     }
 
@@ -413,7 +413,7 @@ void nplex::session_t::send_keepalive()
     send(create_keepalive_msg(crev));
 }
 
-void nplex::session_t::send_snapshot(std::size_t cid, const repo_t &repo, const user_ptr &user)
+void nplex::session_t::send_snapshot(std::size_t cid, const store_t &store, const user_ptr &user)
 {
     if (is_closed())
         return;
@@ -424,7 +424,7 @@ void nplex::session_t::send_snapshot(std::size_t cid, const repo_t &repo, const 
             m_context->last_persisted_rev(),
             m_context->minimum_rev(),
             true,
-            repo,
+            store,
             user
         )
     );

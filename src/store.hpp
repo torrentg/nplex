@@ -14,11 +14,11 @@ namespace nplex {
  * 
  * @note This class is not thread-safe.
  */
-class repo_t
+class store_t
 {
   public: // types
 
-    struct repo_stats_t {
+    struct stats_t {
         std::size_t count = 0;        // Number of updates from last snapshot
         std::size_t bytes = 0;        // Total accumulated size of updates (approx)
     };
@@ -37,17 +37,17 @@ class repo_t
      * 
      * @param[in] params Tombstone paramenters.
      */
-    void config(const repo_params_t &params) noexcept;
+    void config(const store_params_t &params) noexcept;
 
     /**
      * Get info about accumulated updates since last snapshot.
      * 
-     * @return The repo stats.
+     * @return The store stats.
      */
-    const repo_stats_t & stats() const noexcept { return m_stats; }
+    const stats_t & stats() const noexcept { return m_stats; }
 
     /**
-     * Reset repository statistics.
+     * Reset store. statistics.
      */
     void reset_stats() noexcept { m_stats = {}; }
 
@@ -66,23 +66,23 @@ class repo_t
     /**
      * Apply an update to the database (coming from disk or another server).
      * 
-     * This method alters the repository content. 
+     * This method alters the store. content. 
      * On success, the content is updated and revision increased.
      * On exception, the content is left in an inconsistent state.
      * 
      * @param[in] msg Update to apply.
      * @param[in] user User whose permissions are considered during loading (nullptr means no filter).
      * 
-     * @return The update_t object applied to the repository.
+     * @return The update_t object applied to the store.
      * 
-     * @exception nplex_exception Invalid update (ex: update.rev < repo.rev, or invalid-key).
+     * @exception nplex_exception Invalid update (ex: update.rev < store.rev, or invalid-key).
      */
     update_t update(const msgs::Update *msg, const user_ptr &user = nullptr);
 
     /**
      * Try to commit a transaction (coming from a client).
      * 
-     * This method alters the repository content. 
+     * This method alters the store. content. 
      * On success, the content is updated and revision increased.
      * On invalid or rejected request, content is not modified.
      * On exception, the content is left in an inconsistent state.
@@ -133,8 +133,8 @@ class repo_t
     data_map_t m_data;                           // Key-value data store.
     user_map_t m_users;                          // Users list (with number of references)
     rm_queue_t m_removed_keys;                   // List of removed keys (can contain duplicates and reinserted keys)
-    repo_params_t m_params;                      // Repository parameters.
-    repo_stats_t m_stats;                        // Repository statistics.
+    store_params_t m_params;                     // Store parameters.
+    stats_t m_stats;                             // Store statistics.
     rev_t m_min_rev = 0;                         // Minimum rev with guaranteed tombstone info.
 
   private: // methods
@@ -205,7 +205,7 @@ class repo_t
      * 
      * @return The internal update structure (with meta = nullptr if no visible modifications).
      * 
-     * @exception nplex_exception Invalid update (ex: update.rev < repo.rev, or invalid-key).
+     * @exception nplex_exception Invalid update (ex: update.rev < store.rev, or invalid-key).
      */
     update_t validate_update(const msgs::Update *msg, const user_ptr &user = nullptr);
 
@@ -242,6 +242,6 @@ class repo_t
 
 };
 
-using repo_ptr = std::shared_ptr<repo_t>;
+using store_ptr = std::shared_ptr<store_t>;
 
 } // namespace nplex

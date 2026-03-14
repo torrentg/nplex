@@ -66,7 +66,7 @@ using meta_ptr = std::shared_ptr<meta_t>;
 //! Database value.
 class value_t
 {
-    friend class repo_t;
+    friend class store_t;
     static const gto::cstring REMOVED;
     static const gto::cstring EMPTY;
 

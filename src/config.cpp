@@ -227,11 +227,11 @@ static int cb_inih_inner(void *obj, const char *section, const char *name, const
         } else if (strcmp(name, MAX_BYTES_BETWEEN_SNAPSHOTS) == 0) {
             cfg->context.snapshot_max_bytes = parse_bytes(value);
         } else if (strcmp(name, TOMBSTONE_RETENTION_MAX) == 0) {
-            cfg->repo.retention_max = parse_uint32(value);
+            cfg->store.retention_max = parse_uint32(value);
         } else if (strcmp(name, TOMBSTONE_RETENTION_MIN) == 0) {
-            cfg->repo.retention_min = parse_uint32(value);
+            cfg->store.retention_min = parse_uint32(value);
         } else if (strcmp(name, MAX_TOMBSTONES) == 0) {
-            cfg->repo.max_tombstones = parse_uint32(value);
+            cfg->store.max_tombstones = parse_uint32(value);
         } else if (strcmp(name, CACHE_MAX_ENTRIES) == 0) {
             cfg->context.cache_max_entries = parse_uint32(value);
         } else if (strcmp(name, CACHE_MAX_BYTES) == 0) {
@@ -338,9 +338,9 @@ static void set_defaults(config_t &cfg)
     cfg.context.snapshot_max_bytes = DEFAULT_MAX_BYTES_BETWEEN_SNAPSHOTS;
 
     // Tombstone defaults
-    cfg.repo.retention_max = DEFAULT_TOMBSTONE_RETENTION_MAX;
-    cfg.repo.retention_min = DEFAULT_TOMBSTONE_RETENTION_MIN;
-    cfg.repo.max_tombstones = DEFAULT_MAX_TOMBSTONES;
+    cfg.store.retention_max = DEFAULT_TOMBSTONE_RETENTION_MAX;
+    cfg.store.retention_min = DEFAULT_TOMBSTONE_RETENTION_MIN;
+    cfg.store.max_tombstones = DEFAULT_MAX_TOMBSTONES;
 
     // Cache defaults
     cfg.context.cache_max_entries = DEFAULT_CACHE_MAX_ENTRIES;
@@ -356,8 +356,8 @@ static void set_defaults(config_t &cfg)
     cfg.default_user.params.connection.timeout_factor = DEFAULT_USER_TIMEOUT_FACTOR;
 
     // Sanity: ensure retention_min does not exceed retention_max when both are set.
-    if (cfg.repo.retention_max > 0 && cfg.repo.retention_min > cfg.repo.retention_max)
-        cfg.repo.retention_min = cfg.repo.retention_max;
+    if (cfg.store.retention_max > 0 && cfg.store.retention_min > cfg.store.retention_max)
+        cfg.store.retention_min = cfg.store.retention_max;
 }
 
 template <typename T>
@@ -380,7 +380,7 @@ static void normalize(config_t &cfg)
     normalize_unlimited(cfg.journal.write_queue_max_bytes);
     normalize_unlimited(cfg.journal.flush_max_entries);
     normalize_unlimited(cfg.journal.flush_max_bytes);
-    normalize_unlimited(cfg.repo.max_tombstones);
+    normalize_unlimited(cfg.store.max_tombstones);
 
     for (auto &user : cfg.users)
     {
@@ -410,7 +410,7 @@ void config_t::load(const fs::path &filepath)
     else if (rc > 0)
         throw std::runtime_error("Syntax error at line " + std::to_string(rc));
 
-    if (repo.retention_min > repo.retention_max)
+    if (store.retention_min > store.retention_max)
         throw std::invalid_argument("tombstone-retention-min cannot exceed tombstone-retention-max");
 
     normalize(*this);
@@ -437,9 +437,9 @@ void config_t::save(const fs::path &filepath) const
     ofs << FLUSH_MAX_BYTES << " = " << bytes_to_string(journal.flush_max_bytes) << std::endl;
     ofs << MAX_UPDATES_BETWEEN_SNAPSHOTS << " = " << context.snapshot_max_entries << std::endl;
     ofs << MAX_BYTES_BETWEEN_SNAPSHOTS << " = " << bytes_to_string(context.snapshot_max_bytes) << std::endl;
-    ofs << TOMBSTONE_RETENTION_MAX << " = " << repo.retention_max << std::endl;
-    ofs << TOMBSTONE_RETENTION_MIN << " = " << repo.retention_min << std::endl;
-    ofs << MAX_TOMBSTONES << " = " << repo.max_tombstones << std::endl;
+    ofs << TOMBSTONE_RETENTION_MAX << " = " << store.retention_max << std::endl;
+    ofs << TOMBSTONE_RETENTION_MIN << " = " << store.retention_min << std::endl;
+    ofs << MAX_TOMBSTONES << " = " << store.max_tombstones << std::endl;
     ofs << CACHE_MAX_BYTES << " = " << bytes_to_string(context.cache_max_bytes) << std::endl;
     ofs << CACHE_MAX_ENTRIES << " = " << context.cache_max_entries << std::endl;
     ofs << std::endl;

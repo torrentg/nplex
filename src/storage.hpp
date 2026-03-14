@@ -5,7 +5,7 @@
 #include <filesystem>
 #include "messages.hpp"
 #include "common.hpp"
-#include "repository.hpp"
+#include "store.hpp"
 #include "user.hpp"
 
 // Forward references
@@ -37,7 +37,7 @@ class storage_t
     ~storage_t() = default;
 
     /**
-     * Returns the revision range of constructible repositories.
+     * Returns the revision range of constructible stores.
      * 
      * @return Pair of revisions (min, max).
      * 
@@ -92,18 +92,18 @@ class storage_t
     rev_t write_snapshot(const std::string_view &data) const;
 
     /**
-     * Recreates the repo content at a given revision.
+     * Recreates the store content at a given revision.
      * 
      * This method is blocking.
      * 
      * @param[in] rev Revision.
-     * @param[in] user User used to filter repo content (empty means no filter).
+     * @param[in] user User used to filter store content (empty means no filter).
      * 
-     * @return Repository content adapted to user visibility.
+     * @return Store content adapted to user visibility.
      * 
      * @exception nplex_exception Error reading entries.
      */
-    repo_t get_repo(rev_t rev, const user_ptr &user = nullptr);
+    store_t get_store(rev_t rev, const user_ptr &user = nullptr);
 
   private:
 

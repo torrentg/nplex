@@ -1,7 +1,6 @@
 # TODO
 
 * Create timer to check if msg delivery exceeds X millis ?
-* repository_t -> data_store_t ?
 * Add metrics (SNMP+AgentX, prometheus-cpp)
 * Add admin API (nplexctl via uv_pipe_t, stats, conf, purge, rollback, rotate)
 * Replace snapshot_req(rev) by snapshot_req(rev, [glob])?

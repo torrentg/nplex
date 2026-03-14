@@ -6,7 +6,7 @@
 #include "common.hpp"
 #include "storage.hpp"
 #include "messaging.hpp"
-#include "repository.hpp"
+#include "store.hpp"
 
 namespace nplex {
 
@@ -54,7 +54,7 @@ struct snapshot_task_t : public task_t
     rev_t m_rev;                        // snapshot revision
     std::size_t m_cid;                  // correlation id
     session_ptr m_session;              // session used to send messages
-    nplex::repo_t m_repo;               // users repo at m_rev (result)
+    nplex::store_t m_store;             // user store at m_rev (result)
 
     snapshot_task_t(const session_ptr &session, nplex::rev_t rev, std::size_t cid)
         : m_rev(rev), m_cid(cid), m_session(session) {}
@@ -65,7 +65,7 @@ struct snapshot_task_t : public task_t
 };
 
 /**
- * Synchronize the session with the repo.
+ * Synchronize the session with the store.
  *   - Read journal entries from disk
  *   - Save non-empty user updates in a list
  *   - Sends these updates over the network

@@ -16,12 +16,12 @@ void nplex::snapshot_task_t::run()
 {
     auto storage = m_session->context()->storage();
 
-    m_repo = storage->get_repo(m_rev, m_session->user());
+    m_store = storage->get_store(m_rev, m_session->user());
 }
 
 void nplex::snapshot_task_t::after()
 {
-    m_session->send_snapshot(m_cid, m_repo);
+    m_session->send_snapshot(m_cid, m_store);
 }
 
 // ==========================================================

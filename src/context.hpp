@@ -8,7 +8,7 @@
 #include <string>
 #include <uv.h>
 #include "cqueue.hpp"
-#include "repository.hpp"
+#include "store.hpp"
 #include "session.hpp"
 #include "params.hpp"
 #include "utils.hpp"
@@ -31,8 +31,6 @@ using storage_ptr = std::shared_ptr<storage_t>;
 
 struct context_t : public std::enable_shared_from_this<context_t>
 {
-    repo_t m_repo;                              // Repository object (the key-value map)
-
     context_t(uv_loop_t *loop, const config_t &config);
     ~context_t();
 
@@ -40,7 +38,7 @@ struct context_t : public std::enable_shared_from_this<context_t>
     rev_t last_persisted_rev() const { return m_rev_w; }
     user_ptr get_user(const std::string &name) const;
     storage_ptr storage() const { return m_storage; }
-    const repo_t & repo() const { return m_repo; }
+    const store_t & store() const { return m_store; }
     const context_params_t & params() const { return m_params; }
     bool has_active_tasks_or_sessions() const { return (m_num_running_tasks != 0 || !m_sessions.empty()); }
 
@@ -65,6 +63,7 @@ struct context_t : public std::enable_shared_from_this<context_t>
 
     uv_loop_t *m_loop;                                  // Reference to the event loop
     storage_ptr m_storage;                              // Storage functions (journal, snapshots, etc)
+    store_t m_store;                                    // Store object (the key-value map)
     std::unique_ptr<ldb::journal_t> m_journal;          // Journal object
     std::unique_ptr<journal_writer> m_journal_writer;   // Journal writer thread
     std::vector<update_t> m_pending_publish;            // Updates waiting to be published
