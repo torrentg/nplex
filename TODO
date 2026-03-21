@@ -3,12 +3,12 @@
 * Create timer to check if msg delivery exceeds X millis ?
 * Add metrics (SNMP+AgentX, prometheus-cpp)
 * Add admin API (nplexctl via uv_pipe_t, stats, conf, purge, rollback, rotate)
-* Replace snapshot_req(rev) by snapshot_req(rev, [glob])?
-* Replace updates_req(rev) by updates_req(rev, [glob])?
-* Support multiple simultaneous update_reqs? add update_cancel?
 * Add keepalive_ms and timeout_factor into login_req ?
 * context_t::get_cached_updates() returns std::ranges::subrange<gto::cqueue<nplex::update_t>::const_iterator> instead of std::span + template session::push_changes(std::ranges). declare using const_cache_range = xxx ?
-* unificar session::send_updates i session::push_changes a push_updates(cid, <range>, from=0, to=0)
+* Unify session::send_updates and session::push_changes to push_updates(cid, <range>, from=0, to=0)
+* Support multiple journals (rotate journal by size or time)
+* Save last snapshot used in store_t
+* Trace messages in json format
 
 ## Useful commands
 

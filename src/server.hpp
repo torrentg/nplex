@@ -28,9 +28,6 @@ class server_t
      */
     void run() noexcept;
 
-    // TODO: remove this test method
-    void simule_submit();
-
   private:
 
     std::unique_ptr<uv_loop_t> m_loop;        // event loop
@@ -43,7 +40,6 @@ class server_t
     void init_signals(const config_t &config);
     void init_context(const config_t &config);
     void init_network(const config_t &config);
-    void init_test(const config_t &config);
 };
 
 } // namespace nplex

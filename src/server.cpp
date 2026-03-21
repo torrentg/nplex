@@ -146,7 +146,6 @@ void nplex::server_t::init(const config_t &config)
         init_context(config);
         init_signals(config);
         init_network(config);
-        init_test(config);
     } catch (...) {
         m_loop.reset();
         m_context.reset();
@@ -192,22 +191,6 @@ void nplex::server_t::init_signals(const config_t &)
 
     if ((rc = uv_signal_start(m_sigterm.get(), ::cb_signal_handler, SIGTERM)) != 0)
         throw nplex_exception(uv_strerror(rc));
-}
-
-// TODO: Remove this testing code
-#define TEST_DELAY_BETWEEN_UPDATES_MS 1000
-void nplex::server_t::init_test(const config_t &)
-{
-    if (TEST_DELAY_BETWEEN_UPDATES_MS > 0)
-    {
-        uv_timer_t *timer = (uv_timer_t *) malloc(sizeof(uv_timer_t));
-        timer->data = this;
-        uv_timer_init(m_loop.get(), timer);
-        uv_timer_start(timer, [](uv_timer_t *x) {
-            auto server = (nplex::server_t *) x->data;
-            server->simule_submit();
-        }, TEST_DELAY_BETWEEN_UPDATES_MS, TEST_DELAY_BETWEEN_UPDATES_MS);
-    }
 }
 
 void nplex::server_t::init_network(const config_t &config)
@@ -270,56 +253,4 @@ void nplex::server_t::run() noexcept
 
     if (excp)
         std::rethrow_exception(excp);
-}
-
-// TODO: remove this test function
-void nplex::server_t::simule_submit()
-{
-    auto user = m_context->get_user("admin");
-    if (!user) {
-        SPDLOG_WARN("Admin user not found");
-        return;
-    }
-
-    // Create a valid SubmitRequest message
-    using namespace msgs;
-    flatbuffers::FlatBufferBuilder builder;
-
-    std::vector<flatbuffers::Offset<msgs::KeyValue>> upserts;
-    std::vector<flatbuffers::Offset<flatbuffers::String>> deletes;
-    std::vector<flatbuffers::Offset<flatbuffers::String>> ensures;
-
-    upserts.push_back(
-        CreateKeyValue(
-            builder, 
-            builder.CreateString("key1"), 
-            builder.CreateVector(reinterpret_cast<const uint8_t *>("value1"), 6)
-        )
-    );
-    upserts.push_back(
-        CreateKeyValue(
-            builder, 
-            builder.CreateString("key2"), 
-            builder.CreateVector(reinterpret_cast<const uint8_t *>("value2"), 6)
-        )
-    );
-
-    auto msg = CreateMessage(builder, 
-        MsgContent::SUBMIT_REQUEST, 
-        CreateSubmitRequest(builder, 
-            4,              // cid
-            m_context->last_persisted_rev(), // crev
-            1,              // type
-            builder.CreateVector(upserts),
-            builder.CreateVector(deletes),
-            builder.CreateVector(ensures),
-            true
-        ).Union()
-    );
-
-    builder.Finish(msg);
-
-    auto submit_req = flatbuffers::GetRoot<msgs::Message>(builder.GetBufferPointer())->content_as_SUBMIT_REQUEST();
-
-    m_context->try_commit(submit_req, *user);
 }

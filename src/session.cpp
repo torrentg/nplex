@@ -476,7 +476,7 @@ void nplex::session_t::send_updates(std::size_t cid, [[maybe_unused]] rev_t from
     m_sync_in_progress = false;
 }
 
-void nplex::session_t::push_changes(const std::span<const update_t> &updates, bool force)
+void nplex::session_t::push_changes(const std::span<const update_t> &updates, bool syncing)
 {
     if (is_closed() || m_updates_cid == 0 || updates.empty())
         return;
@@ -497,7 +497,12 @@ void nplex::session_t::push_changes(const std::span<const update_t> &updates, bo
 
             m_lrev = it->meta->rev;
 
-            builder.append(*it, m_user, (force && m_lrev == crev));
+            // Case syncing: we enforce a non-empty msg to allow the client to check for sync
+            bool c1 = (syncing && m_lrev == crev);
+            // Case synced: own commits are always notified, even when empty
+            bool c2 = (!syncing && it->meta->user.view() == m_user->name);
+
+            builder.append(*it, m_user, c1 || c2);
         }
 
         if (!builder.empty())
