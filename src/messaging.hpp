@@ -1,12 +1,17 @@
 #pragma once
 
+#include <array>
+#include <string>
 #include <uv.h>
 #include "common.hpp"
 #include "messages.hpp"
-#include "store.hpp"
-#include "user.hpp"
 
 namespace nplex {
+
+// Forward declarations
+class store_t;
+struct user_t;
+using user_ptr = std::shared_ptr<user_t>;
 
 /**
  * Network message format:
@@ -55,6 +60,31 @@ struct output_msg_t
 const msgs::Message * parse_network_msg(const char *ptr, size_t len);
 
 /**
+ * JSON functions (for debugging/info purposes).
+ * 
+ * We don't use the flatbuffers json features because we need:
+ *   - custom formatting options
+ *   - ad-hoc binary data printing
+ *   - hide password fields
+ */
+struct json_params_t
+{
+    enum class mode_e : uint8_t {
+        COMPACT = 0,
+        INDENT = 1
+    };
+
+    mode_e mode = mode_e::COMPACT;  // Output mode
+    std::uint32_t indent_size = 4;  // Number of spaces for indentation (if required)
+    std::uint32_t indent_curr = 0;  // Current indentation level (used internally for recursion)
+
+    json_params_t(mode_e m = mode_e::COMPACT) : mode(m) {}
+};
+
+void to_json(const msgs::KeyValue *kv, json_params_t &params, std::string &out);
+void to_json(const msgs::Update *msg, json_params_t &params, std::string &out);
+
+/**
  * Set the crev value in a serialized message.
  * This is a hack to bypass the flatbuffers immutability.
  * 
@@ -80,6 +110,9 @@ struct updates_builder_t
     flatbuffers::DetachedBuffer finish(uint64_t cid, rev_t crev);
 };
 
+/**
+ * Helper functions to create messages.
+ */
 flatbuffers::DetachedBuffer create_ping_msg(std::size_t cid, rev_t crev, const std::string &payload);
 flatbuffers::DetachedBuffer create_login_msg(std::size_t cid, msgs::LoginCode code, rev_t rev0 = 0, rev_t crev = 0, const user_ptr &user = nullptr);
 flatbuffers::DetachedBuffer create_keepalive_msg(rev_t crev);
@@ -87,7 +120,10 @@ flatbuffers::DetachedBuffer create_submit_msg(std::size_t cid, rev_t crev, msgs:
 flatbuffers::DetachedBuffer create_snapshot_msg(std::size_t cid, rev_t crev, rev_t rev0, bool accepted, const store_t &store, const user_ptr &user = nullptr);
 flatbuffers::DetachedBuffer create_updates_msg(std::size_t cid, rev_t crev, rev_t rev0, bool accepted);
 
+/**
+ * Functions used to write and read journal entries.
+ */
 flatbuffers::DetachedBuffer serialize_update(const update_t &update);
-update_dto_t deserialize_update(const msgs::Update *msg, const user_ptr &user = nullptr);
+update_dto_t deserialize_update(const msgs::Update *upd, const user_ptr &user = nullptr);
 
 } // namespace nplex

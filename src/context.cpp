@@ -147,11 +147,12 @@ nplex::context_t::context_t(uv_loop_t *loop, const config_t &config) : m_loop(lo
 
     auto path = std::filesystem::current_path();
 
-    m_journal = std::make_unique<ldb::journal_t>(path, JOURNAL_NAME, config.journal.check);
-    m_journal->set_fsync(config.journal.fsync);
+    int journal_flags = LDB_OPEN_CREATE | 
+                        (config.journal.check ? LDB_OPEN_CHECK : 0) | 
+                        (config.journal.fsync ? 0 : LDB_OPEN_FSYNC);
 
+    m_journal = std::make_unique<ldb::journal_t>(path, JOURNAL_NAME, journal_flags);
     m_storage = std::make_shared<storage_t>(*m_journal, path);
-
     m_journal_writer = std::make_unique<journal_writer>(*m_journal, config.journal);
 
     std::tie(m_rev_0, m_rev_w) = m_storage->get_revs_range();
@@ -377,7 +378,7 @@ std::tuple<nplex::msgs::SubmitCode, nplex::rev_t> nplex::context_t::try_commit(c
     }
 
     assert(m_store.rev() == update.meta->rev);
-    SPDLOG_DEBUG("Commit accepted: rev={}, user={}, type={}", update.meta->rev, update.meta->user.c_str(), update.meta->type);
+    SPDLOG_DEBUG("Commit accepted: rev={}, user={}, tx-type={}", update.meta->rev, update.meta->user.c_str(), update.meta->tx_type);
 
     auto erev = update.meta->rev;
     persist(std::move(update));

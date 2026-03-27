@@ -124,12 +124,19 @@ set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
 #    clang-tidy
 #)
 
-add_executable(
-    nplex
+add_library(
+    nplex_lib
+    STATIC
+)
+
+set_target_properties(
+    nplex_lib
+    PROPERTIES
+    OUTPUT_NAME nplex
 )
 
 target_sources(
-    nplex
+    nplex_lib
     PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/deps/ini.c
     ${CMAKE_CURRENT_LIST_DIR}/deps/journal.c
@@ -140,7 +147,6 @@ target_sources(
     ${CMAKE_CURRENT_LIST_DIR}/src/connection.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/context.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/journal_writer.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/src/main.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/messages.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/messaging.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/server.cpp
@@ -152,13 +158,29 @@ target_sources(
     ${CMAKE_CURRENT_LIST_DIR}/src/utils.cpp
 )
 
+add_executable(
+    nplex
+    ${CMAKE_CURRENT_LIST_DIR}/src/main.cpp
+)
+
+add_executable(
+    journalctl
+    ${CMAKE_CURRENT_LIST_DIR}/deps/journalctl.c
+)
+
 add_compile_definitions(
     SPDLOG_ACTIVE_LEVEL=0
     SPDLOG_FMT_EXTERNAL
 )
 
 target_include_directories(
-    nplex
+    nplex_lib
+    PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/deps
+)
+
+target_include_directories(
+    journalctl
     PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/deps
 )
@@ -177,7 +199,7 @@ set_source_files_properties(
 )
 
 target_link_libraries(
-    nplex
+    nplex_lib
     "$<$<STREQUAL:${ENABLE_SANITIZERS},ON>:-lasan>"
     "$<$<STREQUAL:${ENABLE_SANITIZERS},ON>:-lubsan>"
     "$<$<STREQUAL:${ENABLE_THREAD_SANITIZER},ON>:-ltsan>"
@@ -186,6 +208,18 @@ target_link_libraries(
     libuv::uv
     fmt::fmt
     flatbuffers::flatbuffers_shared
+)
+
+target_link_libraries(
+    nplex
+    PRIVATE
+    nplex_lib
+)
+
+target_link_libraries(
+    journalctl
+    PRIVATE
+    nplex_lib
 )
 
 #include(CTest)

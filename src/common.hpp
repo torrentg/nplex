@@ -57,7 +57,7 @@ struct meta_t
     rev_t rev;                      //!< Revision at transaction creation.
     gto::cstring user;              //!< Transaction creator.
     millis_t timestamp;             //!< Creation timestamp (milliseconds since Unix epoch, UTC).
-    std::uint32_t type;             //!< Transaction type (user-defined).
+    std::uint32_t tx_type;          //!< Transaction type (user-defined).
     std::set<key_t> refs;           //!< Set of keys modified by the transaction.
 };
 
@@ -85,7 +85,7 @@ class value_t
     rev_t rev() const { return (m_meta ? m_meta->rev : 0); }
     const gto::cstring & user() const { return (m_meta ? m_meta->user : EMPTY); }
     millis_t timestamp() const { return (m_meta ? m_meta->timestamp : millis_t{0}); }
-    std::uint32_t type() const { return (m_meta ? m_meta->type : 0); }
+    std::uint32_t tx_type() const { return (m_meta ? m_meta->tx_type : 0); }
 
     void set_removed() { m_data = REMOVED; }
     bool is_removed() const { return (m_data.c_str() == REMOVED.c_str()); }
@@ -103,7 +103,7 @@ struct update_dto_t {
     rev_t rev = 0;
     std::string user{};
     std::uint64_t timestamp = 0;
-    std::uint32_t type = 0;
+    std::uint32_t tx_type = 0;
     std::vector<std::pair<std::string, std::string>> upserts{};
     std::vector<std::string> deletes{};
 };

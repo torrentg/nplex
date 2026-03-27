@@ -9,6 +9,8 @@
 * Support multiple journals (rotate journal by size or time)
 * Save last snapshot used in store_t
 * Trace messages in json format
+* Set metadata in journal header (ex. format version, idl, etc)
+* Add metadata to snapshot files (ex. format version, idl, etc)
 
 ## Useful commands
 

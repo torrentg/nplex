@@ -18,6 +18,15 @@ std::uint32_t ntohl_ptr(const char *ptr);
 /**
  * Check if a key is valid.
  * 
+ * A valid key:
+ * - must not be empty, 
+ * - must not start with a space,
+ * - must not end with a space,
+ * - must not contain "//",
+ * - must not contain '\0' in the middle, 
+ * - must not contain control characters,
+ * - and must be valid UTF-8.
+ * 
  * @param[in] key Key to check.
  * 
  * @return true or false.

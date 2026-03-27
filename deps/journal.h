@@ -36,7 +36,7 @@ SOFTWARE.
  * A simple log-structured library.
  * 
  * Journal is essentially an append-only data file (*.dat) with an index file (*.idx) used to speed up lookups.
- * No complex data structures, no sofisticated algorithms, only basic file access.
+ * No complex data structures, no sophisticated algorithms, only basic file access.
  * We rely on the filesystem cache (managed by the operating system) to ensure read performance.
  * 
  * Main features:
@@ -49,7 +49,7 @@ SOFTWARE.
  *   - Allows reverting the last entries (rollback)
  *   - Allows removing obsolete entries (purge)
  *   - Supports read-write concurrency (multi-thread)
- *   - Automatic data recovery in case of catastrofic events
+ *   - Automatic data recovery in case of catastrophic events
  *   - Minimal memory footprint
  *   - No dependencies
  * 
@@ -128,21 +128,29 @@ SOFTWARE.
 #define LDB_ERR_MEM               -3
 #define LDB_ERR_PATH              -4
 #define LDB_ERR_NAME              -5
-#define LDB_ERR_OPEN_DAT          -6
-#define LDB_ERR_READ_DAT          -7
-#define LDB_ERR_WRITE_DAT         -8
-#define LDB_ERR_OPEN_IDX          -9
-#define LDB_ERR_READ_IDX         -10
-#define LDB_ERR_WRITE_IDX        -11
-#define LDB_ERR_FMT_DAT          -12
-#define LDB_ERR_FMT_IDX          -13
-#define LDB_ERR_ENTRY_SEQNUM     -14
-#define LDB_ERR_ENTRY_TIMESTAMP  -15
-#define LDB_ERR_ENTRY_DATA       -16
-#define LDB_ERR_NOT_FOUND        -17
-#define LDB_ERR_TMP_FILE         -18
-#define LDB_ERR_CHECKSUM         -19
-#define LDB_ERR_LOCK             -20
+#define LDB_ERR_FILE_NOT_FOUND    -6
+#define LDB_ERR_READONLY          -7
+#define LDB_ERR_OPEN_DAT          -8
+#define LDB_ERR_READ_DAT          -9
+#define LDB_ERR_WRITE_DAT         -10
+#define LDB_ERR_OPEN_IDX         -11
+#define LDB_ERR_READ_IDX         -12
+#define LDB_ERR_WRITE_IDX        -13
+#define LDB_ERR_FMT_DAT          -14
+#define LDB_ERR_FMT_IDX          -15
+#define LDB_ERR_ENTRY_SEQNUM     -16
+#define LDB_ERR_ENTRY_TIMESTAMP  -17
+#define LDB_ERR_ENTRY_DATA       -18
+#define LDB_ERR_NOT_FOUND        -19
+#define LDB_ERR_TMP_FILE         -20
+#define LDB_ERR_CHECKSUM         -21
+#define LDB_ERR_LOCK             -22
+
+#define LDB_OPEN_CREATE          (1 << 0)   // Create journal if it does not exist (default: false)
+#define LDB_OPEN_READONLY        (1 << 1)   // Open journal in read-only mode (default: false)
+#define LDB_OPEN_CHECK           (1 << 2)   // Check journal integrity (default: false)
+#define LDB_OPEN_REPAIR          (1 << 3)   // Repair journal if corrupted (default: false)
+#define LDB_OPEN_FSYNC           (1 << 4)   // Enable fsync after each write (default: false)
 
 #define LDB_METADATA_LEN          64
 
@@ -211,18 +219,16 @@ void ldb_free(ldb_journal_t *obj);
  * Updates the index file if incomplete (not flushed + crash).
  * Rebuilds the index file when corrupted or not found.
  * 
- * By default fsync flag is disabled. 
- * Use the function ldb_set_fsync() to set it to true.
- * 
  * @param[in,out] obj Uninitialized the journal object.
  * @param[in] path Directory where journal files are located.
- * @param[in] name Journal name (allowed characters: [a-ZA-Z0-9_], max length = 32).
- * @param[in] check Check journal files (true|false).
+ * @param[in] name Journal name (allowed characters: [a-zA-Z0-9_], max length = 32).
+ * @param[in] flags Open flags (0, LDB_OPEN_CREATE, LDB_OPEN_READONLY, LDB_OPEN_CHECK,
+ *                  LDB_OPEN_REPAIR, LDB_OPEN_FSYNC, or combination of them).
  * 
  * @return Error code (0 = OK). On error, the journal is closed properly (ldb_close not required).
  *         You can check the errno value to get additional error details.
  */
-int ldb_open(ldb_journal_t *obj, const char *path, const char *name, bool check);
+int ldb_open(ldb_journal_t *obj, const char *path, const char *name, int flags);
 
 /**
  * Closes a journal.
@@ -234,23 +240,6 @@ int ldb_open(ldb_journal_t *obj, const char *path, const char *name, bool check)
  * @return Return code (0 = OK).
  */
 int ldb_close(ldb_journal_t *obj);
-
-/**
- * Enables or disables the fsync mode for the journal.
- * 
- * By default fsync is disabled.
- * 
- * When fsync mode is enabled, all data written to the journal files is flushed to disk,
- * ensuring that changes are persisted in case of a system crash or power failure.
- * When fsync mode is disabled, data may not be immediately flushed to disk, which can
- * improve performance but at the risk of data loss in case of a crash.
- * 
- * @param[in] obj Journal to configure.
- * @param[in] fsync Mode to set (true=enable, false=disable).
- * 
- * @return Error code (0 = OK).
- */
-int ldb_set_fsync(ldb_journal_t *obj, bool fsync);
 
 /**
  * Access to journal metadata.
@@ -437,14 +426,14 @@ class journal_t
 
     journal_t() = default;
 
-    journal_t(const std::filesystem::path &path, const std::string &name, bool check = true)
+    journal_t(const std::filesystem::path &path, const std::string &name, int flags = LDB_OPEN_CREATE)
     {
         m_journal = ldb_alloc();
 
         if (!m_journal)
             throw std::bad_alloc();
 
-        int rc = ldb_open(m_journal, path.c_str(), name.c_str(), check);
+        int rc = ldb_open(m_journal, path.c_str(), name.c_str(), flags);
 
         if (rc != LDB_OK) {
             ldb_free(m_journal);
@@ -476,10 +465,6 @@ class journal_t
     friend void swap(journal_t& first, journal_t& second) noexcept {
         using std::swap;
         swap(first.m_journal, second.m_journal);
-    }
-
-    int set_fsync(bool enable) {
-        return ldb_set_fsync(m_journal, enable);
     }
 
     int set_meta(const char *meta, size_t len) {

@@ -358,7 +358,7 @@ struct Update FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_REV = 4,
     VT_USER = 6,
     VT_TIMESTAMP = 8,
-    VT_TYPE = 10,
+    VT_TX_TYPE = 10,
     VT_UPSERTS = 12,
     VT_DELETES = 14
   };
@@ -371,8 +371,8 @@ struct Update FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   uint64_t timestamp() const {
     return GetField<uint64_t>(VT_TIMESTAMP, 0);
   }
-  uint32_t type() const {
-    return GetField<uint32_t>(VT_TYPE, 0);
+  uint32_t tx_type() const {
+    return GetField<uint32_t>(VT_TX_TYPE, 0);
   }
   const ::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::KeyValue>> *upserts() const {
     return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::KeyValue>> *>(VT_UPSERTS);
@@ -386,7 +386,7 @@ struct Update FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            VerifyOffsetRequired(verifier, VT_USER) &&
            verifier.VerifyString(user()) &&
            VerifyField<uint64_t>(verifier, VT_TIMESTAMP, 8) &&
-           VerifyField<uint32_t>(verifier, VT_TYPE, 4) &&
+           VerifyField<uint32_t>(verifier, VT_TX_TYPE, 4) &&
            VerifyOffset(verifier, VT_UPSERTS) &&
            verifier.VerifyVector(upserts()) &&
            verifier.VerifyVectorOfTables(upserts()) &&
@@ -410,8 +410,8 @@ struct UpdateBuilder {
   void add_timestamp(uint64_t timestamp) {
     fbb_.AddElement<uint64_t>(Update::VT_TIMESTAMP, timestamp, 0);
   }
-  void add_type(uint32_t type) {
-    fbb_.AddElement<uint32_t>(Update::VT_TYPE, type, 0);
+  void add_tx_type(uint32_t tx_type) {
+    fbb_.AddElement<uint32_t>(Update::VT_TX_TYPE, tx_type, 0);
   }
   void add_upserts(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::KeyValue>>> upserts) {
     fbb_.AddOffset(Update::VT_UPSERTS, upserts);
@@ -436,7 +436,7 @@ inline ::flatbuffers::Offset<Update> CreateUpdate(
     uint64_t rev = 0,
     ::flatbuffers::Offset<::flatbuffers::String> user = 0,
     uint64_t timestamp = 0,
-    uint32_t type = 0,
+    uint32_t tx_type = 0,
     ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::KeyValue>>> upserts = 0,
     ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>>> deletes = 0) {
   UpdateBuilder builder_(_fbb);
@@ -444,7 +444,7 @@ inline ::flatbuffers::Offset<Update> CreateUpdate(
   builder_.add_rev(rev);
   builder_.add_deletes(deletes);
   builder_.add_upserts(upserts);
-  builder_.add_type(type);
+  builder_.add_tx_type(tx_type);
   builder_.add_user(user);
   return builder_.Finish();
 }
@@ -459,7 +459,7 @@ inline ::flatbuffers::Offset<Update> CreateUpdateDirect(
     uint64_t rev = 0,
     const char *user = nullptr,
     uint64_t timestamp = 0,
-    uint32_t type = 0,
+    uint32_t tx_type = 0,
     const std::vector<::flatbuffers::Offset<nplex::msgs::KeyValue>> *upserts = nullptr,
     const std::vector<::flatbuffers::Offset<::flatbuffers::String>> *deletes = nullptr) {
   auto user__ = user ? _fbb.CreateString(user) : 0;
@@ -470,7 +470,7 @@ inline ::flatbuffers::Offset<Update> CreateUpdateDirect(
       rev,
       user__,
       timestamp,
-      type,
+      tx_type,
       upserts__,
       deletes__);
 }
@@ -1359,7 +1359,7 @@ struct SubmitRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_CID = 4,
     VT_CREV = 6,
-    VT_TYPE = 8,
+    VT_TX_TYPE = 8,
     VT_UPSERTS = 10,
     VT_DELETES = 12,
     VT_ENSURES = 14,
@@ -1371,8 +1371,8 @@ struct SubmitRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   uint64_t crev() const {
     return GetField<uint64_t>(VT_CREV, 0);
   }
-  uint32_t type() const {
-    return GetField<uint32_t>(VT_TYPE, 0);
+  uint32_t tx_type() const {
+    return GetField<uint32_t>(VT_TX_TYPE, 0);
   }
   const ::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::KeyValue>> *upserts() const {
     return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::KeyValue>> *>(VT_UPSERTS);
@@ -1390,7 +1390,7 @@ struct SubmitRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     return VerifyTableStart(verifier) &&
            VerifyField<uint64_t>(verifier, VT_CID, 8) &&
            VerifyField<uint64_t>(verifier, VT_CREV, 8) &&
-           VerifyField<uint32_t>(verifier, VT_TYPE, 4) &&
+           VerifyField<uint32_t>(verifier, VT_TX_TYPE, 4) &&
            VerifyOffset(verifier, VT_UPSERTS) &&
            verifier.VerifyVector(upserts()) &&
            verifier.VerifyVectorOfTables(upserts()) &&
@@ -1415,8 +1415,8 @@ struct SubmitRequestBuilder {
   void add_crev(uint64_t crev) {
     fbb_.AddElement<uint64_t>(SubmitRequest::VT_CREV, crev, 0);
   }
-  void add_type(uint32_t type) {
-    fbb_.AddElement<uint32_t>(SubmitRequest::VT_TYPE, type, 0);
+  void add_tx_type(uint32_t tx_type) {
+    fbb_.AddElement<uint32_t>(SubmitRequest::VT_TX_TYPE, tx_type, 0);
   }
   void add_upserts(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::KeyValue>>> upserts) {
     fbb_.AddOffset(SubmitRequest::VT_UPSERTS, upserts);
@@ -1445,7 +1445,7 @@ inline ::flatbuffers::Offset<SubmitRequest> CreateSubmitRequest(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     uint64_t cid = 0,
     uint64_t crev = 0,
-    uint32_t type = 0,
+    uint32_t tx_type = 0,
     ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::KeyValue>>> upserts = 0,
     ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>>> deletes = 0,
     ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>>> ensures = 0,
@@ -1456,7 +1456,7 @@ inline ::flatbuffers::Offset<SubmitRequest> CreateSubmitRequest(
   builder_.add_ensures(ensures);
   builder_.add_deletes(deletes);
   builder_.add_upserts(upserts);
-  builder_.add_type(type);
+  builder_.add_tx_type(tx_type);
   builder_.add_force(force);
   return builder_.Finish();
 }
@@ -1470,7 +1470,7 @@ inline ::flatbuffers::Offset<SubmitRequest> CreateSubmitRequestDirect(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     uint64_t cid = 0,
     uint64_t crev = 0,
-    uint32_t type = 0,
+    uint32_t tx_type = 0,
     const std::vector<::flatbuffers::Offset<nplex::msgs::KeyValue>> *upserts = nullptr,
     const std::vector<::flatbuffers::Offset<::flatbuffers::String>> *deletes = nullptr,
     const std::vector<::flatbuffers::Offset<::flatbuffers::String>> *ensures = nullptr,
@@ -1482,7 +1482,7 @@ inline ::flatbuffers::Offset<SubmitRequest> CreateSubmitRequestDirect(
       _fbb,
       cid,
       crev,
-      type,
+      tx_type,
       upserts__,
       deletes__,
       ensures__,

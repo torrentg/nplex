@@ -44,7 +44,7 @@ table Update
     rev: uint64;                    // Commit revision
     user: string (required);        // Creator
     timestamp: uint64;              // Timestamp
-    type: uint32;                   // Transaction type (user-defined value)
+    tx_type: uint32;                // Transaction type (user-defined value)
     upserts: [KeyValue];            // List of creates and updates
     deletes: [string];              // List of deletes
 }
@@ -136,7 +136,7 @@ table SubmitRequest
 {
     cid: uint64;                    // Correlation id (used to match responses to requests)
     crev: uint64;                   // Client current revision (used to grant serialization)
-    type: uint32 = 0;               // Transaction type (user-defined value)
+    tx_type: uint32 = 0;            // Transaction type (user-defined value)
     upserts: [KeyValue];            // List of updates and inserts
     deletes: [string];              // List of deletes
     ensures: [string];              // List of ensures

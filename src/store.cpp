@@ -275,7 +275,7 @@ nplex::update_t nplex::store_t::validate_update(const msgs::Update *msg, const u
     if (pending_upserts.empty() && pending_deletes.empty())
         return update;
 
-    auto meta = create_meta(urev, msg->user()->c_str(), msg->type(), millis_t{msg->timestamp()});
+    auto meta = create_meta(urev, msg->user()->c_str(), msg->tx_type(), millis_t{msg->timestamp()});
     update.meta = meta;
 
     update.upserts.reserve(pending_upserts.size());
@@ -449,7 +449,7 @@ nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_t &user, cons
     // Data validated - filling update
     using namespace std::chrono;
     millis_t timestamp = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
-    auto meta = create_meta(m_rev + 1, user.name.c_str(), msg->type(), timestamp);
+    auto meta = create_meta(m_rev + 1, user.name.c_str(), msg->tx_type(), timestamp);
 
     update.meta = meta;
     update.upserts.clear();
@@ -604,7 +604,7 @@ flatbuffers::Offset<nplex::msgs::Snapshot> nplex::store_t::serialize(flatbuffers
             static_cast<std::uint64_t>(mrev),
             builder.CreateString(meta->user),
             static_cast<std::uint64_t>(meta->timestamp.count()),
-            static_cast<std::uint32_t>(meta->type),
+            static_cast<std::uint32_t>(meta->tx_type),
             builder.CreateVector(upserts)
         );
 
