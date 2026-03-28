@@ -83,6 +83,7 @@ struct json_params_t
 
 void to_json(const msgs::KeyValue *kv, json_params_t &params, std::string &out);
 void to_json(const msgs::Update *msg, json_params_t &params, std::string &out);
+void to_json(const msgs::Snapshot *snp, json_params_t &params, std::string &out);
 
 /**
  * Set the crev value in a serialized message.

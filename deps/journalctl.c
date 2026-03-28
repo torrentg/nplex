@@ -24,7 +24,7 @@
 
 #define MIN(a,b) (((a) < (b)) ? (a) : (b))
 
-void print_entry(FILE *out, const ldb_entry_t *entry);
+void print_journal_entry(FILE *out, const ldb_entry_t *entry);
 
 // Hack to access internal journal info
 typedef struct journal_header_t {
@@ -65,7 +65,7 @@ typedef struct params_t {
 static void print_help(FILE *out)
 {
     fprintf(out,
-        "%s - journal maintenance tool\n"
+        "%s - nplex journal maintenance tool\n"
         "\n"
         "Usage:\n"
         "  %s -h\n"
@@ -298,7 +298,7 @@ static int cmd_bulk(const params_t *params)
 
     while (seq <= to_seq)
     {
-        size_t want = MIN(MAX_ENTRIES, (size_t)(to_seq - seq + 1));
+        size_t want = MIN(MAX_ENTRIES, to_seq - seq + 1);
         size_t num = 0;
 
         if ((rc = ldb_read(journal, seq, entries, want, buf, buf_len, &num)) != LDB_OK)
@@ -328,7 +328,7 @@ static int cmd_bulk(const params_t *params)
         }
 
         for (size_t i = 0; i < num; i++)
-            print_entry(stdout, &entries[i]);
+            print_journal_entry(stdout, &entries[i]);
 
         // set next seqnum to read
         seq = entries[num - 1].seqnum + 1;
@@ -367,8 +367,8 @@ static int cmd_purge(const params_t *params)
 
     seq = (params->have_num ? stats.min_seqnum + params->num : params->seq);
 
-    if ((rc = ldb_purge(journal, seq)) < 0)
-        exit_function(EXIT_FAILURE, "%s", ldb_strerror((int)rc));
+    if ((rc = (int) ldb_purge(journal, seq)) < 0)
+        exit_function(EXIT_FAILURE, "%s", ldb_strerror(rc));
 
     printf("Removed entries: %d\n", rc);
 
@@ -404,8 +404,8 @@ static int cmd_rollback(const params_t *params)
 
     seq = (params->have_num ? (stats.max_seqnum >= params->num ? stats.max_seqnum - params->num : 0) : params->seq);
 
-    if ((rc = ldb_rollback(journal, seq)) < 0)
-        exit_function(EXIT_FAILURE, "%s", ldb_strerror((int)rc));
+    if ((rc = (int) ldb_rollback(journal, seq)) < 0)
+        exit_function(EXIT_FAILURE, "%s", ldb_strerror(rc));
 
     printf("Removed entries: %d\n", rc);
 
@@ -598,7 +598,7 @@ int main(int argc, char **argv)
 }
 
 #ifdef USE_DEFAULTS
-void print_entry(FILE *out, const ldb_entry_t *entry)
+void print_journal_entry(FILE *out, const ldb_entry_t *entry)
 {
     char ts[64] = {0};
 

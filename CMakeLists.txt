@@ -168,6 +168,11 @@ add_executable(
     ${CMAKE_CURRENT_LIST_DIR}/deps/journalctl.c
 )
 
+add_executable(
+    snpbulk
+    ${CMAKE_CURRENT_LIST_DIR}/examples/snpbulk.c
+)
+
 add_compile_definitions(
     SPDLOG_ACTIVE_LEVEL=0
     SPDLOG_FMT_EXTERNAL
@@ -218,6 +223,12 @@ target_link_libraries(
 
 target_link_libraries(
     journalctl
+    PRIVATE
+    nplex_lib
+)
+
+target_link_libraries(
+    snpbulk
     PRIVATE
     nplex_lib
 )

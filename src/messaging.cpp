@@ -569,8 +569,10 @@ void nplex::to_json(const msgs::Update *upd, json_params_t &params, std::string 
         json_append_text("deletes", out);
         out += ":" + space + "[" + line_break;
 
+        params.indent_curr += params.indent_size;
+
         size_t len = static_cast<size_t>(upd->deletes()->size());
-        
+
         for (size_t i = 0; i < len; ++i)
         {
             const auto &key = upd->deletes()->Get(i);
@@ -585,11 +587,64 @@ void nplex::to_json(const msgs::Update *upd, json_params_t &params, std::string 
             out += line_break;
         }
 
+        params.indent_curr -= params.indent_size;
+
         out += indent1 + indent2 + "]";
     }
 
     out += line_break;
+    params.indent_curr -= params.indent_size;
+    out += indent1;
+    out += "}";
+}
 
+void nplex::to_json(const msgs::Snapshot *snp, json_params_t &params, std::string &out)
+{
+    assert(snp);
+
+    std::string space = (params.mode == json_params_t::mode_e::INDENT ? " " : "");
+    std::string indent1 = (params.mode == json_params_t::mode_e::INDENT ? std::string(params.indent_curr, ' ') : "");
+    std::string indent2 = (params.mode == json_params_t::mode_e::INDENT ? std::string(params.indent_size, ' ') : "");
+    std::string line_break = (params.mode == json_params_t::mode_e::INDENT ? "\n" : "");
+
+    out += "{" + line_break;
+    params.indent_curr += params.indent_size;
+
+    out += indent1 + indent2;
+    json_append_text("rev", out);
+    out += ":" + space;
+    json_append_text(std::to_string(snp->rev()), out);
+
+    if (snp->updates())
+    {
+        out += "," + line_break;
+
+        out += indent1 + indent2;
+        json_append_text("updates", out);
+        out += ":" + space + "[" + line_break;
+
+        params.indent_curr += params.indent_size;
+
+        auto updates = snp->updates();
+        auto len = updates->size();
+
+        for (flatbuffers::uoffset_t i = 0; i < len; i++)
+        {
+            out += indent1 + indent2 + indent2;
+            to_json(updates->Get(i), params, out);
+
+            if (i < len - 1)
+                out += ",";
+
+            out += line_break;
+        }
+
+        params.indent_curr -= params.indent_size;
+
+        out += indent1 + indent2 + "]";
+    }
+
+    out += line_break;
     params.indent_curr -= params.indent_size;
     out += indent1;
     out += "}";
@@ -601,7 +656,7 @@ void nplex::to_json(const msgs::Update *upd, json_params_t &params, std::string 
  * @param out File stream to write the output to.
  * @param entry Journal entry to print.
  */
-extern "C" void print_entry(FILE *out, const ldb_entry_t *entry)
+extern "C" void print_journal_entry(FILE *out, const ldb_entry_t *entry)
 {
     auto verifier = flatbuffers::Verifier(reinterpret_cast<const std::uint8_t *>(entry->data), entry->data_len);
 
@@ -615,6 +670,32 @@ extern "C" void print_entry(FILE *out, const ldb_entry_t *entry)
     std::string str;
     nplex::json_params_t json_params(nplex::json_params_t::mode_e::COMPACT);
     nplex::to_json(update, json_params, str);
+
+    fprintf(out, "%s\n", str.c_str());
+}
+
+/**
+ * Function used to print a snapshot.
+ * 
+ * @param out File stream to write the output to.
+ * @param data Pointer to the snapshot data.
+ * @param len Length of the snapshot data.
+ * @param mode JSON output mode ('c' for compact, 'i' for indented).
+ */
+extern "C" void print_snapshot(FILE *out, const char *data, size_t len, char mode)
+{
+    auto verifier = flatbuffers::Verifier(reinterpret_cast<const std::uint8_t *>(data), len);
+
+    if (!verifier.VerifyBuffer<nplex::msgs::Snapshot>(nullptr)) {
+        fprintf(out, "<invalid snapshot>\n");
+        return;
+    }
+
+    auto snapshot = flatbuffers::GetRoot<nplex::msgs::Snapshot>(data);
+
+    std::string str;
+    nplex::json_params_t json_params(mode == 'c' ? nplex::json_params_t::mode_e::COMPACT : nplex::json_params_t::mode_e::INDENT);
+    nplex::to_json(snapshot, json_params, str);
 
     fprintf(out, "%s\n", str.c_str());
 }
