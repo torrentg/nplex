@@ -170,8 +170,8 @@ void nplex::session_t::process_login_request(const msgs::LoginRequest *req)
         return;
     }
 
-    auto user = m_context->get_user(req->user()->str());
-    if (!user) {
+    auto usr = m_context->get_user(req->user()->str());
+    if (!usr) {
         send(
             create_login_msg(
                 req->cid(), 
@@ -182,7 +182,7 @@ void nplex::session_t::process_login_request(const msgs::LoginRequest *req)
         return;
     }
 
-    if (user->password != req->password()->str()) {
+    if (usr->password != req->password()->str()) {
         send(
             create_login_msg(
                 req->cid(), 
@@ -193,7 +193,7 @@ void nplex::session_t::process_login_request(const msgs::LoginRequest *req)
         return;
     }
 
-    if (user->params.max_connections && user->num_connections >= user->params.max_connections) {
+    if (usr->params.max_connections && usr->num_connections >= usr->params.max_connections) {
         send(
             create_login_msg(
                 req->cid(), 
@@ -204,7 +204,7 @@ void nplex::session_t::process_login_request(const msgs::LoginRequest *req)
         return;
     }
 
-    m_user = user;
+    m_user = usr;
     m_user->num_connections++;
     m_id = fmt::format("{}@{}", m_user->name, m_con.addr().str());
     m_con.config(m_user->params.connection);

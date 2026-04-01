@@ -325,18 +325,18 @@ flatbuffers::DetachedBuffer nplex::serialize_update(const update_t &update)
     return builder.Release();
 }
 
-nplex::update_dto_t nplex::deserialize_update(const Update *msg, const user_ptr &user)
+nplex::update_dto_t nplex::deserialize_update(const Update *upd, const user_ptr &user)
 {
     update_dto_t update;
 
-    update.rev = msg->rev();
-    update.user = msg->user()->c_str();
-    update.timestamp = msg->timestamp();
-    update.tx_type = msg->tx_type();
+    update.rev = upd->rev();
+    update.user = upd->user()->c_str();
+    update.timestamp = upd->timestamp();
+    update.tx_type = upd->tx_type();
 
-    if (msg->upserts())
+    if (upd->upserts())
     {
-        for (const auto &kv : *msg->upserts())
+        for (const auto &kv : *upd->upserts())
         {
             if (!kv || !kv->key() || !kv->key()->c_str() || !kv->value())
                 continue;
@@ -351,9 +351,9 @@ nplex::update_dto_t nplex::deserialize_update(const Update *msg, const user_ptr 
         }
     }
 
-    if (msg->deletes())
+    if (upd->deletes())
     {
-        for (const auto &key : *msg->deletes())
+        for (const auto &key : *upd->deletes())
         {
             if (!key || !key->c_str())
                 continue;
@@ -577,7 +577,8 @@ void nplex::to_json(const msgs::Update *upd, json_params_t &params, std::string 
         {
             const auto &key = upd->deletes()->Get(i);
 
-            out += indent1 + indent2 + indent2;
+            out += indent1 + indent2;
+            out += indent2;
 
             json_append_text(key->c_str(), out);
 
@@ -630,7 +631,9 @@ void nplex::to_json(const msgs::Snapshot *snp, json_params_t &params, std::strin
 
         for (flatbuffers::uoffset_t i = 0; i < len; i++)
         {
-            out += indent1 + indent2 + indent2;
+            out += indent1 + indent2;
+            out += indent2;
+
             to_json(updates->Get(i), params, out);
 
             if (i < len - 1)

@@ -47,7 +47,7 @@ static void help()
     "  -D DATADIR       Database directory.\n"
     "  -a HOST:PORT     Address to listen on (ex: localhost:14022).\n"
     "  -l LOGLEVEL      Log level (trace, debug, info, warning, error).\n"
-    "  -c               Check journal files at startup.\n"
+    "  -c               Check journal file at startup.\n"
     "  -d               Run the program as a daemon.\n"
     "  -F               Turn fsync off.\n"
     "  -V, --version    Output version information, then exit.\n"

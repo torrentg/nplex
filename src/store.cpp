@@ -269,26 +269,26 @@ nplex::update_t nplex::store_t::validate_update(const msgs::Update *msg, const u
         }
     }
 
-    update_t update;
+    update_t ret;
 
     // No visible modifications for this user -> return empty update
     if (pending_upserts.empty() && pending_deletes.empty())
-        return update;
+        return ret;
 
     auto meta = create_meta(urev, msg->user()->c_str(), msg->tx_type(), millis_t{msg->timestamp()});
-    update.meta = meta;
+    ret.meta = meta;
 
-    update.upserts.reserve(pending_upserts.size());
+    ret.upserts.reserve(pending_upserts.size());
 
     for (auto &pu : pending_upserts)
     {
         auto value = std::make_shared<value_t>(pu.data, meta);
-        update.upserts.emplace_back(pu.key, std::move(value));
+        ret.upserts.emplace_back(pu.key, std::move(value));
     }
 
-    update.deletes = std::move(pending_deletes);
+    ret.deletes = std::move(pending_deletes);
 
-    return update;
+    return ret;
 }
 
 nplex::msgs::SubmitCode nplex::store_t::try_commit(const user_t &user, const msgs::SubmitRequest *msg, update_t &update)

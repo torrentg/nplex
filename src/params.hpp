@@ -34,7 +34,7 @@ struct user_params_t
 
 struct journal_params_t
 {
-    bool check = false;                             // Check journal files at startup.
+    bool check = false;                             // Check journal file at startup.
     bool fsync = true;                              // Enable/disable fsync for write updates.
     std::uint32_t write_queue_max_entries = 0;      // Maximum entries pending to be written (0 = unlimited).
     std::uint32_t write_queue_max_bytes = 0;        // Maximum bytes pending to be written (0 = unlimited).
