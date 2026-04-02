@@ -671,7 +671,7 @@ extern "C" void print_journal_entry(FILE *out, const ldb_entry_t *entry)
     auto update = flatbuffers::GetRoot<nplex::msgs::Update>(entry->data);
 
     std::string str;
-    nplex::json_params_t json_params(nplex::json_params_t::mode_e::COMPACT);
+    nplex::json_params_t json_params(nplex::json_params_t::mode_e::INDENT);
     nplex::to_json(update, json_params, str);
 
     fprintf(out, "%s\n", str.c_str());

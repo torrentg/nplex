@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 
 project(
     nplex
-    VERSION 0.1.0
+    VERSION 0.5.0
     LANGUAGES C CXX
 )
 
@@ -39,6 +39,29 @@ find_package(
     spdlog 1.8 REQUIRED
 )
 
+# Generate version.hpp from the project version
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/version.hpp.in
+    ${CMAKE_CURRENT_BINARY_DIR}/version.hpp
+    @ONLY
+)
+
+# Copy version.hpp to src directory
+add_custom_command(
+    OUTPUT "${PROJECT_SOURCE_DIR}/src/version.hpp"
+    COMMAND ${CMAKE_COMMAND} -E copy
+        "${CMAKE_CURRENT_BINARY_DIR}/version.hpp"
+        "${PROJECT_SOURCE_DIR}/src/version.hpp"
+    DEPENDS 
+        "${CMAKE_CURRENT_BINARY_DIR}/version.hpp"
+    COMMENT "Copying generated version.hpp to src directory"
+)
+
+# Ensure version.hpp is copied before building nplex_lib
+add_custom_target(copy_version ALL
+    DEPENDS "${PROJECT_SOURCE_DIR}/src/version.hpp"
+)
+
 # Create messages_generated.hpp from schema (src/messages.fbs)
 flatbuffers_generate_headers(
     TARGET flatbuffers_generated
@@ -56,6 +79,11 @@ add_custom_command(
         GENERATE_flatbuffers_generated
         ${PROJECT_SOURCE_DIR}/src/messages.fbs
     COMMENT "Copying generated messages.hpp to src directory"
+)
+
+# Ensure messages.hpp is copied before building nplex_lib
+add_custom_target(copy_messages ALL
+    DEPENDS "${PROJECT_SOURCE_DIR}/src/messages.hpp"
 )
 
 add_compile_options(
@@ -127,6 +155,12 @@ set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
 add_library(
     nplex_lib
     STATIC
+)
+
+add_dependencies(
+    nplex_lib
+    copy_version
+    copy_messages
 )
 
 set_target_properties(
