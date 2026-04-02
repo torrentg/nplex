@@ -9,7 +9,7 @@
 #include "cstring.hpp"
 
 #define PROJECT_NAME            "nplex"
-#define PROJECT_VERSION         "0.1.0"
+#define PROJECT_VERSION         "0.5.0"
 #define PROJECT_URL             "https://github.com/torrentg/nplex"
 
 #define API_VERSION             10

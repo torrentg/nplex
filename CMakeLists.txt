@@ -170,7 +170,7 @@ add_executable(
 
 add_executable(
     snpbulk
-    ${CMAKE_CURRENT_LIST_DIR}/examples/snpbulk.c
+    ${CMAKE_CURRENT_LIST_DIR}/src/snpbulk.c
 )
 
 add_compile_definitions(
@@ -232,7 +232,3 @@ target_link_libraries(
     PRIVATE
     nplex_lib
 )
-
-#include(CTest)
-#enable_testing()
-#add_subdirectory(test)

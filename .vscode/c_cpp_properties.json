@@ -3,7 +3,6 @@
         {
             "name": "Linux",
             "includePath": [
-                "${workspaceFolder}/include",
                 "${workspaceFolder}/deps",
                 "${workspaceFolder}/src"
             ],
@@ -26,8 +25,6 @@
             ],
             "browse": {
                 "path": [
-                    "${workspaceFolder}/include",
-                    "${workspaceFolder}/test",
                     "${workspaceFolder}/deps",
                     "${workspaceFolder}/src"
                 ],
