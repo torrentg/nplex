@@ -7,12 +7,10 @@
 #include <string>
 #include <chrono>
 #include "cstring.hpp"
-#include "version.hpp"
+#include "buildinfo.hpp"
 
 #define PROJECT_NAME            "nplex"
 #define PROJECT_URL             "https://github.com/torrentg/nplex"
-
-#define API_VERSION             10
 
 #define CONFIG_FILENAME         "nplex.ini"
 #define LOG_FILENAME            "nplex.log"
@@ -34,7 +32,7 @@
 #define ERR_USR_INVL_PWD        1006
 #define ERR_USR_MAX_CONN        1007
 #define ERR_MAX_CONN            1008
-#define ERR_API_VERSION         1009
+#define ERR_FBS_HASH            1009
 #define ERR_CONNECTION_LOST     1010
 #define ERR_UNACK               1011
 

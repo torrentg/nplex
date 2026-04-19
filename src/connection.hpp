@@ -20,6 +20,7 @@ class session_t;
 struct connection_stats_t
 {
     millis_t time0{0};                              // Timestamp connection was established (UTC millis since epoch)
+    millis_t time1{0};                              // Timestamp connection was closed (UTC millis since epoch)
     std::size_t unack_msgs = 0;                     // Number of msgs in the output queue
     std::size_t unack_bytes = 0;                    // Number of bytes in the output queue
     std::size_t recv_msgs = 0;                      // Total received messages

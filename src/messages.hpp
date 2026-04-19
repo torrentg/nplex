@@ -28,6 +28,9 @@ struct SnapshotBuilder;
 struct Acl;
 struct AclBuilder;
 
+struct Session;
+struct SessionBuilder;
+
 struct LoginRequest;
 struct LoginRequestBuilder;
 
@@ -61,6 +64,15 @@ struct SubmitRequestBuilder;
 struct SubmitResponse;
 struct SubmitResponseBuilder;
 
+struct SessionsRequest;
+struct SessionsRequestBuilder;
+
+struct SessionsResponse;
+struct SessionsResponseBuilder;
+
+struct SessionsPush;
+struct SessionsPushBuilder;
+
 struct KeepAlivePush;
 struct KeepAlivePushBuilder;
 
@@ -71,9 +83,9 @@ enum class LoginCode : int8_t {
   AUTHORIZED = 0,
   INVALID_CREDENTIALS = 1,
   TOO_MANY_CONNECTIONS = 2,
-  UNSUPPORTED_API_VERSION = 3,
+  UNSUPPORTED_SCHEMA = 3,
   MIN = AUTHORIZED,
-  MAX = UNSUPPORTED_API_VERSION
+  MAX = UNSUPPORTED_SCHEMA
 };
 
 inline const LoginCode (&EnumValuesLoginCode())[4] {
@@ -81,7 +93,7 @@ inline const LoginCode (&EnumValuesLoginCode())[4] {
     LoginCode::AUTHORIZED,
     LoginCode::INVALID_CREDENTIALS,
     LoginCode::TOO_MANY_CONNECTIONS,
-    LoginCode::UNSUPPORTED_API_VERSION
+    LoginCode::UNSUPPORTED_SCHEMA
   };
   return values;
 }
@@ -91,14 +103,14 @@ inline const char * const *EnumNamesLoginCode() {
     "AUTHORIZED",
     "INVALID_CREDENTIALS",
     "TOO_MANY_CONNECTIONS",
-    "UNSUPPORTED_API_VERSION",
+    "UNSUPPORTED_SCHEMA",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameLoginCode(LoginCode e) {
-  if (::flatbuffers::IsOutRange(e, LoginCode::AUTHORIZED, LoginCode::UNSUPPORTED_API_VERSION)) return "";
+  if (::flatbuffers::IsOutRange(e, LoginCode::AUTHORIZED, LoginCode::UNSUPPORTED_SCHEMA)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesLoginCode()[index];
 }
@@ -160,6 +172,48 @@ inline const char *EnumNameSubmitCode(SubmitCode e) {
   return EnumNamesSubmitCode()[index];
 }
 
+enum class ExitCode : int8_t {
+  CONNECTED = 0,
+  CLOSED_BY_SERVER = 1,
+  CLOSED_BY_USER = 2,
+  COMM_ERROR = 3,
+  CON_LOST = 4,
+  EXCD_LIMITS = 5,
+  MIN = CONNECTED,
+  MAX = EXCD_LIMITS
+};
+
+inline const ExitCode (&EnumValuesExitCode())[6] {
+  static const ExitCode values[] = {
+    ExitCode::CONNECTED,
+    ExitCode::CLOSED_BY_SERVER,
+    ExitCode::CLOSED_BY_USER,
+    ExitCode::COMM_ERROR,
+    ExitCode::CON_LOST,
+    ExitCode::EXCD_LIMITS
+  };
+  return values;
+}
+
+inline const char * const *EnumNamesExitCode() {
+  static const char * const names[7] = {
+    "CONNECTED",
+    "CLOSED_BY_SERVER",
+    "CLOSED_BY_USER",
+    "COMM_ERROR",
+    "CON_LOST",
+    "EXCD_LIMITS",
+    nullptr
+  };
+  return names;
+}
+
+inline const char *EnumNameExitCode(ExitCode e) {
+  if (::flatbuffers::IsOutRange(e, ExitCode::CONNECTED, ExitCode::EXCD_LIMITS)) return "";
+  const size_t index = static_cast<size_t>(e);
+  return EnumNamesExitCode()[index];
+}
+
 enum class MsgContent : uint8_t {
   NONE = 0,
   PING_REQUEST = 1,
@@ -173,12 +227,15 @@ enum class MsgContent : uint8_t {
   UPDATES_REQUEST = 9,
   UPDATES_RESPONSE = 10,
   UPDATES_PUSH = 11,
-  KEEPALIVE_PUSH = 12,
+  SESSIONS_REQUEST = 12,
+  SESSIONS_RESPONSE = 13,
+  SESSIONS_PUSH = 14,
+  KEEPALIVE_PUSH = 15,
   MIN = NONE,
   MAX = KEEPALIVE_PUSH
 };
 
-inline const MsgContent (&EnumValuesMsgContent())[13] {
+inline const MsgContent (&EnumValuesMsgContent())[16] {
   static const MsgContent values[] = {
     MsgContent::NONE,
     MsgContent::PING_REQUEST,
@@ -192,13 +249,16 @@ inline const MsgContent (&EnumValuesMsgContent())[13] {
     MsgContent::UPDATES_REQUEST,
     MsgContent::UPDATES_RESPONSE,
     MsgContent::UPDATES_PUSH,
+    MsgContent::SESSIONS_REQUEST,
+    MsgContent::SESSIONS_RESPONSE,
+    MsgContent::SESSIONS_PUSH,
     MsgContent::KEEPALIVE_PUSH
   };
   return values;
 }
 
 inline const char * const *EnumNamesMsgContent() {
-  static const char * const names[14] = {
+  static const char * const names[17] = {
     "NONE",
     "PING_REQUEST",
     "PING_RESPONSE",
@@ -211,6 +271,9 @@ inline const char * const *EnumNamesMsgContent() {
     "UPDATES_REQUEST",
     "UPDATES_RESPONSE",
     "UPDATES_PUSH",
+    "SESSIONS_REQUEST",
+    "SESSIONS_RESPONSE",
+    "SESSIONS_PUSH",
     "KEEPALIVE_PUSH",
     nullptr
   };
@@ -269,6 +332,18 @@ template<> struct MsgContentTraits<nplex::msgs::UpdatesResponse> {
 
 template<> struct MsgContentTraits<nplex::msgs::UpdatesPush> {
   static const MsgContent enum_value = MsgContent::UPDATES_PUSH;
+};
+
+template<> struct MsgContentTraits<nplex::msgs::SessionsRequest> {
+  static const MsgContent enum_value = MsgContent::SESSIONS_REQUEST;
+};
+
+template<> struct MsgContentTraits<nplex::msgs::SessionsResponse> {
+  static const MsgContent enum_value = MsgContent::SESSIONS_RESPONSE;
+};
+
+template<> struct MsgContentTraits<nplex::msgs::SessionsPush> {
+  static const MsgContent enum_value = MsgContent::SESSIONS_PUSH;
 };
 
 template<> struct MsgContentTraits<nplex::msgs::KeepAlivePush> {
@@ -615,20 +690,129 @@ inline ::flatbuffers::Offset<Acl> CreateAclDirect(
       mode);
 }
 
+struct Session FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef SessionBuilder Builder;
+  struct Traits;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_USER = 4,
+    VT_IP = 6,
+    VT_CODE = 8,
+    VT_TIME0 = 10,
+    VT_TIME1 = 12
+  };
+  const ::flatbuffers::String *user() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_USER);
+  }
+  const ::flatbuffers::String *ip() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_IP);
+  }
+  nplex::msgs::ExitCode code() const {
+    return static_cast<nplex::msgs::ExitCode>(GetField<int8_t>(VT_CODE, 0));
+  }
+  uint64_t time0() const {
+    return GetField<uint64_t>(VT_TIME0, 0);
+  }
+  uint64_t time1() const {
+    return GetField<uint64_t>(VT_TIME1, 0);
+  }
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyOffsetRequired(verifier, VT_USER) &&
+           verifier.VerifyString(user()) &&
+           VerifyOffsetRequired(verifier, VT_IP) &&
+           verifier.VerifyString(ip()) &&
+           VerifyField<int8_t>(verifier, VT_CODE, 1) &&
+           VerifyField<uint64_t>(verifier, VT_TIME0, 8) &&
+           VerifyField<uint64_t>(verifier, VT_TIME1, 8) &&
+           verifier.EndTable();
+  }
+};
+
+struct SessionBuilder {
+  typedef Session Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_user(::flatbuffers::Offset<::flatbuffers::String> user) {
+    fbb_.AddOffset(Session::VT_USER, user);
+  }
+  void add_ip(::flatbuffers::Offset<::flatbuffers::String> ip) {
+    fbb_.AddOffset(Session::VT_IP, ip);
+  }
+  void add_code(nplex::msgs::ExitCode code) {
+    fbb_.AddElement<int8_t>(Session::VT_CODE, static_cast<int8_t>(code), 0);
+  }
+  void add_time0(uint64_t time0) {
+    fbb_.AddElement<uint64_t>(Session::VT_TIME0, time0, 0);
+  }
+  void add_time1(uint64_t time1) {
+    fbb_.AddElement<uint64_t>(Session::VT_TIME1, time1, 0);
+  }
+  explicit SessionBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<Session> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<Session>(end);
+    fbb_.Required(o, Session::VT_USER);
+    fbb_.Required(o, Session::VT_IP);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<Session> CreateSession(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    ::flatbuffers::Offset<::flatbuffers::String> user = 0,
+    ::flatbuffers::Offset<::flatbuffers::String> ip = 0,
+    nplex::msgs::ExitCode code = nplex::msgs::ExitCode::CONNECTED,
+    uint64_t time0 = 0,
+    uint64_t time1 = 0) {
+  SessionBuilder builder_(_fbb);
+  builder_.add_time1(time1);
+  builder_.add_time0(time0);
+  builder_.add_ip(ip);
+  builder_.add_user(user);
+  builder_.add_code(code);
+  return builder_.Finish();
+}
+
+struct Session::Traits {
+  using type = Session;
+  static auto constexpr Create = CreateSession;
+};
+
+inline ::flatbuffers::Offset<Session> CreateSessionDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    const char *user = nullptr,
+    const char *ip = nullptr,
+    nplex::msgs::ExitCode code = nplex::msgs::ExitCode::CONNECTED,
+    uint64_t time0 = 0,
+    uint64_t time1 = 0) {
+  auto user__ = user ? _fbb.CreateString(user) : 0;
+  auto ip__ = ip ? _fbb.CreateString(ip) : 0;
+  return nplex::msgs::CreateSession(
+      _fbb,
+      user__,
+      ip__,
+      code,
+      time0,
+      time1);
+}
+
 struct LoginRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef LoginRequestBuilder Builder;
   struct Traits;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_CID = 4,
-    VT_API_VERSION = 6,
+    VT_FBS_HASH = 6,
     VT_USER = 8,
     VT_PASSWORD = 10
   };
   uint64_t cid() const {
     return GetField<uint64_t>(VT_CID, 0);
   }
-  uint32_t api_version() const {
-    return GetField<uint32_t>(VT_API_VERSION, 0);
+  uint32_t fbs_hash() const {
+    return GetField<uint32_t>(VT_FBS_HASH, 0);
   }
   const ::flatbuffers::String *user() const {
     return GetPointer<const ::flatbuffers::String *>(VT_USER);
@@ -639,7 +823,7 @@ struct LoginRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint64_t>(verifier, VT_CID, 8) &&
-           VerifyField<uint32_t>(verifier, VT_API_VERSION, 4) &&
+           VerifyField<uint32_t>(verifier, VT_FBS_HASH, 4) &&
            VerifyOffsetRequired(verifier, VT_USER) &&
            verifier.VerifyString(user()) &&
            VerifyOffsetRequired(verifier, VT_PASSWORD) &&
@@ -655,8 +839,8 @@ struct LoginRequestBuilder {
   void add_cid(uint64_t cid) {
     fbb_.AddElement<uint64_t>(LoginRequest::VT_CID, cid, 0);
   }
-  void add_api_version(uint32_t api_version) {
-    fbb_.AddElement<uint32_t>(LoginRequest::VT_API_VERSION, api_version, 0);
+  void add_fbs_hash(uint32_t fbs_hash) {
+    fbb_.AddElement<uint32_t>(LoginRequest::VT_FBS_HASH, fbs_hash, 0);
   }
   void add_user(::flatbuffers::Offset<::flatbuffers::String> user) {
     fbb_.AddOffset(LoginRequest::VT_USER, user);
@@ -680,14 +864,14 @@ struct LoginRequestBuilder {
 inline ::flatbuffers::Offset<LoginRequest> CreateLoginRequest(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     uint64_t cid = 0,
-    uint32_t api_version = 0,
+    uint32_t fbs_hash = 0,
     ::flatbuffers::Offset<::flatbuffers::String> user = 0,
     ::flatbuffers::Offset<::flatbuffers::String> password = 0) {
   LoginRequestBuilder builder_(_fbb);
   builder_.add_cid(cid);
   builder_.add_password(password);
   builder_.add_user(user);
-  builder_.add_api_version(api_version);
+  builder_.add_fbs_hash(fbs_hash);
   return builder_.Finish();
 }
 
@@ -699,7 +883,7 @@ struct LoginRequest::Traits {
 inline ::flatbuffers::Offset<LoginRequest> CreateLoginRequestDirect(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     uint64_t cid = 0,
-    uint32_t api_version = 0,
+    uint32_t fbs_hash = 0,
     const char *user = nullptr,
     const char *password = nullptr) {
   auto user__ = user ? _fbb.CreateString(user) : 0;
@@ -707,7 +891,7 @@ inline ::flatbuffers::Offset<LoginRequest> CreateLoginRequestDirect(
   return nplex::msgs::CreateLoginRequest(
       _fbb,
       cid,
-      api_version,
+      fbs_hash,
       user__,
       password__);
 }
@@ -721,8 +905,9 @@ struct LoginResponse FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_REV0 = 8,
     VT_CREV = 10,
     VT_CAN_FORCE = 12,
-    VT_KEEPALIVE = 14,
-    VT_PERMISSIONS = 16
+    VT_CAN_MONITOR = 14,
+    VT_KEEPALIVE = 16,
+    VT_PERMISSIONS = 18
   };
   uint64_t cid() const {
     return GetField<uint64_t>(VT_CID, 0);
@@ -739,6 +924,9 @@ struct LoginResponse FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   bool can_force() const {
     return GetField<uint8_t>(VT_CAN_FORCE, 0) != 0;
   }
+  bool can_monitor() const {
+    return GetField<uint8_t>(VT_CAN_MONITOR, 0) != 0;
+  }
   uint32_t keepalive() const {
     return GetField<uint32_t>(VT_KEEPALIVE, 0);
   }
@@ -752,6 +940,7 @@ struct LoginResponse FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            VerifyField<uint64_t>(verifier, VT_REV0, 8) &&
            VerifyField<uint64_t>(verifier, VT_CREV, 8) &&
            VerifyField<uint8_t>(verifier, VT_CAN_FORCE, 1) &&
+           VerifyField<uint8_t>(verifier, VT_CAN_MONITOR, 1) &&
            VerifyField<uint32_t>(verifier, VT_KEEPALIVE, 4) &&
            VerifyOffset(verifier, VT_PERMISSIONS) &&
            verifier.VerifyVector(permissions()) &&
@@ -779,6 +968,9 @@ struct LoginResponseBuilder {
   void add_can_force(bool can_force) {
     fbb_.AddElement<uint8_t>(LoginResponse::VT_CAN_FORCE, static_cast<uint8_t>(can_force), 0);
   }
+  void add_can_monitor(bool can_monitor) {
+    fbb_.AddElement<uint8_t>(LoginResponse::VT_CAN_MONITOR, static_cast<uint8_t>(can_monitor), 0);
+  }
   void add_keepalive(uint32_t keepalive) {
     fbb_.AddElement<uint32_t>(LoginResponse::VT_KEEPALIVE, keepalive, 0);
   }
@@ -803,6 +995,7 @@ inline ::flatbuffers::Offset<LoginResponse> CreateLoginResponse(
     uint64_t rev0 = 0,
     uint64_t crev = 0,
     bool can_force = false,
+    bool can_monitor = false,
     uint32_t keepalive = 0,
     ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::Acl>>> permissions = 0) {
   LoginResponseBuilder builder_(_fbb);
@@ -811,6 +1004,7 @@ inline ::flatbuffers::Offset<LoginResponse> CreateLoginResponse(
   builder_.add_cid(cid);
   builder_.add_permissions(permissions);
   builder_.add_keepalive(keepalive);
+  builder_.add_can_monitor(can_monitor);
   builder_.add_can_force(can_force);
   builder_.add_code(code);
   return builder_.Finish();
@@ -828,6 +1022,7 @@ inline ::flatbuffers::Offset<LoginResponse> CreateLoginResponseDirect(
     uint64_t rev0 = 0,
     uint64_t crev = 0,
     bool can_force = false,
+    bool can_monitor = false,
     uint32_t keepalive = 0,
     const std::vector<::flatbuffers::Offset<nplex::msgs::Acl>> *permissions = nullptr) {
   auto permissions__ = permissions ? _fbb.CreateVector<::flatbuffers::Offset<nplex::msgs::Acl>>(*permissions) : 0;
@@ -838,6 +1033,7 @@ inline ::flatbuffers::Offset<LoginResponse> CreateLoginResponseDirect(
       rev0,
       crev,
       can_force,
+      can_monitor,
       keepalive,
       permissions__);
 }
@@ -1566,6 +1762,214 @@ struct SubmitResponse::Traits {
   static auto constexpr Create = CreateSubmitResponse;
 };
 
+struct SessionsRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef SessionsRequestBuilder Builder;
+  struct Traits;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_CID = 4,
+    VT_STREAM = 6
+  };
+  uint64_t cid() const {
+    return GetField<uint64_t>(VT_CID, 0);
+  }
+  bool stream() const {
+    return GetField<uint8_t>(VT_STREAM, 0) != 0;
+  }
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<uint64_t>(verifier, VT_CID, 8) &&
+           VerifyField<uint8_t>(verifier, VT_STREAM, 1) &&
+           verifier.EndTable();
+  }
+};
+
+struct SessionsRequestBuilder {
+  typedef SessionsRequest Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_cid(uint64_t cid) {
+    fbb_.AddElement<uint64_t>(SessionsRequest::VT_CID, cid, 0);
+  }
+  void add_stream(bool stream) {
+    fbb_.AddElement<uint8_t>(SessionsRequest::VT_STREAM, static_cast<uint8_t>(stream), 0);
+  }
+  explicit SessionsRequestBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<SessionsRequest> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<SessionsRequest>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<SessionsRequest> CreateSessionsRequest(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    uint64_t cid = 0,
+    bool stream = false) {
+  SessionsRequestBuilder builder_(_fbb);
+  builder_.add_cid(cid);
+  builder_.add_stream(stream);
+  return builder_.Finish();
+}
+
+struct SessionsRequest::Traits {
+  using type = SessionsRequest;
+  static auto constexpr Create = CreateSessionsRequest;
+};
+
+struct SessionsResponse FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef SessionsResponseBuilder Builder;
+  struct Traits;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_CID = 4,
+    VT_CREV = 6,
+    VT_SESSIONS = 8
+  };
+  uint64_t cid() const {
+    return GetField<uint64_t>(VT_CID, 0);
+  }
+  uint64_t crev() const {
+    return GetField<uint64_t>(VT_CREV, 0);
+  }
+  const ::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::Session>> *sessions() const {
+    return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::Session>> *>(VT_SESSIONS);
+  }
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<uint64_t>(verifier, VT_CID, 8) &&
+           VerifyField<uint64_t>(verifier, VT_CREV, 8) &&
+           VerifyOffset(verifier, VT_SESSIONS) &&
+           verifier.VerifyVector(sessions()) &&
+           verifier.VerifyVectorOfTables(sessions()) &&
+           verifier.EndTable();
+  }
+};
+
+struct SessionsResponseBuilder {
+  typedef SessionsResponse Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_cid(uint64_t cid) {
+    fbb_.AddElement<uint64_t>(SessionsResponse::VT_CID, cid, 0);
+  }
+  void add_crev(uint64_t crev) {
+    fbb_.AddElement<uint64_t>(SessionsResponse::VT_CREV, crev, 0);
+  }
+  void add_sessions(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::Session>>> sessions) {
+    fbb_.AddOffset(SessionsResponse::VT_SESSIONS, sessions);
+  }
+  explicit SessionsResponseBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<SessionsResponse> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<SessionsResponse>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<SessionsResponse> CreateSessionsResponse(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    uint64_t cid = 0,
+    uint64_t crev = 0,
+    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::Session>>> sessions = 0) {
+  SessionsResponseBuilder builder_(_fbb);
+  builder_.add_crev(crev);
+  builder_.add_cid(cid);
+  builder_.add_sessions(sessions);
+  return builder_.Finish();
+}
+
+struct SessionsResponse::Traits {
+  using type = SessionsResponse;
+  static auto constexpr Create = CreateSessionsResponse;
+};
+
+inline ::flatbuffers::Offset<SessionsResponse> CreateSessionsResponseDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    uint64_t cid = 0,
+    uint64_t crev = 0,
+    const std::vector<::flatbuffers::Offset<nplex::msgs::Session>> *sessions = nullptr) {
+  auto sessions__ = sessions ? _fbb.CreateVector<::flatbuffers::Offset<nplex::msgs::Session>>(*sessions) : 0;
+  return nplex::msgs::CreateSessionsResponse(
+      _fbb,
+      cid,
+      crev,
+      sessions__);
+}
+
+struct SessionsPush FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef SessionsPushBuilder Builder;
+  struct Traits;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_CID = 4,
+    VT_CREV = 6,
+    VT_SESSION = 8
+  };
+  uint64_t cid() const {
+    return GetField<uint64_t>(VT_CID, 0);
+  }
+  uint64_t crev() const {
+    return GetField<uint64_t>(VT_CREV, 0);
+  }
+  const nplex::msgs::Session *session() const {
+    return GetPointer<const nplex::msgs::Session *>(VT_SESSION);
+  }
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<uint64_t>(verifier, VT_CID, 8) &&
+           VerifyField<uint64_t>(verifier, VT_CREV, 8) &&
+           VerifyOffsetRequired(verifier, VT_SESSION) &&
+           verifier.VerifyTable(session()) &&
+           verifier.EndTable();
+  }
+};
+
+struct SessionsPushBuilder {
+  typedef SessionsPush Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_cid(uint64_t cid) {
+    fbb_.AddElement<uint64_t>(SessionsPush::VT_CID, cid, 0);
+  }
+  void add_crev(uint64_t crev) {
+    fbb_.AddElement<uint64_t>(SessionsPush::VT_CREV, crev, 0);
+  }
+  void add_session(::flatbuffers::Offset<nplex::msgs::Session> session) {
+    fbb_.AddOffset(SessionsPush::VT_SESSION, session);
+  }
+  explicit SessionsPushBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<SessionsPush> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<SessionsPush>(end);
+    fbb_.Required(o, SessionsPush::VT_SESSION);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<SessionsPush> CreateSessionsPush(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    uint64_t cid = 0,
+    uint64_t crev = 0,
+    ::flatbuffers::Offset<nplex::msgs::Session> session = 0) {
+  SessionsPushBuilder builder_(_fbb);
+  builder_.add_crev(crev);
+  builder_.add_cid(cid);
+  builder_.add_session(session);
+  return builder_.Finish();
+}
+
+struct SessionsPush::Traits {
+  using type = SessionsPush;
+  static auto constexpr Create = CreateSessionsPush;
+};
+
 struct KeepAlivePush FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef KeepAlivePushBuilder Builder;
   struct Traits;
@@ -1660,6 +2064,15 @@ struct Message FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const nplex::msgs::UpdatesPush *content_as_UPDATES_PUSH() const {
     return content_type() == nplex::msgs::MsgContent::UPDATES_PUSH ? static_cast<const nplex::msgs::UpdatesPush *>(content()) : nullptr;
   }
+  const nplex::msgs::SessionsRequest *content_as_SESSIONS_REQUEST() const {
+    return content_type() == nplex::msgs::MsgContent::SESSIONS_REQUEST ? static_cast<const nplex::msgs::SessionsRequest *>(content()) : nullptr;
+  }
+  const nplex::msgs::SessionsResponse *content_as_SESSIONS_RESPONSE() const {
+    return content_type() == nplex::msgs::MsgContent::SESSIONS_RESPONSE ? static_cast<const nplex::msgs::SessionsResponse *>(content()) : nullptr;
+  }
+  const nplex::msgs::SessionsPush *content_as_SESSIONS_PUSH() const {
+    return content_type() == nplex::msgs::MsgContent::SESSIONS_PUSH ? static_cast<const nplex::msgs::SessionsPush *>(content()) : nullptr;
+  }
   const nplex::msgs::KeepAlivePush *content_as_KEEPALIVE_PUSH() const {
     return content_type() == nplex::msgs::MsgContent::KEEPALIVE_PUSH ? static_cast<const nplex::msgs::KeepAlivePush *>(content()) : nullptr;
   }
@@ -1714,6 +2127,18 @@ template<> inline const nplex::msgs::UpdatesResponse *Message::content_as<nplex:
 
 template<> inline const nplex::msgs::UpdatesPush *Message::content_as<nplex::msgs::UpdatesPush>() const {
   return content_as_UPDATES_PUSH();
+}
+
+template<> inline const nplex::msgs::SessionsRequest *Message::content_as<nplex::msgs::SessionsRequest>() const {
+  return content_as_SESSIONS_REQUEST();
+}
+
+template<> inline const nplex::msgs::SessionsResponse *Message::content_as<nplex::msgs::SessionsResponse>() const {
+  return content_as_SESSIONS_RESPONSE();
+}
+
+template<> inline const nplex::msgs::SessionsPush *Message::content_as<nplex::msgs::SessionsPush>() const {
+  return content_as_SESSIONS_PUSH();
 }
 
 template<> inline const nplex::msgs::KeepAlivePush *Message::content_as<nplex::msgs::KeepAlivePush>() const {
@@ -1803,6 +2228,18 @@ inline bool VerifyMsgContent(::flatbuffers::Verifier &verifier, const void *obj,
     }
     case MsgContent::UPDATES_PUSH: {
       auto ptr = reinterpret_cast<const nplex::msgs::UpdatesPush *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case MsgContent::SESSIONS_REQUEST: {
+      auto ptr = reinterpret_cast<const nplex::msgs::SessionsRequest *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case MsgContent::SESSIONS_RESPONSE: {
+      auto ptr = reinterpret_cast<const nplex::msgs::SessionsResponse *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case MsgContent::SESSIONS_PUSH: {
+      auto ptr = reinterpret_cast<const nplex::msgs::SessionsPush *>(obj);
       return verifier.VerifyTable(ptr);
     }
     case MsgContent::KEEPALIVE_PUSH: {

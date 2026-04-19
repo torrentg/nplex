@@ -244,6 +244,9 @@ void nplex::connection_s::disconnect(int rc)
     if (!m_error)
         m_error = rc;
 
+    using namespace std::chrono;
+    m_stats.time1 = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
+
     if (m_timer_disconnect && !uv_is_closing(get_handle(m_timer_disconnect))) {
         uv_timer_stop(m_timer_disconnect);
         uv_close(get_handle(m_timer_disconnect), ::cb_close_timer);

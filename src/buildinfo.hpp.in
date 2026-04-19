@@ -1,3 +1,4 @@
 #pragma once
 
 #define PROJECT_VERSION "@PROJECT_VERSION@"
+#define FBS_HASH        0x@FBS_HASH@U

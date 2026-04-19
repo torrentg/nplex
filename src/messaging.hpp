@@ -10,8 +10,10 @@ namespace nplex {
 
 // Forward declarations
 class store_t;
+class session_t;
 struct user_t;
 using user_ptr = std::shared_ptr<user_t>;
+using session_ptr = std::shared_ptr<session_t>;
 
 /**
  * Network message format:
@@ -112,6 +114,18 @@ struct updates_builder_t
 };
 
 /**
+ * Builder to create a SessionsResponse message.
+ */
+struct sessions_builder_t
+{
+    flatbuffers::FlatBufferBuilder m_builder;
+    std::vector<flatbuffers::Offset<msgs::Session>> m_sessions;
+
+    bool append(const session_ptr &session);
+    flatbuffers::DetachedBuffer finish(uint64_t cid, rev_t crev);
+};
+
+/**
  * Helper functions to create messages.
  */
 flatbuffers::DetachedBuffer create_ping_msg(std::size_t cid, rev_t crev, const std::string &payload);
@@ -120,6 +134,7 @@ flatbuffers::DetachedBuffer create_keepalive_msg(rev_t crev);
 flatbuffers::DetachedBuffer create_submit_msg(std::size_t cid, rev_t crev, msgs::SubmitCode code, rev_t erev = 0);
 flatbuffers::DetachedBuffer create_snapshot_msg(std::size_t cid, rev_t crev, rev_t rev0, bool accepted, const store_t &store, const user_ptr &user = nullptr);
 flatbuffers::DetachedBuffer create_updates_msg(std::size_t cid, rev_t crev, rev_t rev0, bool accepted);
+flatbuffers::DetachedBuffer create_sessions_msg(std::size_t cid, rev_t crev, const session_ptr &session);
 
 /**
  * Functions used to write and read journal entries.

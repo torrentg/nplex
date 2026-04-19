@@ -1,3 +1,4 @@
+#include <cassert>
 #include <spdlog/spdlog.h>
 #include <fmt/core.h>
 #include <fmt/ranges.h>
@@ -5,6 +6,7 @@
 #include "journal_writer.hpp"
 #include "exception.hpp"
 #include "storage.hpp"
+#include "session.hpp"
 #include "config.hpp"
 #include "tasks.hpp"
 #include "user.hpp"
@@ -297,6 +299,10 @@ void nplex::context_t::release_session(session_t *session)
     if (session->user() && session->user()->num_connections > 0)
         session->user()->num_connections--;
 
+    auto ptr = session->shared_from_this();
+    assert(ptr->is_closed());
+    publish(ptr);
+
     m_sessions.erase(it);
 
     if (!m_running && m_sessions.empty())
@@ -352,6 +358,15 @@ void nplex::context_t::publish(std::span<const update_t> updates)
 {
     for (auto &session : m_sessions)
         session->push_changes(updates);
+}
+
+void nplex::context_t::publish(const session_ptr &obj)
+{
+    if (!obj || !obj->is_logged())
+        return;
+
+    for (auto &session : m_sessions)
+        session->push_session(obj);
 }
 
 nplex::user_ptr nplex::context_t::get_user(const std::string &name) const

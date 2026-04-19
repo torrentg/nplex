@@ -9,7 +9,6 @@
 #include <uv.h>
 #include "cqueue.hpp"
 #include "store.hpp"
-#include "session.hpp"
 #include "params.hpp"
 #include "utils.hpp"
 
@@ -23,14 +22,18 @@ namespace nplex {
 // Forward declarations.
 struct task_t;
 struct user_t;
+class session_t;
 class storage_t;
 struct config_t;
 class journal_writer;
 using user_ptr = std::shared_ptr<user_t>;
 using storage_ptr = std::shared_ptr<storage_t>;
+using session_ptr = std::shared_ptr<session_t>;
 
 struct context_t : public std::enable_shared_from_this<context_t>
 {
+    using session_set_t = std::set<session_ptr, shared_ptr_compare<session_t>>;
+
     context_t(uv_loop_t *loop, const config_t &config);
     ~context_t();
 
@@ -40,6 +43,7 @@ struct context_t : public std::enable_shared_from_this<context_t>
     storage_ptr storage() const { return m_storage; }
     const store_t & store() const { return m_store; }
     const context_params_t & params() const { return m_params; }
+    const session_set_t & sessions() const { return m_sessions; }
     bool has_active_tasks_or_sessions() const { return (m_num_running_tasks != 0 || !m_sessions.empty()); }
 
     void open();
@@ -47,6 +51,7 @@ struct context_t : public std::enable_shared_from_this<context_t>
     void persist(update_t &&upd);
     void submit_task(task_t *task);
     void release_task(task_t *task);
+    void publish(const session_ptr &session);
     void append_session(uv_stream_t *stream);
     void release_session(session_t *session);
     void on_updates_written_1(bool success, std::vector<update_t> &&updates);
@@ -57,7 +62,6 @@ struct context_t : public std::enable_shared_from_this<context_t>
   private: // types
 
     using user_map_t = std::map<std::string, user_ptr>;
-    using session_set_t = std::set<session_ptr, shared_ptr_compare<session_t>>;
 
   private: // members
 

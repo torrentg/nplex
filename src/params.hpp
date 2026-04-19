@@ -28,6 +28,7 @@ struct user_params_t
 {
     bool active = false;                            // User is active or disabled.
     bool can_force = false;                         // Can force to accept dirty transactions.
+    bool can_monitor = false;                       // Can monitor active sessions.
     std::uint32_t max_connections = 0;              // Maximum number of simultaneous connections (0 = unlimited).
     connection_params_t connection;                 // Connection parameters.
 };

@@ -123,6 +123,10 @@ void nplex::session_t::process_request(const msgs::Message *msg)
             process_updates_request(msg->content_as_UPDATES_REQUEST());
             break;
 
+        case msgs::MsgContent::SESSIONS_REQUEST:
+            process_sessions_request(msg->content_as_SESSIONS_REQUEST());
+            break;
+
         case msgs::MsgContent::SUBMIT_REQUEST:
             process_submit_request(msg->content_as_SUBMIT_REQUEST());
             break;
@@ -148,14 +152,14 @@ void nplex::session_t::process_login_request(const msgs::LoginRequest *req)
         return;
     }
 
-    if (req->api_version() != API_VERSION) {
+    if (req->fbs_hash() != FBS_HASH) {
         send(
             create_login_msg(
                 req->cid(), 
-                msgs::LoginCode::UNSUPPORTED_API_VERSION
+                msgs::LoginCode::UNSUPPORTED_SCHEMA
             ) 
         );
-        shutdown(ERR_API_VERSION);
+        shutdown(ERR_FBS_HASH);
         return;
     }
 
@@ -223,6 +227,8 @@ void nplex::session_t::process_login_request(const msgs::LoginRequest *req)
             m_user
         ) 
     );
+
+    m_context->publish(shared_from_this());
 }
 
 void nplex::session_t::process_snapshot_request(const msgs::SnapshotRequest *req)
@@ -282,7 +288,7 @@ void nplex::session_t::process_updates_request(const msgs::UpdatesRequest *req)
     if (rev == 0)
         rev = m_context->last_persisted_rev();
 
-    SPDLOG_INFO("{} requested updates from r{}", m_id, rev);
+    SPDLOG_DEBUG("{} requested updates from r{}", m_id, rev);
 
     // case: requested updates out of range (reject)
     if (rev < m_context->minimum_rev())
@@ -301,7 +307,6 @@ void nplex::session_t::process_updates_request(const msgs::UpdatesRequest *req)
 
     m_updates_cid = cid;
 
-    // updates request acceptance
     send(
         create_updates_msg(
             cid,
@@ -314,6 +319,29 @@ void nplex::session_t::process_updates_request(const msgs::UpdatesRequest *req)
     m_lrev = rev;
     do_sync(m_updates_cid);
 }
+
+void nplex::session_t::process_sessions_request(const msgs::SessionsRequest *req)
+{
+    if (!is_logged()) {
+        disconnect(ERR_MSG_UNEXPECTED);
+        return;
+    }
+
+    rev_t crev = m_context->last_persisted_rev();
+    std::uint64_t cid = req->cid();
+    sessions_builder_t builder;
+
+    if (m_user->params.can_monitor)
+    {
+        for (const auto &session : m_context->sessions())
+            builder.append(session);
+    }
+
+    send(builder.finish(cid, crev));
+
+    m_sessions_cid = ((m_user->params.can_monitor && req->stream()) ? cid : 0);
+}
+
 
 void nplex::session_t::process_submit_request(const nplex::msgs::SubmitRequest *req)
 {
@@ -397,7 +425,7 @@ const char * nplex::session_t::strerror() const
         case ERR_USR_INVL_PWD: return "invalid password";
         case ERR_USR_MAX_CONN: return "maximum usr connections reached";
         case ERR_MAX_CONN: return "maximum total connections reached";
-        case ERR_API_VERSION: return "unsupported API version";
+        case ERR_FBS_HASH: return "unsupported API version";
         case ERR_CONNECTION_LOST: return "connection lost";
         case ERR_UNACK: return "max unack limits exceeded";
         default: return "unknown error";
@@ -508,4 +536,18 @@ void nplex::session_t::push_changes(const std::span<const update_t> &updates, bo
         if (!builder.empty())
             send(builder.finish(m_updates_cid, crev));
     }
+}
+
+void nplex::session_t::push_session(const session_ptr &session)
+{
+    if (is_closed() || m_sessions_cid == 0)
+        return;
+
+    send(
+        create_sessions_msg(
+            m_sessions_cid,
+            m_context->last_persisted_rev(),
+            session
+        )
+    );
 }

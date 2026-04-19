@@ -22,6 +22,7 @@ namespace nplex {
 #define USER_PASSWORD                           "password"
 #define USER_ACTIVE                             "active"
 #define USER_CAN_FORCE                          "can-force"
+#define USER_CAN_MONITOR                        "can-monitor"
 #define USER_MAX_CONNECTIONS                    "max-connections"
 #define USER_KEEPALIVE_MILLIS                   "keepalive-millis"
 #define USER_MAX_UNACK_MSG                      "max-unack-msg"
@@ -54,6 +55,7 @@ namespace nplex {
 #define DEFAULT_FLUSH_MAX_BYTES                 (25 * 1024 * 1024)
 #define DEFAULT_USER_ACTIVE                     true
 #define DEFAULT_USER_CAN_FORCE                  false
+#define DEFAULT_USER_CAN_MONITOR                false
 #define DEFAULT_USER_MAX_CONNECTIONS            5
 #define DEFAULT_USER_KEEPALIVE_MILLIS           3000
 #define DEFAULT_USER_MAX_UNACK_MSG              1000
@@ -249,6 +251,8 @@ static int cb_inih_inner(void *obj, const char *section, const char *name, const
             cfg->default_user.params.active = parse_bool(value);
         } else if (strcmp(name, USER_CAN_FORCE) == 0) {
             cfg->default_user.params.can_force = parse_bool(value);
+        } else if (strcmp(name, USER_CAN_MONITOR) == 0) {
+            cfg->default_user.params.can_monitor = parse_bool(value);
         } else if (strcmp(name, USER_MAX_CONNECTIONS) == 0) {
             cfg->default_user.params.max_connections = parse_uint32(value);
         } else if (strcmp(name, USER_KEEPALIVE_MILLIS) == 0) {
@@ -285,6 +289,8 @@ static int cb_inih_inner(void *obj, const char *section, const char *name, const
         it->params.active = parse_bool(value);
     } else if (strcmp(name, USER_CAN_FORCE) == 0) {
         it->params.can_force = parse_bool(value);
+    } else if (strcmp(name, USER_CAN_MONITOR) == 0) {
+        it->params.can_monitor = parse_bool(value);
     } else if (strcmp(name, USER_MAX_CONNECTIONS) == 0) {
         it->params.max_connections = parse_uint32(value);
     } else if (strcmp(name, USER_KEEPALIVE_MILLIS) == 0) {
@@ -349,6 +355,7 @@ static void set_defaults(config_t &cfg)
     // User defaults
     cfg.default_user.params.active = DEFAULT_USER_ACTIVE;
     cfg.default_user.params.can_force = DEFAULT_USER_CAN_FORCE;
+    cfg.default_user.params.can_monitor = DEFAULT_USER_CAN_MONITOR;
     cfg.default_user.params.max_connections = DEFAULT_USER_MAX_CONNECTIONS;
     cfg.default_user.params.connection.keepalive_millis = DEFAULT_USER_KEEPALIVE_MILLIS;
     cfg.default_user.params.connection.max_unack_msgs = DEFAULT_USER_MAX_UNACK_MSG;
@@ -447,6 +454,7 @@ void config_t::save(const fs::path &filepath) const
     ofs << "[" << SECTION_USER_DEFAULTS << "]" << std::endl;
     ofs << USER_ACTIVE << " = " << (default_user.params.active ? "true" : "false") << std::endl;
     ofs << USER_CAN_FORCE << " = " << (default_user.params.can_force ? "true" : "false") << std::endl;
+    ofs << USER_CAN_MONITOR << " = " << (default_user.params.can_monitor ? "true" : "false") << std::endl;
     ofs << USER_MAX_CONNECTIONS << " = " << default_user.params.max_connections << std::endl;
     ofs << USER_KEEPALIVE_MILLIS << " = " << default_user.params.connection.keepalive_millis << std::endl;
     ofs << USER_TIMEOUT_FACTOR << " = " << fmt::format("{:.1f}", default_user.params.connection.timeout_factor) << std::endl;
@@ -465,6 +473,8 @@ void config_t::save(const fs::path &filepath) const
             ofs << USER_ACTIVE << " = " << (user.params.active ? "true" : "false") << std::endl;
         if (user.params.can_force != default_user.params.can_force)
             ofs << USER_CAN_FORCE << " = " << (user.params.can_force ? "true" : "false") << std::endl;
+        if (user.params.can_monitor != default_user.params.can_monitor)
+            ofs << USER_CAN_MONITOR << " = " << (user.params.can_monitor ? "true" : "false") << std::endl;
         if (user.params.max_connections != default_user.params.max_connections)
             ofs << USER_MAX_CONNECTIONS << " = " << user.params.max_connections << std::endl;
         if (user.params.connection.keepalive_millis != default_user.params.connection.keepalive_millis)
@@ -489,6 +499,7 @@ void config_t::save(const fs::path &filepath) const
         ofs << USER_ACTIVE << " = true" << std::endl;
         ofs << USER_PASSWORD << " = s3cr3t" << std::endl;
         ofs << USER_CAN_FORCE << " = true" << std::endl;
+        ofs << USER_CAN_MONITOR << " = true" << std::endl;
         ofs << USER_ACL << " = crud:**" << std::endl;
         ofs << std::endl;
     }

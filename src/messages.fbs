@@ -13,7 +13,7 @@ enum LoginCode: byte {
     AUTHORIZED,
     INVALID_CREDENTIALS,
     TOO_MANY_CONNECTIONS,
-    UNSUPPORTED_API_VERSION
+    UNSUPPORTED_SCHEMA
 }
 
 enum SubmitCode : byte {
@@ -28,6 +28,15 @@ enum SubmitCode : byte {
     ERROR_DUPLICATE_KEY,
     ERROR_INVALID_KEY,
     INVALID_MESSAGE
+}
+
+enum ExitCode : byte {
+    CONNECTED,
+    CLOSED_BY_SERVER,
+    CLOSED_BY_USER,
+    COMM_ERROR,
+    CON_LOST,
+    EXCD_LIMITS
 }
 
 // ========================================================
@@ -61,13 +70,22 @@ table Acl
     mode: ubyte;                    // Mode (1=CREATE, 2=READ, 4=UPDATE, 8=DELETE)
 }
 
+table Session
+{
+    user: string (required);        // User name
+    ip: string (required);          // Peer IP address
+    code: ExitCode;                 // Exit code (0 means connected)
+    time0: uint64;                  // Connection start (UTC millis since epoch)
+    time1: uint64;                  // Disconnection time (0 if still active)
+}
+
 // ========================================================
 // Messages
 
 table LoginRequest
 {
     cid: uint64;                    // Correlation id (used to match responses to requests)
-    api_version: uint32;            // API version
+    fbs_hash: uint32;               // First 4 bytes of the sha256-hash of this file
     user: string (required);        // User name
     password: string (required);    // User password
 }
@@ -77,8 +95,9 @@ table LoginResponse
     cid: uint64;                    // Correlation id (loginRequest cid)
     code: LoginCode;                // Response code
     rev0: uint64;                   // Oldest revision available
-    crev: uint64;                   // Current database revision
+    crev: uint64;                   // Server current revision
     can_force: bool;                // Can force transactions
+    can_monitor: bool;              // Can monitor active sessions
     keepalive: uint32;              // Keepalive timeout (in milliseconds)
     permissions: [Acl];             // List of acls
 }
@@ -92,7 +111,7 @@ table PingRequest
 table PingResponse
 {
     cid: uint64;                    // Correlation id (pingRequest cid)
-    crev: uint64;                   // Current database revision
+    crev: uint64;                   // Server current revision
     payload: string;                // Payload (same as request)
 }
 
@@ -105,7 +124,7 @@ table SnapshotRequest
 table SnapshotResponse
 {
     cid: uint64;                    // Correlation id (snapshotRequest cid)
-    crev: uint64;                   // Current revision
+    crev: uint64;                   // Server current revision
     rev0: uint64;                   // Oldest revision available
     accepted: bool;                 // Request accepted
     snapshot: Snapshot;             // Snapshot
@@ -120,7 +139,7 @@ table UpdatesRequest
 table UpdatesResponse
 {
     cid: uint64;                    // Correlation id (updatesRequest cid)
-    crev: uint64;                   // Current database revision
+    crev: uint64;                   // Server current revision
     rev0: uint64;                   // Oldest revision available
     accepted: bool;                 // Request accepted
 }
@@ -128,7 +147,7 @@ table UpdatesResponse
 table UpdatesPush
 {
     cid: uint64;                    // Correlation id (UpdatesRequest cid)
-    crev: uint64;                   // Current database revision
+    crev: uint64;                   // Server current revision
     updates: [Update];              // Database updates
 }
 
@@ -151,9 +170,29 @@ table SubmitResponse
     erev: uint64;                   // Expected commit revision (0 if not accepted)
 }
 
+table SessionsRequest
+{
+    cid: uint64;                    // Correlation id
+    stream: bool = false;           // Notify future connection and disconnection events
+}
+
+table SessionsResponse
+{
+    cid: uint64;                    // Correlation id
+    crev: uint64;                   // Server current revision
+    sessions: [Session];            // Currently active sessions (null if user not allowed)
+}
+
+table SessionsPush
+{
+    cid: uint64;                    // Correlation id (SessionsRequest cid)
+    crev: uint64;                   // Server current revision
+    session: Session (required);    // Session that connected or disconnected
+}
+
 table KeepAlivePush
 {
-    crev: uint64;                   // Current database revision
+    crev: uint64;                   // Server current revision
 }
 
 // ========================================================
@@ -171,6 +210,9 @@ union MsgContent {
     UPDATES_REQUEST: UpdatesRequest,
     UPDATES_RESPONSE: UpdatesResponse,
     UPDATES_PUSH: UpdatesPush,
+    SESSIONS_REQUEST: SessionsRequest,
+    SESSIONS_RESPONSE: SessionsResponse,
+    SESSIONS_PUSH: SessionsPush,
     KEEPALIVE_PUSH: KeepAlivePush
 }
 

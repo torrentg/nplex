@@ -5,6 +5,7 @@
 #include "user.hpp"
 #include "utils.hpp"
 #include "store.hpp"
+#include "session.hpp"
 #include "exception.hpp"
 #include "messaging.hpp"
 
@@ -217,6 +218,7 @@ DetachedBuffer nplex::create_login_msg(std::size_t cid, LoginCode code, rev_t re
             rev0,
             crev,
             (user ? user->params.can_force : false),
+            (user ? user->params.can_monitor : false),
             (user ? user->params.connection.keepalive_millis : 0),
             (user ? builder.CreateVector(permissions) : 0)
         ).Union()
@@ -237,6 +239,57 @@ flatbuffers::DetachedBuffer nplex::create_updates_msg(std::size_t cid, rev_t cre
             crev,
             rev0,
             accepted
+        ).Union()
+    );
+
+    builder.Finish(msg);
+    return builder.Release();
+}
+
+flatbuffers::DetachedBuffer nplex::create_sessions_msg(std::size_t cid, rev_t crev, const session_ptr &session)
+{
+    assert(session->user());
+
+    FlatBufferBuilder builder;
+    ExitCode exit_code = ExitCode::CONNECTED;
+
+    switch (session->error())
+    {
+        case 0:
+            exit_code = ExitCode::CONNECTED;
+            break;
+        case ERR_CLOSED_BY_PEER:
+            exit_code = ExitCode::CLOSED_BY_USER;
+            break;
+        case ERR_CLOSED_BY_LOCAL:
+            exit_code = ExitCode::CLOSED_BY_SERVER;
+            break;
+        case ERR_CONNECTION_LOST:
+            exit_code = ExitCode::CON_LOST;
+            break;
+        case ERR_UNACK:
+            exit_code = ExitCode::EXCD_LIMITS;
+            break;
+        default:
+            exit_code = ExitCode::COMM_ERROR;
+            break;
+    }
+
+    auto off = CreateSession(
+        builder,
+        builder.CreateString(session->user()->name),
+        builder.CreateString(session->addr().str()),
+        exit_code,
+        static_cast<uint64_t>(session->created_at().count()),
+        static_cast<uint64_t>(session->disconnected_at().count())
+    );
+
+    auto msg = CreateMessage(builder, 
+        MsgContent::SESSIONS_PUSH,
+        CreateSessionsPush(builder, 
+            cid,
+            crev,
+            off
         ).Union()
     );
 
@@ -411,6 +464,52 @@ flatbuffers::DetachedBuffer nplex::updates_builder_t::finish(uint64_t cid, rev_t
     auto buf = m_builder.Release();
 
     m_updates.clear();
+    m_builder.Clear();
+
+    return buf;
+}
+
+// ==========================================================
+// sessions_builder_t methods
+// ==========================================================
+
+bool nplex::sessions_builder_t::append(const session_ptr &session)
+{
+    if (!session || !session->is_logged())
+        return false;
+
+    auto off = CreateSession(
+        m_builder,
+        m_builder.CreateString(session->user()->name),
+        m_builder.CreateString(session->addr().str()),
+        ExitCode::CONNECTED,
+        static_cast<uint64_t>(session->created_at().count()),
+        0
+    );
+
+    if (off.IsNull())
+        return false;
+
+    m_sessions.push_back(off);
+
+    return true;
+}
+
+flatbuffers::DetachedBuffer nplex::sessions_builder_t::finish(uint64_t cid, rev_t crev)
+{
+    auto msg = CreateMessage(m_builder, 
+        MsgContent::SESSIONS_RESPONSE,
+        CreateSessionsResponse(m_builder, 
+            cid,
+            crev,
+            (m_sessions.empty() ? 0 : m_builder.CreateVector(m_sessions))
+        ).Union()
+    );
+
+    m_builder.Finish(msg);
+    auto buf = m_builder.Release();
+
+    m_sessions.clear();
     m_builder.Clear();
 
     return buf;
