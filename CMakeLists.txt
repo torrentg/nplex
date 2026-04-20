@@ -261,24 +261,53 @@ set_target_properties(
 target_sources(
     nplex_lib
     PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/deps/cppcrc.h
+    ${CMAKE_CURRENT_LIST_DIR}/deps/cqueue.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/deps/cstring.hpp
     ${CMAKE_CURRENT_LIST_DIR}/deps/ini.c
+    ${CMAKE_CURRENT_LIST_DIR}/deps/ini.h
     ${CMAKE_CURRENT_LIST_DIR}/deps/journal.c
+    ${CMAKE_CURRENT_LIST_DIR}/deps/journal.h
     ${CMAKE_CURRENT_LIST_DIR}/deps/match.c
+    ${CMAKE_CURRENT_LIST_DIR}/deps/match.h
+    ${CMAKE_CURRENT_LIST_DIR}/deps/utf8.h
     ${CMAKE_CURRENT_LIST_DIR}/src/addr.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/addr.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/buildinfo.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/common.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/common.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/config.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/config.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/connection.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/connection.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/context.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/context.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/exception.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/journal_writer.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/src/schema.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/journal_writer.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/json.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/json.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/messaging.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/messaging.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/params.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/schema.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/schema1.fbs
+    ${CMAKE_CURRENT_LIST_DIR}/src/schema2.fbs
+    ${CMAKE_CURRENT_LIST_DIR}/src/schema3.fbs
     ${CMAKE_CURRENT_LIST_DIR}/src/server.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/server.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/session.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/session.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/storage.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/storage.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/store.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/store.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/tasks.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/tasks.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/user.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/user.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/utils.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/utils.hpp
 )
 
 add_executable(

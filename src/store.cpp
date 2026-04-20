@@ -16,6 +16,14 @@ struct pending_upsert_t {
     gto::cstring data;
 };
 
+static gto::cstring create_cstring(const flatbuffers::Vector<std::uint8_t> *value)
+{
+    if (!value)
+        return {};
+
+    return gto::cstring{reinterpret_cast<const char *>(value->data()), static_cast<std::size_t>(value->size())};
+}
+
 // ==========================================================
 // store methods
 // ==========================================================
@@ -238,7 +246,7 @@ nplex::update_t nplex::store_t::validate_update(const msgs::Update *msg, const u
             if (user && !user->is_authorized(CRUD_READ, key))
                 continue;
 
-            gto::cstring data = create_cstring(keyval->value());
+            gto::cstring data = ::create_cstring(keyval->value());
 
             // Reuse existing key storage when possible
             auto it = m_data.find(key);
@@ -370,7 +378,7 @@ nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_t &user, cons
             }
 
             key_t key = (it != m_data.end() ? it->first : key_t{keyval->key()->c_str()});
-            auto data = create_cstring(keyval->value());
+            auto data = ::create_cstring(keyval->value());
 
             pending_upserts.push_back(pending_upsert_t{key, std::move(data)});
             keys.insert(key);

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <chrono>
-#include <flatbuffers/flatbuffers.h>
 #include "common.hpp"
 
 namespace nplex {
@@ -66,10 +65,6 @@ struct shared_ptr_compare
         return lhs.get() < rhs.get();
     }
 };
-
-// Create a string from a flatbuffers::Vector<uint8_t>
-gto::cstring create_cstring(const flatbuffers::Vector<std::uint8_t> *value);
-std::string create_string(const flatbuffers::Vector<std::uint8_t> *value);
 
 // Convert bytes to a human readable string (ex. 13.34MB)
 std::string bytes_to_string(std::size_t bytes);
