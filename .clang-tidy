@@ -20,4 +20,4 @@ Checks: >-
   -misc-const-correctness,
   -misc-non-private-member-variables-in-classes
 HeaderFilterRegex: '^.*/src/.*'
-ExcludeHeaderFilterRegex: '^.*src/messages.hpp'
+ExcludeHeaderFilterRegex: '^.*src/schema.hpp'

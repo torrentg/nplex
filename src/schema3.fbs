@@ -1,8 +1,12 @@
 // ========================================================
-// Nplex flatbuffers schema file.
+// Nplex flatbuffers schema - part 3: client-server protocol.
+// Used by: network protocol (login, submit, subscribe, etc.)
 // @see https://github.com/google/flatbuffers
-// > flatc --cpp --filename-suffix "" --filename-ext hpp --cpp-std c++17 --scoped-enums messages.fbs
+// > flatc --cpp --filename-suffix "" --filename-ext hpp --cpp-std c++17 --scoped-enums schema3.fbs
 // ========================================================
+
+include "schema1.fbs";
+include "schema2.fbs";
 
 namespace nplex.msgs;
 
@@ -42,28 +46,6 @@ enum ExitCode : byte {
 // ========================================================
 // Structures
 
-table KeyValue
-{
-    key: string (required);         // Key
-    value: [ubyte] (required);      // Value
-}
-
-table Update
-{
-    rev: uint64;                    // Commit revision
-    user: string (required);        // Creator
-    timestamp: uint64;              // Timestamp
-    tx_type: uint32;                // Transaction type (user-defined value)
-    upserts: [KeyValue];            // List of creates and updates
-    deletes: [string];              // List of deletes
-}
-
-table Snapshot
-{
-    rev: uint64;                    // Snapshot revision
-    updates: [Update];              // List of updates sorted by commit revision (oldest to newest)
-}
-
 table Acl
 {
     pattern: string (required);     // Pattern (glob)
@@ -85,7 +67,7 @@ table Session
 table LoginRequest
 {
     cid: uint64;                    // Correlation id (used to match responses to requests)
-    fbs_hash: uint32;               // First 4 bytes of the sha256-hash of this file
+    schema: uint32;                 // First 4 bytes of the sha256-hash of the schema3.bfbs file
     user: string (required);        // User name
     password: string (required);    // User password
 }

@@ -1,0 +1,23 @@
+// ========================================================
+// Nplex flatbuffers schema - part 1: update primitives.
+// Used by: journal
+// @see https://github.com/google/flatbuffers
+// ========================================================
+
+namespace nplex.msgs;
+
+table KeyValue
+{
+    key: string (required);         // Key
+    value: [ubyte] (required);      // Value
+}
+
+table Update
+{
+    rev: uint64;                    // Commit revision
+    user: string (required);        // Creator
+    timestamp: uint64;              // Timestamp
+    tx_type: uint32;                // Transaction type (user-defined value)
+    upserts: [KeyValue];            // List of creates and updates
+    deletes: [string];              // List of deletes
+}

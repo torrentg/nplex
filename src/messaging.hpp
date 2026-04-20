@@ -4,7 +4,7 @@
 #include <string>
 #include <uv.h>
 #include "common.hpp"
-#include "messages.hpp"
+#include "schema.hpp"
 
 namespace nplex {
 

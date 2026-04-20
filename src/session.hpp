@@ -3,7 +3,7 @@
 #include <uv.h>
 #include <flatbuffers/flatbuffers.h>
 #include "common.hpp"
-#include "messages.hpp"
+#include "schema.hpp"
 #include "connection.hpp"
 
 namespace nplex {

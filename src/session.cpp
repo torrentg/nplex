@@ -152,14 +152,14 @@ void nplex::session_t::process_login_request(const msgs::LoginRequest *req)
         return;
     }
 
-    if (req->fbs_hash() != FBS_HASH) {
+    if (req->schema() != SCHEMA3_HASH) {
         send(
             create_login_msg(
                 req->cid(), 
                 msgs::LoginCode::UNSUPPORTED_SCHEMA
             ) 
         );
-        shutdown(ERR_FBS_HASH);
+        shutdown(ERR_SCHEMA);
         return;
     }
 
@@ -425,7 +425,7 @@ const char * nplex::session_t::strerror() const
         case ERR_USR_INVL_PWD: return "invalid password";
         case ERR_USR_MAX_CONN: return "maximum usr connections reached";
         case ERR_MAX_CONN: return "maximum total connections reached";
-        case ERR_FBS_HASH: return "unsupported API version";
+        case ERR_SCHEMA: return "unsupported API version";
         case ERR_CONNECTION_LOST: return "connection lost";
         case ERR_UNACK: return "max unack limits exceeded";
         default: return "unknown error";

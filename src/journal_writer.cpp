@@ -3,7 +3,6 @@
 #include "journal.h"
 #include "exception.hpp"
 #include "messaging.hpp"
-#include "messages.hpp"
 #include "common.hpp"
 #include "utils.hpp"
 #include "journal_writer.hpp"

@@ -3,7 +3,7 @@
 #include <map>
 #include "cqueue.hpp"
 #include "common.hpp"
-#include "messages.hpp"
+#include "schema.hpp"
 #include "params.hpp"
 #include "user.hpp"
 

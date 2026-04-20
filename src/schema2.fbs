@@ -1,0 +1,15 @@
+// ========================================================
+// Nplex flatbuffers schema - part 2: snapshot.
+// Used by: snapshot files (.snp)
+// @see https://github.com/google/flatbuffers
+// ========================================================
+
+include "schema1.fbs";
+
+namespace nplex.msgs;
+
+table Snapshot
+{
+    rev: uint64;                    // Snapshot revision
+    updates: [Update];              // List of updates sorted by commit revision (oldest to newest)
+}

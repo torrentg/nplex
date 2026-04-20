@@ -3,7 +3,7 @@
 #include <string>
 #include <memory>
 #include <filesystem>
-#include "messages.hpp"
+#include "schema.hpp"
 #include "common.hpp"
 #include "store.hpp"
 #include "user.hpp"

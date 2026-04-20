@@ -32,7 +32,7 @@
 #define ERR_USR_INVL_PWD        1006
 #define ERR_USR_MAX_CONN        1007
 #define ERR_MAX_CONN            1008
-#define ERR_FBS_HASH            1009
+#define ERR_SCHEMA              1009
 #define ERR_CONNECTION_LOST     1010
 #define ERR_UNACK               1011
 
