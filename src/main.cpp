@@ -71,6 +71,7 @@ static void version()
 {
     std::cout <<
     PROJECT_NAME << " " << PROJECT_VERSION << "\n"
+    "schemas = {" << SCHEMA1_HASH << ", " << SCHEMA2_HASH << ", " << SCHEMA3_HASH << "}\n"
     "Copyright (c) 2026 Gerard Torrent.\n"
     "License MIT: MIT License <https://opensource.org/licenses/MIT>."
     << std::endl;

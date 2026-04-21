@@ -45,6 +45,63 @@ bool nplex::is_valid_key(const std::string_view &key)
     return true;
 }
 
+std::string nplex::crud_to_string(std::uint8_t crud)
+{
+    return std::string{
+        ((crud & CRUD_CREATE) ? 'c' : '-'),
+        ((crud & CRUD_READ)   ? 'r' : '-'),
+        ((crud & CRUD_UPDATE) ? 'u' : '-'),
+        ((crud & CRUD_DELETE) ? 'd' : '-')
+    };
+}
+
+std::uint8_t nplex::parse_crud(const std::string_view &str)
+{
+    static const char *crud_str = "crud";
+    std::uint8_t crud = 0;
+
+    if (str.size() != 4)
+        throw std::invalid_argument(fmt::format("Invalid crud ({})", str));
+
+    for (std::size_t i = 0; i < 4; i++)
+    {
+        char c = str[i];
+
+        if (c != crud_str[i] && c != '-')
+            throw std::invalid_argument(fmt::format("Invalid crud ({})", str));
+
+        switch (c)
+        {
+            case 'c': crud |= CRUD_CREATE; break;
+            case 'r': crud |= CRUD_READ;   break;
+            case 'u': crud |= CRUD_UPDATE; break;
+            case 'd': crud |= CRUD_DELETE; break;
+            default: break;
+        }
+    }
+
+    return crud;
+}
+
+std::string nplex::to_iso8601(std::chrono::milliseconds ms_since_epoch)
+{
+    using namespace std::chrono;
+
+    auto secs = duration_cast<seconds>(ms_since_epoch); 
+    auto millis = duration_cast<milliseconds>(ms_since_epoch - secs).count(); 
+
+    std::ostringstream oss; 
+    std::time_t t = secs.count(); 
+    std::tm tm_utc; 
+
+    gmtime_r(&t, &tm_utc);
+
+    oss << std::put_time(&tm_utc, "%Y-%m-%dT%H:%M:%S"); 
+    oss << '.' << std::setw(3) << std::setfill('0') << millis << 'Z'; 
+
+    return oss.str();
+}
+
 nplex::log_level_e nplex::parse_log_level(const std::string_view &str)
 {
     using namespace std::string_literals;
@@ -170,21 +227,3 @@ std::size_t nplex::estimate_bytes(const update_t &update)
     return bytes;
 }
 
-std::string nplex::to_iso8601(std::chrono::milliseconds ms_since_epoch)
-{
-    using namespace std::chrono;
-
-    auto secs = duration_cast<seconds>(ms_since_epoch); 
-    auto millis = duration_cast<milliseconds>(ms_since_epoch - secs).count(); 
-
-    std::ostringstream oss; 
-    std::time_t t = secs.count(); 
-    std::tm tm_utc; 
-
-    gmtime_r(&t, &tm_utc);
-
-    oss << std::put_time(&tm_utc, "%Y-%m-%dT%H:%M:%S"); 
-    oss << '.' << std::setw(3) << std::setfill('0') << millis << 'Z'; 
-
-    return oss.str();
-}

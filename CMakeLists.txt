@@ -322,7 +322,7 @@ add_executable(
 
 add_executable(
     snpbulk
-    ${CMAKE_CURRENT_LIST_DIR}/src/snpbulk.c
+    ${CMAKE_CURRENT_LIST_DIR}/src/snpbulk.cpp
 )
 
 add_compile_definitions(

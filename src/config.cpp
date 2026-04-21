@@ -69,44 +69,6 @@ namespace nplex {
 #define DEFAULT_CACHE_MAX_ENTRIES               50000
 #define DEFAULT_CACHE_MAX_BYTES                 (500 * 1024 * 1024)
 
-static std::string crud_to_string(std::uint8_t crud)
-{
-    return std::string{
-        ((crud & CRUD_CREATE) ? 'c' : '-'),
-        ((crud & CRUD_READ)   ? 'r' : '-'),
-        ((crud & CRUD_UPDATE) ? 'u' : '-'),
-        ((crud & CRUD_DELETE) ? 'd' : '-')
-    };
-}
-
-static std::uint8_t parse_crud(const std::string_view &str)
-{
-    static const char *crud_str = "crud";
-    std::uint8_t crud = 0;
-
-    if (str.size() != 4)
-        throw std::invalid_argument(fmt::format("Invalid crud ({})", str));
-
-    for (std::size_t i = 0; i < 4; i++)
-    {
-        char c = str[i];
-
-        if (c != crud_str[i] && c != '-')
-            throw std::invalid_argument(fmt::format("Invalid crud ({})", str));
-
-        switch (c)
-        {
-            case 'c': crud |= CRUD_CREATE; break;
-            case 'r': crud |= CRUD_READ;   break;
-            case 'u': crud |= CRUD_UPDATE; break;
-            case 'd': crud |= CRUD_DELETE; break;
-            default: break;
-        }
-    }
-
-    return crud;
-}
-
 static bool parse_bool(const std::string_view &str)
 {
     if (str == "true")

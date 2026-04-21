@@ -3,6 +3,7 @@
 #include <fstream>
 #include <charconv>
 #include <algorithm>
+#include <cstring>
 #include <spdlog/spdlog.h>
 #include "journal.h"
 #include "exception.hpp"
@@ -14,6 +15,11 @@
 #define READ_BATCH_BYTES    (1 * 1024 * 1024)
 #define READ_BATCH_FACTOR   2
 
+struct snapshot_header_t {
+    uint8_t  magic[8];
+    uint32_t schema2_hash;
+};
+
 namespace fs = std::filesystem;
 
 // ==========================================================
@@ -21,10 +27,48 @@ namespace fs = std::filesystem;
 // ==========================================================
 
 static const std::regex snapshot_pattern(R"(.*/snapshot-\d+\.dat)");
+static constexpr uint8_t SNAPSHOT_MAGIC[8] = {'N','P','L','E','X','S','N','P'};
 
 template <typename T>
 static const std::uint8_t * as_uint8_ptr(T *ptr) {
     return reinterpret_cast<const std::uint8_t *>(ptr);
+}
+
+static void check_snapshot_header(std::ifstream &ifs)
+{
+    snapshot_header_t hdr = {};
+
+    if (!ifs.read(reinterpret_cast<char*>(&hdr), sizeof(hdr)))
+        throw nplex::nplex_exception("snapshot unknown format");
+
+    if (std::memcmp(hdr.magic, SNAPSHOT_MAGIC, sizeof(SNAPSHOT_MAGIC)) != 0)
+        throw nplex::nplex_exception("snapshot unknown format");
+
+    if (hdr.schema2_hash != SCHEMA2_HASH)
+        throw nplex::nplex_exception("snapshot schema mismatch, expected=0x{:08x}, found=0x{:08x}", 
+            SCHEMA2_HASH, hdr.schema2_hash);
+}
+
+static void check_snapshots(const std::filesystem::path &m_path)
+{
+    for (auto const &dir_entry : std::filesystem::directory_iterator(m_path))
+    {
+        if (!std::regex_match(dir_entry.path().c_str(), snapshot_pattern))
+            continue;
+
+        std::string filename = dir_entry.path().filename().string();
+
+        std::ifstream ifs(dir_entry.path(), std::ios::binary);
+        if (!ifs)
+            throw nplex::nplex_exception(fmt::format("Failed to open snapshot file ({})", filename));
+
+        try {
+            ::check_snapshot_header(ifs);
+        }
+        catch (const std::exception &e) {
+            throw nplex::nplex_exception(fmt::format("Invalid snapshot file ({}): {}", filename, e.what()));
+        }
+    }
 }
 
 static nplex::rev_t parse_rev(const char* filename)
@@ -98,6 +142,8 @@ std::pair<nplex::rev_t, nplex::rev_t> nplex::storage_t::get_revs_range()
     if (max_snp && max_snp > max_rev)
         throw nplex::nplex_exception(fmt::format("Found snapshot revision greater than max journal revision (r{} > r{})", max_snp, max_rev));
 
+    ::check_snapshots(m_path);
+
     // get version of first snapshot greater-eq than min_rev
     rev_t rev0 = ::get_snapshot_rev(m_path, min_rev, false);
 
@@ -112,15 +158,10 @@ std::pair<nplex::rev_t, nplex::rev_t> nplex::storage_t::get_revs_range()
     return {rev_k, max_rev};
 }
 
-std::string nplex::storage_t::read_snapshot(rev_t rev)
+std::string nplex::read_snapshot(const fs::path &file)
 {
-    rev_t rev_available = ::get_snapshot_rev(m_path, rev);
-
-    if (rev_available == 0)
-        return {};
-
-    std::string filename = fmt::format(SNAPSHOT_FILENAME, rev_available);
-    std::ifstream ifs(m_path / filename, std::ios::binary | std::ios::ate);
+    std::string filename = file.filename().string();
+    std::ifstream ifs(file, std::ios::binary | std::ios::ate);
 
     if (!ifs)
         throw nplex::nplex_exception(fmt::format("Failed to open snapshot file ({})", filename));
@@ -128,16 +169,30 @@ std::string nplex::storage_t::read_snapshot(rev_t rev)
     auto file_size = ifs.tellg();
     ifs.seekg(0, std::ios::beg);
 
-    std::string content(static_cast<std::size_t>(file_size), '\0');
-    if (!ifs.read(&content[0], static_cast<std::streamsize>(file_size)))
-        throw nplex::nplex_exception(fmt::format("Failed to read snapshot file ({})", filename));
+    ::check_snapshot_header(ifs);
+
+    std::size_t data_size = static_cast<std::size_t>(file_size) - sizeof(snapshot_header_t);
+    std::string content(data_size, '\0');
+
+    if (!ifs.read(&content[0], static_cast<std::streamsize>(data_size)))
+        throw nplex_exception(fmt::format("Failed to read snapshot file ({})", filename));
 
     auto verifier = flatbuffers::Verifier(as_uint8_ptr(content.c_str()), content.length());
 
     if (!verifier.VerifyBuffer<nplex::msgs::Snapshot>(nullptr))
-        throw nplex_exception("Invalid snapshot file ({})", filename);
+        throw nplex_exception(fmt::format("Invalid snapshot file ({})", filename));
 
     return content;
+}
+
+std::string nplex::storage_t::read_snapshot(rev_t rev)
+{
+    rev_t rev_available = ::get_snapshot_rev(m_path, rev);
+
+    if (rev_available == 0)
+        return {};
+
+    return nplex::read_snapshot(m_path / fmt::format(SNAPSHOT_FILENAME, rev_available));
 }
 
 nplex::rev_t nplex::storage_t::write_snapshot(const std::string_view &data) const
@@ -155,6 +210,17 @@ nplex::rev_t nplex::storage_t::write_snapshot(const std::string_view &data) cons
 
     if (!ofs)
         throw nplex::nplex_exception(fmt::format("Failed to open snapshot file ({})", filename));
+
+    snapshot_header_t hdr = {
+        .magic = {0}, 
+        .schema2_hash = SCHEMA2_HASH
+    };
+
+    std::memcpy(hdr.magic, SNAPSHOT_MAGIC, sizeof(SNAPSHOT_MAGIC));
+
+    ofs.write(reinterpret_cast<const char*>(&hdr), sizeof(hdr));
+    if (!ofs)
+        throw nplex::nplex_exception(fmt::format("Failed to write to snapshot file ({})", filename));
 
     ofs.write(data.data(), static_cast<std::streamsize>(data.size()));
     if (!ofs)

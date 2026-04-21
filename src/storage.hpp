@@ -113,4 +113,18 @@ class storage_t
 
 using storage_ptr = std::shared_ptr<storage_t>;
 
+/**
+ * Reads a snapshot file from disk given its path.
+ *
+ * Verifies the file header (magic + schema hash) and the flatbuffers content.
+ *
+ * @param[in] file Path to the snapshot file.
+ *
+ * @return Snapshot binary data (flatbuffers bytes, without the file header).
+ *
+ * @exception nplex_exception If the file cannot be read, the header is
+ *            invalid/mismatched, or the flatbuffers content is corrupt.
+ */
+std::string read_snapshot(const std::filesystem::path &file);
+
 } // namespace nplex

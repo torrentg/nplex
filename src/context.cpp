@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cstring>
 #include <spdlog/spdlog.h>
 #include <fmt/core.h>
 #include <fmt/ranges.h>
@@ -11,6 +12,13 @@
 #include "tasks.hpp"
 #include "user.hpp"
 #include "context.hpp"
+
+struct journal_meta_t {
+    uint8_t  magic[8];
+    uint32_t schema1_hash;
+};
+
+static constexpr uint8_t JOURNAL_MAGIC[8] = {'N','P','L','E','X','L','O','G'};
 
 // ==========================================================
 // Internal (static) functions
@@ -61,6 +69,49 @@ static std::map<std::string, nplex::user_ptr> create_users(const std::vector<npl
     SPDLOG_INFO("Users: [{}]", fmt::join(valid_users, ", "));
 
     return ret;
+}
+
+static void verify_journal_schema(ldb::journal_t &journal)
+{
+    int rc = 0;
+    ldb_stats_t stats = {};
+
+    if ((rc = journal.stats(0, UINT64_MAX, &stats)) != LDB_OK)
+        throw nplex::nplex_exception(fmt::format("Failed to get journal stats ({})", ldb_strerror(rc)));
+
+    if (stats.num_entries == 0)
+    {
+        journal_meta_t meta = {
+            .magic = {0},
+            .schema1_hash = SCHEMA1_HASH
+        };
+
+        std::memcpy(meta.magic, JOURNAL_MAGIC, sizeof(JOURNAL_MAGIC));
+
+        if ((rc = journal.set_meta(reinterpret_cast<const char *>(&meta), sizeof(meta))) != LDB_OK)
+            throw nplex::nplex_exception(fmt::format("Failed to set journal metadata ({})", ldb_strerror(rc)));
+
+        SPDLOG_INFO("Journal schema: 0x{:08x} (new)", SCHEMA1_HASH);
+    }
+    else
+    {
+        char buf[LDB_METADATA_LEN] = {};
+
+        if ((rc = journal.get_meta(buf, sizeof(buf))) != LDB_OK)
+            throw nplex::nplex_exception(fmt::format("Failed to get journal metadata ({})", ldb_strerror(rc)));
+
+        journal_meta_t meta = {};
+        std::memcpy(&meta, buf, sizeof(meta));
+
+        if (std::memcmp(meta.magic, JOURNAL_MAGIC, sizeof(JOURNAL_MAGIC)) != 0)
+            throw nplex::nplex_exception("Journal metadata has unknown format (missing magic)");
+
+        if (meta.schema1_hash != SCHEMA1_HASH)
+            throw nplex::nplex_exception(fmt::format("Journal schema mismatch: expected 0x{:08x}, found 0x{:08x}",
+                SCHEMA1_HASH, meta.schema1_hash));
+
+        SPDLOG_INFO("Journal schema: 0x{:08x} (ok)", meta.schema1_hash);
+    }
 }
 
 static void cb_task_run(uv_work_t *req)
@@ -154,6 +205,8 @@ nplex::context_t::context_t(uv_loop_t *loop, const config_t &config) : m_loop(lo
                         (config.journal.fsync ? 0 : LDB_OPEN_FSYNC);
 
     m_journal = std::make_unique<ldb::journal_t>(path, JOURNAL_NAME, journal_flags);
+    ::verify_journal_schema(*m_journal);
+
     m_storage = std::make_shared<storage_t>(*m_journal, path);
     m_journal_writer = std::make_unique<journal_writer>(*m_journal, config.journal);
 
