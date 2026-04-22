@@ -20,6 +20,11 @@ struct snapshot_header_t {
     uint32_t schema2_hash;
 };
 
+struct journal_meta_t {
+    uint8_t  magic[8];
+    uint32_t schema1_hash;
+};
+
 namespace fs = std::filesystem;
 
 // ==========================================================
@@ -27,7 +32,6 @@ namespace fs = std::filesystem;
 // ==========================================================
 
 static const std::regex snapshot_pattern(R"(.*/snapshot-\d+\.dat)");
-static constexpr uint8_t SNAPSHOT_MAGIC[8] = {'N','P','L','E','X','S','N','P'};
 
 template <typename T>
 static const std::uint8_t * as_uint8_ptr(T *ptr) {
@@ -41,7 +45,7 @@ static void check_snapshot_header(std::ifstream &ifs)
     if (!ifs.read(reinterpret_cast<char*>(&hdr), sizeof(hdr)))
         throw nplex::nplex_exception("snapshot unknown format");
 
-    if (std::memcmp(hdr.magic, SNAPSHOT_MAGIC, sizeof(SNAPSHOT_MAGIC)) != 0)
+    if (std::memcmp(hdr.magic, SNAPSHOT_MAGIC, MAGIC_LEN) != 0)
         throw nplex::nplex_exception("snapshot unknown format");
 
     if (hdr.schema2_hash != SCHEMA2_HASH)
@@ -120,8 +124,90 @@ static nplex::rev_t get_snapshot_rev(const fs::path &path, nplex::rev_t rev, boo
 }
 
 // ==========================================================
+// nplex functions
+// ==========================================================
+
+std::string nplex::read_snapshot(const fs::path &file)
+{
+    std::string filename = file.filename().string();
+    std::ifstream ifs(file, std::ios::binary | std::ios::ate);
+
+    if (!ifs)
+        throw nplex::nplex_exception(fmt::format("Failed to open snapshot file ({})", filename));
+
+    auto file_size = ifs.tellg();
+    ifs.seekg(0, std::ios::beg);
+
+    ::check_snapshot_header(ifs);
+
+    std::size_t data_size = static_cast<std::size_t>(file_size) - sizeof(snapshot_header_t);
+    std::string content(data_size, '\0');
+
+    if (!ifs.read(&content[0], static_cast<std::streamsize>(data_size)))
+        throw nplex_exception(fmt::format("Failed to read snapshot file ({})", filename));
+
+    auto verifier = flatbuffers::Verifier(as_uint8_ptr(content.c_str()), content.length());
+
+    if (!verifier.VerifyBuffer<nplex::msgs::Snapshot>(nullptr))
+        throw nplex_exception(fmt::format("Invalid snapshot file ({})", filename));
+
+    return content;
+}
+
+ldb::journal_t nplex::open_journal(const std::filesystem::path &file, int flags)
+{
+    int rc = 0;
+    ldb_stats_t stats = {};
+    journal_meta_t meta = {
+        .magic = {0},
+        .schema1_hash = SCHEMA1_HASH
+    };
+
+    auto dir  = file.parent_path();
+    auto name = file.stem().string();
+
+    ldb::journal_t journal(dir, name, flags);
+
+    if ((rc = journal.stats(0, UINT64_MAX, &stats)) != LDB_OK)
+        throw nplex::nplex_exception(fmt::format("Failed to get journal stats ({})", ldb_strerror(rc)));
+
+    if (stats.num_entries == 0)
+    {
+        std::memcpy(meta.magic, JOURNAL_MAGIC, MAGIC_LEN);
+
+        if ((rc = journal.set_meta(reinterpret_cast<const char *>(&meta), sizeof(meta))) != LDB_OK)
+            throw nplex::nplex_exception(fmt::format("Failed to set journal metadata ({})", ldb_strerror(rc)));
+    }
+    else
+    {
+        char buf[LDB_METADATA_LEN] = {};
+
+        static_assert(LDB_METADATA_LEN >= sizeof(meta), "Metadata buffer too small");
+
+        if ((rc = journal.get_meta(buf, sizeof(buf))) != LDB_OK)
+            throw nplex::nplex_exception(fmt::format("Failed to get journal metadata ({})", ldb_strerror(rc)));
+
+        std::memcpy(&meta, buf, sizeof(meta));
+
+        if (std::memcmp(meta.magic, JOURNAL_MAGIC, MAGIC_LEN) != 0)
+            throw nplex::nplex_exception("Journal metadata has unknown format (missing magic)");
+
+        if (meta.schema1_hash != SCHEMA1_HASH)
+            throw nplex::nplex_exception(fmt::format("Journal schema mismatch: expected 0x{:08x}, found 0x{:08x}",
+                SCHEMA1_HASH, meta.schema1_hash));
+    }
+
+    return journal;
+}
+
+// ==========================================================
 // storage_t methods
 // ==========================================================
+
+nplex::storage_t::storage_t(const std::filesystem::path &path, int flags) : m_path{path}
+{
+    m_journal = open_journal(path / JOURNAL_NAME ".dat", flags);
+}
 
 std::pair<nplex::rev_t, nplex::rev_t> nplex::storage_t::get_revs_range()
 {
@@ -158,33 +244,6 @@ std::pair<nplex::rev_t, nplex::rev_t> nplex::storage_t::get_revs_range()
     return {rev_k, max_rev};
 }
 
-std::string nplex::read_snapshot(const fs::path &file)
-{
-    std::string filename = file.filename().string();
-    std::ifstream ifs(file, std::ios::binary | std::ios::ate);
-
-    if (!ifs)
-        throw nplex::nplex_exception(fmt::format("Failed to open snapshot file ({})", filename));
-
-    auto file_size = ifs.tellg();
-    ifs.seekg(0, std::ios::beg);
-
-    ::check_snapshot_header(ifs);
-
-    std::size_t data_size = static_cast<std::size_t>(file_size) - sizeof(snapshot_header_t);
-    std::string content(data_size, '\0');
-
-    if (!ifs.read(&content[0], static_cast<std::streamsize>(data_size)))
-        throw nplex_exception(fmt::format("Failed to read snapshot file ({})", filename));
-
-    auto verifier = flatbuffers::Verifier(as_uint8_ptr(content.c_str()), content.length());
-
-    if (!verifier.VerifyBuffer<nplex::msgs::Snapshot>(nullptr))
-        throw nplex_exception(fmt::format("Invalid snapshot file ({})", filename));
-
-    return content;
-}
-
 std::string nplex::storage_t::read_snapshot(rev_t rev)
 {
     rev_t rev_available = ::get_snapshot_rev(m_path, rev);
@@ -216,7 +275,7 @@ nplex::rev_t nplex::storage_t::write_snapshot(const std::string_view &data) cons
         .schema2_hash = SCHEMA2_HASH
     };
 
-    std::memcpy(hdr.magic, SNAPSHOT_MAGIC, sizeof(SNAPSHOT_MAGIC));
+    std::memcpy(hdr.magic, SNAPSHOT_MAGIC, MAGIC_LEN);
 
     ofs.write(reinterpret_cast<const char*>(&hdr), sizeof(hdr));
     if (!ofs)

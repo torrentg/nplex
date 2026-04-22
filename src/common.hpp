@@ -16,6 +16,9 @@
 #define LOG_FILENAME            "nplex.log"
 #define JOURNAL_NAME            "journal"
 #define SNAPSHOT_FILENAME       "snapshot-{}.dat"
+#define JOURNAL_MAGIC           "NPLEXLOG"
+#define SNAPSHOT_MAGIC          "NPLEXSNP"
+#define MAGIC_LEN               8
 
 #define CRUD_CREATE             0x01
 #define CRUD_READ               0x02

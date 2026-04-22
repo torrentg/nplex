@@ -3,15 +3,11 @@
 #include <string>
 #include <memory>
 #include <filesystem>
+#include "journal.h"
 #include "schema.hpp"
 #include "common.hpp"
 #include "store.hpp"
 #include "user.hpp"
-
-// Forward references
-namespace ldb {
-    class journal_t;
-}
 
 namespace nplex {
 
@@ -30,11 +26,18 @@ class storage_t
     /**
      * Constructor.
      * 
-     * @param[in] journal Journal object.
      * @param[in] path Storage path.
+     * @param[in] flags Journal flags.
      */
-    storage_t(ldb::journal_t &journal, const std::filesystem::path &path) : m_path{path}, m_journal{journal} {}
+    storage_t(const std::filesystem::path &path, int flags);
     ~storage_t() = default;
+
+    /**
+     * Get the journal object.
+     * 
+     * @return Reference to the journal.
+     */
+    ldb::journal_t & get_journal() { return m_journal; }
 
     /**
      * Returns the revision range of constructible stores.
@@ -108,23 +111,32 @@ class storage_t
   private:
 
     const std::filesystem::path m_path;   // Storage path.
-    ldb::journal_t &m_journal;            // Journal object.
+    ldb::journal_t m_journal;             // Journal object.
 };
 
 using storage_ptr = std::shared_ptr<storage_t>;
 
 /**
- * Reads a snapshot file from disk given its path.
- *
- * Verifies the file header (magic + schema hash) and the flatbuffers content.
- *
- * @param[in] file Path to the snapshot file.
- *
- * @return Snapshot binary data (flatbuffers bytes, without the file header).
- *
- * @exception nplex_exception If the file cannot be read, the header is
- *            invalid/mismatched, or the flatbuffers content is corrupt.
+ * Read and parse a snapshot file.
+ * 
+ * @param[in] file Snapshot file path (with dat extension).
+ * 
+ * @return Snapshot binary data (a msgs::Snapshot).
+ * 
+ * @exception nplex_exception If the file cannot be read or the content is invalid.
  */
 std::string read_snapshot(const std::filesystem::path &file);
+
+/**
+ * Open a journal file.
+ * 
+ * @param[in] file Journal file path (with dat or idx extension).
+ * @param[in] flags Journal open flags (LDB_OPEN_*).
+ * 
+ * @return The opened journal object.
+ * 
+ * @exception nplex_exception If the journal cannot be opened or the metadata is invalid.
+ */
+ldb::journal_t open_journal(const std::filesystem::path &file, int flags);
 
 } // namespace nplex

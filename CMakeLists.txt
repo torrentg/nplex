@@ -232,6 +232,17 @@ if(ENABLE_COVERAGE)
     )
 endif()
 
+option(ENABLE_PROFILER "Compile and link code for gprof profiling" OFF)
+if(ENABLE_PROFILER)
+    add_compile_options(
+        -O2
+        -pg
+    )
+    add_link_options(
+        -pg
+    )
+endif()
+
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
 
@@ -316,13 +327,8 @@ add_executable(
 )
 
 add_executable(
-    journalctl
-    ${CMAKE_CURRENT_LIST_DIR}/deps/journalctl.c
-)
-
-add_executable(
-    snpbulk
-    ${CMAKE_CURRENT_LIST_DIR}/src/snpbulk.cpp
+    nplexcat
+    ${CMAKE_CURRENT_LIST_DIR}/src/nplexcat.cpp
 )
 
 add_compile_definitions(
@@ -333,12 +339,6 @@ add_compile_definitions(
 target_include_directories(
     nplex_lib
     PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/deps
-)
-
-target_include_directories(
-    journalctl
-    PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/deps
 )
 
@@ -374,13 +374,7 @@ target_link_libraries(
 )
 
 target_link_libraries(
-    journalctl
-    PRIVATE
-    nplex_lib
-)
-
-target_link_libraries(
-    snpbulk
+    nplexcat
     PRIVATE
     nplex_lib
 )

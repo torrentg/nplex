@@ -1,6 +1,4 @@
 #include <ctime>
-#include <sstream>
-#include <iomanip>
 #include <arpa/inet.h>
 #include <fmt/core.h>
 #include "utf8.h"
@@ -85,21 +83,17 @@ std::uint8_t nplex::parse_crud(const std::string_view &str)
 
 std::string nplex::to_iso8601(std::chrono::milliseconds ms_since_epoch)
 {
-    using namespace std::chrono;
-
-    auto secs = duration_cast<seconds>(ms_since_epoch); 
-    auto millis = duration_cast<milliseconds>(ms_since_epoch - secs).count(); 
-
-    std::ostringstream oss; 
-    std::time_t t = secs.count(); 
-    std::tm tm_utc; 
+    auto total_secs = ms_since_epoch.count() / 1000;
+    auto millis     = ms_since_epoch.count() % 1000;
+    std::time_t t   = static_cast<std::time_t>(total_secs);
+    std::tm tm_utc;
 
     gmtime_r(&t, &tm_utc);
 
-    oss << std::put_time(&tm_utc, "%Y-%m-%dT%H:%M:%S"); 
-    oss << '.' << std::setw(3) << std::setfill('0') << millis << 'Z'; 
-
-    return oss.str();
+    return fmt::format("{:04d}-{:02d}-{:02d}T{:02d}:{:02d}:{:02d}.{:03d}Z",
+        tm_utc.tm_year + 1900, tm_utc.tm_mon + 1, tm_utc.tm_mday,
+        tm_utc.tm_hour, tm_utc.tm_min, tm_utc.tm_sec,
+        static_cast<int>(millis));
 }
 
 nplex::log_level_e nplex::parse_log_level(const std::string_view &str)

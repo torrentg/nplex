@@ -12,11 +12,6 @@
 #include "params.hpp"
 #include "utils.hpp"
 
-// Forward declarations.
-namespace ldb {
-  class journal_t;
-}
-
 namespace nplex {
 
 // Forward declarations.
@@ -68,7 +63,6 @@ struct context_t : public std::enable_shared_from_this<context_t>
     uv_loop_t *m_loop;                                  // Reference to the event loop
     storage_ptr m_storage;                              // Storage functions (journal, snapshots, etc)
     store_t m_store;                                    // Store object (the key-value map)
-    std::unique_ptr<ldb::journal_t> m_journal;          // Journal object
     std::unique_ptr<journal_writer> m_journal_writer;   // Journal writer thread
     std::vector<update_t> m_pending_publish;            // Updates waiting to be published
     std::mutex m_pending_publish_mutex;                 // Mutex for pending publish updates

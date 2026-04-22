@@ -22,11 +22,10 @@ make -j$(nproc)
 
 This produces three binaries in the `build/` directory:
 
-| Binary | Description |
-|--------|-------------|
-| `nplex` | The database server |
-| `journalctl` | Journal inspection and maintenance tool |
-| `snpbulk` | Snapshot viewer (dumps content as JSON) |
+| Binary     | Description |
+|------------|-------------|
+| `nplex`    | The database server |
+| `nplexcat` | File viewer (dumps content as JSON) |
 
 ## Running nplex
 
@@ -96,36 +95,14 @@ and compile it.
 
 ### Support Tools
 
-Use the `journalctl` tool to inspect and maintain the journal.
+Use `nplexcat` to dump a journal or snapshot file as JSON.
 
 ```bash
 # Getting help
-./journalctl -h
-
-# Show journal summary
-./journalctl --summary -p /path/to/datadir journal
-
-# List entries (optionally from entry N to entry M)
-./journalctl --bulk -p /path/to/datadir journal
-
-# Validate and repair a journal
-./journalctl --repair -p /path/to/datadir journal
-
-# Remove oldest entries
-./journalctl --purge -n 10 -p /path/to/datadir/journal
-
-# Remove newest entries (rollback)
-./journalctl --rollback -n 10 -p /path/to/datadir journal
-```
-
-Use `snpbulk` to dump a snapshot file as JSON.
-
-```bash
-# Getting help
-./snpbulk -h
+./nplexcat -h
 
 # Dumps snapshot
-./snpbulk /path/to/datadir/snapshot-1234.dat
+./nplexcat /path/to/datadir/snapshot-1234.dat
 ```
 
 ## Advanced Build Options
@@ -140,6 +117,12 @@ make -j$(nproc)
 # Thread Sanitizer (cannot be combined with ENABLE_SANITIZERS)
 cmake -DENABLE_THREAD_SANITIZER=ON ..
 make -j$(nproc)
+
+# Profiling
+cmake -DENABLE_PROFILER=ON ..
+make -j$(nproc)
+./nplex -D test
+gprof ./nplex gmon.out
 
 # Code coverage
 cmake -DENABLE_COVERAGE=ON ..
