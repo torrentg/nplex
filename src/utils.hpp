@@ -68,7 +68,7 @@ inline bool is_valid_key(const key_t &key) { return is_valid_key(key.view()); }
 /**
  * Convert milliseconds since epoch to ISO 8601 format (e.g. "2024-06-30T12:34:56.789Z").
  * 
- * @param ms_since_epoch Milliseconds since epoch.
+ * @param[in] ms_since_epoch Milliseconds since epoch.
  * 
  * @return ISO 8601 formatted string.
  */
@@ -83,7 +83,7 @@ std::string to_iso8601(std::chrono::milliseconds ms_since_epoch);
  * 
  * Example: crud 0b1101 (create, read and delete permissions) will be serialized as "cr-d".
  * 
- * @param crud ACL mode.
+ * @param[in] crud ACL mode.
  * 
  * @return std::string Serialized ACL mode.
  */
@@ -98,7 +98,7 @@ std::string crud_to_string(std::uint8_t crud);
  * 
  * Example: string "cr-d" will be parsed as mode 0b1101 (create, read and delete permissions).
  * 
- * @param str String to parse.
+ * @param[in] str String to parse.
  * 
  * @return std::uint8_t Parsed ACL mode.
  * 

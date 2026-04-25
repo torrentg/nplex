@@ -156,9 +156,10 @@ static const uint32_t ldb_crctab[256] = {
  * 
  * @see https://opensource.apple.com/source/file_cmds/file_cmds-188/cksum/crc32.c
  * 
- * @param bytes Bytes to digest.
- * @param len Bytes length.
- * @param checksum Previous checksum value (0 on startup).
+ * @param[in] bytes Bytes to digest.
+ * @param[in] len Bytes length.
+ * @param[in] checksum Previous checksum value (0 on startup).
+ * 
  * @return Checksum value updated.
  */
 uint32_t ldb_crc32(const char *bytes, size_t len, uint32_t checksum)

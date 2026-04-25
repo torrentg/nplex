@@ -55,10 +55,10 @@ table Acl
 table Session
 {
     user: string (required);        // User name
-    ip: string (required);          // Peer IP address
+    address: string (required);     // Peer address (IP)
     code: ExitCode;                 // Exit code (0 means connected)
-    time0: uint64;                  // Connection start (UTC millis since epoch)
-    time1: uint64;                  // Disconnection time (0 if still active)
+    since: uint64;                  // Connection start (UTC millis since epoch)
+    until: uint64;                  // Disconnection time (0 if still active)
 }
 
 // ========================================================

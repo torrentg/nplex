@@ -8,4 +8,3 @@
 * Set metadata in journal header (ex. format version, idl, etc)
 * Add metadata to snapshot files (ex. format version, idl, etc)
 * Considere to compress snapshots (see https://github.com/mateidavid/zstr)
-* Serialize session to JSON

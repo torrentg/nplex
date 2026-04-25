@@ -2,9 +2,36 @@
 #include <fmt/core.h>
 #include "utf8.h"
 #include "utils.hpp"
+#include "schema.hpp"
 #include "json.hpp"
 
 using namespace nplex::msgs;
+
+struct json_params_t
+{
+    enum class mode_e : uint8_t {
+        COMPACT = 0,
+        INDENT = 1
+    };
+
+    mode_e mode = mode_e::COMPACT;
+    uint32_t indent_size = 4;
+    uint32_t max_binary = 12;     // max binary length
+    std::string_view space;       // " " or ""
+    std::string_view line_break;  // "\n" or ""
+    std::string indent;           // cumulated indent
+
+    json_params_t(mode_e m = mode_e::COMPACT, uint32_t size = 4)
+        : mode(m)
+        , indent_size(size)
+        , max_binary(12)
+        , space(m == mode_e::INDENT ? " " : "")
+        , line_break(m == mode_e::INDENT ? "\n" : "")
+    {}
+
+    void push_indent() { if (mode == mode_e::INDENT) indent += std::string(indent_size, ' '); }
+    void pop_indent()  { if (mode == mode_e::INDENT) indent.resize(indent.size() - indent_size); }
+};
 
 // ==========================================================
 // Internal (static) functions
@@ -76,7 +103,7 @@ static void json_append_bytes(const flatbuffers::Vector<uint8_t> *bytes, std::st
 // JSON functions
 // ==========================================================
 
-void nplex::to_json(const msgs::KeyValue *kv, json_params_t &params, std::string &out)
+static void to_json(const KeyValue *kv, json_params_t &params, std::string &out)
 {
     assert(kv);
 
@@ -107,7 +134,7 @@ void nplex::to_json(const msgs::KeyValue *kv, json_params_t &params, std::string
     out += "}";
 }
 
-void nplex::to_json(const msgs::Update *upd, json_params_t &params, std::string &out)
+static void to_json(const Update *upd, json_params_t &params, std::string &out)
 {
     assert(upd);
 
@@ -137,7 +164,7 @@ void nplex::to_json(const msgs::Update *upd, json_params_t &params, std::string 
     json_append_text("timestamp", out);
     out += ":";
     out += params.space;
-    json_append_text(to_iso8601(millis_t{upd->timestamp()}), out);
+    json_append_text(nplex::to_iso8601(nplex::millis_t{upd->timestamp()}), out);
     out += ",";
     out += params.line_break;
 
@@ -220,7 +247,7 @@ void nplex::to_json(const msgs::Update *upd, json_params_t &params, std::string 
     out += "}";
 }
 
-void nplex::to_json(const msgs::Snapshot *snp, json_params_t &params, std::string &out)
+static void to_json(const Snapshot *snp, json_params_t &params, std::string &out)
 {
     assert(snp);
 
@@ -275,64 +302,6 @@ void nplex::to_json(const msgs::Snapshot *snp, json_params_t &params, std::strin
     out += "}";
 }
 
-void nplex::to_json(const msgs::Session *session, json_params_t &params, std::string &out)
-{
-    assert(session);
-
-    out += params.indent;
-    out += "{";
-    out += params.line_break;
-
-    params.push_indent();
-
-    out += params.indent;
-    json_append_text("user", out);
-    out += ":";
-    out += params.space;
-    json_append_escaped_text(session->user() ? session->user()->c_str() : "null", out);
-    out += ",";
-    out += params.line_break;
-
-    out += params.indent;
-    json_append_text("ip", out);
-    out += ":";
-    out += params.space;
-    json_append_escaped_text(session->ip() ? session->ip()->c_str() : "null", out);
-    out += ",";
-    out += params.line_break;
-
-    out += params.indent;
-    json_append_text("code", out);
-    out += ":";
-    out += params.space;
-    json_append_text(EnumNameExitCode(session->code()), out);
-    out += ",";
-    out += params.line_break;
-
-    out += params.indent;
-    json_append_text("time0", out);
-    out += ":";
-    out += params.space;
-    json_append_text(to_iso8601(millis_t{session->time0()}), out);
-
-    if (session->time1() != 0)
-    {
-        out += ",";
-        out += params.line_break;
-        out += params.indent;
-        json_append_text("time1", out);
-        out += ":";
-        out += params.space;
-        json_append_text(to_iso8601(millis_t{session->time1()}), out);
-    }
-
-    out += params.line_break;
-
-    params.pop_indent();
-    out += params.indent;
-    out += "}";
-}
-
 std::string nplex::update_to_json(const char *data, size_t len, char mode)
 {
     assert(data);
@@ -346,12 +315,12 @@ std::string nplex::update_to_json(const char *data, size_t len, char mode)
     if (!verifier.VerifyBuffer<nplex::msgs::Update>(nullptr))
         return "<invalid update>";
 
-    nplex::json_params_t json_params(mode == 'c' ? json_params_t::mode_e::COMPACT : json_params_t::mode_e::INDENT);
+    json_params_t json_params(mode == 'c' ? json_params_t::mode_e::COMPACT : json_params_t::mode_e::INDENT);
     auto update = flatbuffers::GetRoot<nplex::msgs::Update>(data);
     std::string str;
 
     str.reserve(len * 2);
-    nplex::to_json(update, json_params, str);
+    to_json(update, json_params, str);
 
     return str;
 }
@@ -369,12 +338,12 @@ std::string nplex::snapshot_to_json(const char *data, size_t len, char mode)
     if (!verifier.VerifyBuffer<nplex::msgs::Snapshot>(nullptr))
         return "<invalid snapshot>";
 
-    nplex::json_params_t json_params(mode == 'c' ? json_params_t::mode_e::COMPACT : json_params_t::mode_e::INDENT);
+    json_params_t json_params(mode == 'c' ? json_params_t::mode_e::COMPACT : json_params_t::mode_e::INDENT);
     auto snapshot = flatbuffers::GetRoot<nplex::msgs::Snapshot>(data);
     std::string str;
 
     str.reserve(len * 2);
-    nplex::to_json(snapshot, json_params, str);
+    to_json(snapshot, json_params, str);
 
     return str;
 }
