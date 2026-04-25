@@ -253,6 +253,7 @@ operations. The tombstone parameters control how long deletions are remembered:
 | [journal](https://github.com/torrentg/journal) | Log-structured append-only storage | MIT |
 | [cppcrc](https://github.com/DarrenLevine/cppcrc) | Header-only CRC generation | MIT |
 | [cqueue](https://github.com/torrentg/cqueue) | Circular queue | LGPL-3.0 |
+| [base64](https://github.com/tobiaslocker/base64) | Base64 encoder / decoder | MIT |
 | [utf8.h](https://github.com/sheredom/utf8.h) | UTF-8 string functions | Unlicense |
 | [inih](https://github.com/benhoyt/inih) | INI file parser | BSD-3-Clause |
 

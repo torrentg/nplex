@@ -272,6 +272,7 @@ set_target_properties(
 target_sources(
     nplex_lib
     PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/deps/base64.hpp
     ${CMAKE_CURRENT_LIST_DIR}/deps/cppcrc.h
     ${CMAKE_CURRENT_LIST_DIR}/deps/cqueue.hpp
     ${CMAKE_CURRENT_LIST_DIR}/deps/cstring.hpp
@@ -353,6 +354,12 @@ set_source_files_properties(
     ${CMAKE_CURRENT_LIST_DIR}/deps/ini.c
     PROPERTIES 
     COMPILE_OPTIONS "-Wno-useless-cast"
+)
+
+set_source_files_properties(
+    ${CMAKE_CURRENT_LIST_DIR}/src/json.cpp
+    PROPERTIES 
+    COMPILE_OPTIONS "-Wno-sign-conversion"
 )
 
 target_link_libraries(

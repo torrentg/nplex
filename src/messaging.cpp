@@ -2,7 +2,6 @@
 #include "cppcrc.h"
 #include "journal.h"
 #include "user.hpp"
-#include "json.hpp"
 #include "utils.hpp"
 #include "store.hpp"
 #include "session.hpp"

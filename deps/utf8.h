@@ -1049,7 +1049,12 @@ utf8_constexpr14_impl utf8_int8_t *utf8nvalid(const utf8_int8_t *str,
   const utf8_int8_t *t = str;
   size_t consumed = 0;
 
-  while ((void)(consumed = (size_t)(str - t)), consumed < n && '\0' != *str) {
+  while ((void)(consumed = (size_t)(str - t)), consumed < n) {
+    // force error on unexpected NUL (GTG, 25-apr-2026)
+    if ('\0' == *str) { 
+      return (utf8_int8_t *)str;
+    }
+
     const size_t remaining = n - consumed;
 
     if (0xf0 == (0xf8 & *str)) {

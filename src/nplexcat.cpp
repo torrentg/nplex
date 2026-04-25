@@ -48,14 +48,14 @@ static file_type_e detect_file_type(const fs::path &path)
 // Dump functions
 // ==========================================================
 
-static void dump_snapshot(const fs::path &path, char mode)
+static void dump_snapshot(const fs::path &path)
 {
     auto content = nplex::read_snapshot(path);
-    auto json = nplex::snapshot_to_json(content.data(), content.size(), mode);
+    auto json = nplex::snapshot_to_json(content.data(), content.size());
     printf("%s\n", json.c_str());
 }
 
-static void dump_journal(const fs::path &path, char mode)
+static void dump_journal(const fs::path &path)
 {
     int rc = 0;
     ldb_stats_t stats = {};
@@ -104,7 +104,7 @@ static void dump_journal(const fs::path &path, char mode)
         }
 
         for (size_t i = 0; i < num; ++i) {
-            auto json = nplex::update_to_json(static_cast<const char *>(entries[i].data), entries[i].data_len, mode);
+            auto json = nplex::update_to_json(static_cast<const char *>(entries[i].data), entries[i].data_len);
             printf("%s\n", json.c_str());
         }
 
@@ -132,17 +132,19 @@ static void print_help(FILE *out)
         "%s - dump nplex snapshot or journal files as JSON.\n"
         "\n"
         "Usage:\n"
-        "  %s [-h] [-V] [-c] file1 [file2 ...]\n"
+        "  %s [-h] [-V] file1 [file2 ...]\n"
         "\n"
         "Options:\n"
         "  -h, --help       Show this help message and exit.\n"
         "  -V, --version    Show version info and exit.\n"
-        "  -c, --compact    Use compact JSON format. Default is indented.\n",
+        "\n"
+        "Output format:\n"
+        "  JSON output is always compact NDJSON (one JSON object per line).\n",
         APP_NAME, APP_NAME
     );
 }
 
-static int dump_file(const char *argv, char mode)
+static int dump_file(const char *argv)
 {
     try
     {
@@ -151,10 +153,10 @@ static int dump_file(const char *argv, char mode)
         switch (detect_file_type(path))
         {
             case file_type_e::SNAPSHOT:
-                dump_snapshot(path, mode);
+                dump_snapshot(path);
                 break;
             case file_type_e::JOURNAL:
-                dump_journal(path, mode);
+                dump_journal(path);
                 break;
             default:
                 fprintf(stderr, "%s: %s: unsupported file format\n", APP_NAME, argv);
@@ -177,17 +179,15 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    char mode = 'i';
     int opt = 0;
 
     static struct option long_opts[] = {
         {"help",    no_argument, 0, 'h'},
         {"version", no_argument, 0, 'V'},
-        {"compact", no_argument, 0, 'c'},
         {0, 0, 0, 0}
     };
 
-    while ((opt = getopt_long(argc, argv, "hVc", long_opts, nullptr)) != -1)
+    while ((opt = getopt_long(argc, argv, "hV", long_opts, nullptr)) != -1)
     {
         switch (opt)
         {
@@ -197,9 +197,6 @@ int main(int argc, char *argv[])
             case 'V':
                 version();
                 return EXIT_SUCCESS;
-            case 'c':
-                mode = 'c';
-                break;
             default:
                 print_help(stdout);
                 return EXIT_FAILURE;
@@ -214,7 +211,7 @@ int main(int argc, char *argv[])
     int exit_code = EXIT_SUCCESS;
 
     for (int i = optind; i < argc; ++i)
-        exit_code |= dump_file(argv[i], mode);
+        exit_code |= dump_file(argv[i]);
 
     return exit_code;
 }
