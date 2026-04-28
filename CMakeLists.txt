@@ -362,6 +362,12 @@ set_source_files_properties(
     COMPILE_OPTIONS "-Wno-sign-conversion"
 )
 
+set_source_files_properties(
+    ${CMAKE_CURRENT_LIST_DIR}/src/messaging.cpp
+    PROPERTIES 
+    COMPILE_OPTIONS "-Wno-conversion"
+)
+
 target_link_libraries(
     nplex_lib
     "$<$<STREQUAL:${ENABLE_SANITIZERS},ON>:-lasan>"

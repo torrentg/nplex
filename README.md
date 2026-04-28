@@ -74,7 +74,6 @@ Currently available:
 | Admin console | Not yet available |
 | Metrics | No Prometheus/SNMP export yet |
 | Replication | No Raft-based replication yet |
-| Connection visibility | No real-time client connect/disconnect notifications |
 | Journal management | Single journal file (rotation not yet supported) |
 | Compression | No compression for snapshots or updates |
 

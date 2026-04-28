@@ -71,6 +71,16 @@ static void json_append_escaped_text(std::string_view text, std::string &out)
     out.push_back('"');
 }
 
+static void json_append_escaped_text(const flatbuffers::String *str, std::string &out)
+{
+    if (!str) {
+        out += "null";
+        return;
+    }
+
+    json_append_escaped_text({str->c_str(), str->size()}, out);
+}
+
 // ==========================================================
 // JSON functions
 // ==========================================================
@@ -89,7 +99,7 @@ static void to_json(const KeyValue *kv, std::string &out)
     out += "{";
     json_append_text("key", out);
     out += ":";
-    json_append_escaped_text((kv->key() ? kv->key()->c_str() : "null"), out);
+    json_append_escaped_text(kv->key(), out);
     out += ",";
 
     json_append_text("value", out);
@@ -131,7 +141,7 @@ static void to_json(const Update *upd, std::string &out)
 
     json_append_text("user", out);
     out += ":";
-    json_append_escaped_text(upd->user()->c_str(), out);
+    json_append_escaped_text(upd->user(), out);
     out += ",";
 
     json_append_text("timestamp", out);
@@ -176,7 +186,7 @@ static void to_json(const Update *upd, std::string &out)
         {
             const auto &key = upd->deletes()->Get(i);
 
-            json_append_escaped_text({key->c_str(), key->size()}, out);
+            json_append_escaped_text(key, out);
 
             if (i < len - 1)
                 out += ",";

@@ -157,7 +157,8 @@ nplex::context_t::context_t(uv_loop_t *loop, const config_t &config) : m_loop(lo
     m_storage = std::make_shared<storage_t>(path, journal_flags);
     m_journal_writer = std::make_unique<journal_writer>(m_storage->get_journal(), config.journal);
 
-    std::tie(m_rev_0, m_rev_w) = m_storage->get_revs_range();
+    m_rev_0 = m_storage->get_min_rev();
+    m_rev_w = m_storage->get_max_rev();
     SPDLOG_INFO("Data range: [r{}, r{}]", m_rev_0, m_rev_w);
 
     // set store content

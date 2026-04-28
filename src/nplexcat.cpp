@@ -38,7 +38,7 @@ static file_type_e detect_file_type(const fs::path &path)
     if (std::memcmp(header, SNAPSHOT_MAGIC, MAGIC_LEN) == 0)
         return file_type_e::SNAPSHOT;
 
-    if (*(uint64_t *)(header) == LDB_DAT_MAGIC_NUMBER)
+    if (*reinterpret_cast<uint64_t *>(header) == LDB_DAT_MAGIC_NUMBER)
         return file_type_e::JOURNAL;
 
     return file_type_e::UNKNOWN;
@@ -64,9 +64,9 @@ static void dump_journal(const fs::path &path)
     journal = nplex::open_journal(path, LDB_OPEN_READONLY);
 
     if ((rc = journal.stats(0, UINT64_MAX, &stats)) != LDB_OK)
-        throw nplex::nplex_exception(fmt::format("Failed to get journal stats ({})", ldb_strerror(rc)));
+        throw nplex::nplex_exception("Failed to get journal stats ({})", ldb_strerror(rc));
     
-    if (stats.num_entries == 0)
+    if (stats.min_seqnum == 0)
         return;
 
     constexpr size_t BATCH = 128;

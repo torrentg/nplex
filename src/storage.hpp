@@ -1,5 +1,8 @@
 #pragma once
 
+#include <map>
+#include <mutex>
+#include <atomic>
 #include <string>
 #include <memory>
 #include <filesystem>
@@ -10,6 +13,13 @@
 #include "user.hpp"
 
 namespace nplex {
+
+struct snapshot_item_t
+{
+    rev_t rev = 0;
+    std::string filename{};
+    bool checked = false;
+};
 
 /** 
  * Persistent storage (disk).
@@ -40,13 +50,18 @@ class storage_t
     ldb::journal_t & get_journal() { return m_journal; }
 
     /**
-     * Returns the revision range of constructible stores.
+     * Get the minimum revision constructible.
      * 
-     * @return Pair of revisions (min, max).
-     * 
-     * @exception nplex_exception Data dir not found, inconsistent data.
+     * @return Minimum revision.
      */
-    std::pair<rev_t, rev_t> get_revs_range();
+    rev_t get_min_rev() const { return m_min_rev.load(); }
+
+    /**
+     * Get the maximum revision constructible.
+     * 
+     * @return Maximum revision.
+     */
+    rev_t get_max_rev();
 
     /**
      * Reads entries from rev until func returns false or last entry read.
@@ -92,7 +107,7 @@ class storage_t
      * 
      * @exception nplex_exception Invalid snapshot data, error writing file or invalid buffer.
      */
-    rev_t write_snapshot(const std::string_view &data) const;
+    rev_t write_snapshot(const std::string_view &data);
 
     /**
      * Recreates the store content at a given revision.
@@ -108,10 +123,20 @@ class storage_t
      */
     store_t get_store(rev_t rev, const user_ptr &user = nullptr);
 
-  private:
+  private:  // members
 
-    const std::filesystem::path m_path;   // Storage path.
-    ldb::journal_t m_journal;             // Journal object.
+    mutable std::mutex m_mutex;                     // Protects m_snapshots
+    const std::filesystem::path m_path;             // Storage path.
+    std::map<rev_t, snapshot_item_t> m_snapshots;   // Map of available snapshots.
+    ldb::journal_t m_journal;                       // Journal object.
+    std::atomic<rev_t> m_min_rev = 0;               // Minimum constructible revision.
+    bool m_check = false;                           // Whether to check snapshots and journals.
+
+  private:  // methods
+
+    std::string get_snapshot_filename(rev_t rev);
+    void rebuild_map_snapshots();
+    void rebuild_min_rev();
 };
 
 using storage_ptr = std::shared_ptr<storage_t>;
@@ -120,12 +145,13 @@ using storage_ptr = std::shared_ptr<storage_t>;
  * Read and parse a snapshot file.
  * 
  * @param[in] file Snapshot file path (with dat extension).
+ * @param[in] check Whether to check the snapshot content (validity and schema).
  * 
- * @return Snapshot binary data (a msgs::Snapshot).
+ * @return Snapshot binary data (a valid msgs::Snapshot)
  * 
  * @exception nplex_exception If the file cannot be read or the content is invalid.
  */
-std::string read_snapshot(const std::filesystem::path &file);
+std::string read_snapshot(const std::filesystem::path &file, bool check = false);
 
 /**
  * Open a journal file.

@@ -2,9 +2,8 @@
 
 * Add metrics (SNMP+AgentX, prometheus-cpp)
 * Add admin API (nplexctl via uv_pipe_t, stats, conf, purge, rollback, rotate)
-* Support multiple journals (rotate journal by size or time)
+* Support multiple journals (rotate-journal-max-bytes, rotate-journal-max-entries, rotate-journal-daily-at, max-open-archives)
 * Create timer to check if msg delivery exceeds X millis
 * Trace messages in json format
-* Set metadata in journal header (ex. format version, idl, etc)
-* Add metadata to snapshot files (ex. format version, idl, etc)
 * Considere to compress snapshots (see https://github.com/mateidavid/zstr)
+* Add checksum into snapshot header ?
