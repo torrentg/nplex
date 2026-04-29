@@ -1,7 +1,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <iostream>
 #include <filesystem>
 #include <fstream>
 #include <vector>
@@ -118,12 +117,12 @@ static void dump_journal(const fs::path &path)
 
 static void version()
 {
-    std::cout
-        << APP_NAME << " " << PROJECT_VERSION << "\n"
-        << "schemas = {" << SCHEMA1_HASH << ", " << SCHEMA2_HASH << "}\n"
-        << "Copyright (c) 2026 Gerard Torrent.\n"
-        << "License MIT: MIT License <https://opensource.org/licenses/MIT>."
-        << std::endl;
+    fprintf(stdout,
+        APP_NAME " " PROJECT_VERSION "\n"
+        "schemas = [0x%08x, 0x%08x]\n"
+        "Copyright (c) 2026 Gerard Torrent.\n"
+        "License MIT: MIT License <https://opensource.org/licenses/MIT>.\n",
+        SCHEMA1_HASH, SCHEMA2_HASH);
 }
 
 static void print_help(FILE *out)
@@ -139,7 +138,7 @@ static void print_help(FILE *out)
         "  -V, --version    Show version info and exit.\n"
         "\n"
         "Output format:\n"
-        "  JSON output is always compact NDJSON (one JSON object per line).\n",
+        "  NDJSON (one JSON object per line).\n",
         APP_NAME, APP_NAME
     );
 }

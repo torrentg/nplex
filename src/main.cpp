@@ -2,9 +2,7 @@
 #include <cstdlib>
 #include <cstdint>
 #include <csignal>
-#include <iostream>
 #include <filesystem>
-#include <limits>
 #include <string>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
@@ -37,44 +35,43 @@ static spdlog::level::level_enum to_spdlog(log_level_e level)
 
 static void help()
 {
-    std::cout <<
-    "Nplex is a key-value stream database.\n"
-    "\n"
-    "Usage:\n"
-    "  nplex -D datadir [OPTION]...\n"
-    "\n"
-    "Options:\n"
-    "  -D DATADIR       Database directory.\n"
-    "  -a HOST:PORT     Address to listen on (ex: localhost:14022).\n"
-    "  -l LOGLEVEL      Log level (trace, debug, info, warning, error).\n"
-    "  -c               Check journal file at startup.\n"
-    "  -d               Run the program as a daemon.\n"
-    "  -F               Turn fsync off.\n"
-    "  -V, --version    Output version information, then exit.\n"
-    "  -h, --help       Show this help, then exit.\n"
-    "\n"
-    "Signals:\n"
-    "  SIGHUP           Recreate log file (when daemonized).\n"
-    "  SIGINT           Graceful shutdown.\n"
-    "  SIGTERM          Graceful shutdown.\n"
-    "  SIGPIPE          Ignored.\n"
-    "\n"
-    "Exit status:\n"
-    "  0   finished without errors\n"
-    "  1   finished with errors\n"
-    "\n"
-    "Nplex home page: <" PROJECT_URL ">."
-    << std::endl;
+    fprintf(stdout,
+        "Nplex is a key-value stream database.\n"
+        "\n"
+        "Usage:\n"
+        "  nplex -D datadir [OPTION]...\n"
+        "\n"
+        "Options:\n"
+        "  -D DATADIR       Database directory.\n"
+        "  -a HOST:PORT     Address to listen on (ex: localhost:14022).\n"
+        "  -l LOGLEVEL      Log level (trace, debug, info, warning, error).\n"
+        "  -c               Check journal file at startup.\n"
+        "  -d               Run the program as a daemon.\n"
+        "  -F               Turn fsync off.\n"
+        "  -V, --version    Output version information, then exit.\n"
+        "  -h, --help       Show this help, then exit.\n"
+        "\n"
+        "Signals:\n"
+        "  SIGHUP           Recreate log file (when daemonized).\n"
+        "  SIGINT           Graceful shutdown.\n"
+        "  SIGTERM          Graceful shutdown.\n"
+        "  SIGPIPE          Ignored.\n"
+        "\n"
+        "Exit status:\n"
+        "  0   finished without errors\n"
+        "  1   finished with errors\n"
+        "\n"
+        "Nplex home page: <" PROJECT_URL ">.\n");
 }
 
 static void version()
 {
-    std::cout <<
-    PROJECT_NAME << " " << PROJECT_VERSION << "\n"
-    "schemas = {" << SCHEMA1_HASH << ", " << SCHEMA2_HASH << ", " << SCHEMA3_HASH << "}\n"
-    "Copyright (c) 2026 Gerard Torrent.\n"
-    "License MIT: MIT License <https://opensource.org/licenses/MIT>."
-    << std::endl;
+    fprintf(stdout,
+        PROJECT_NAME " " PROJECT_VERSION "\n"
+        "schemas = [0x%08x, 0x%08x, 0x%08x]\n"
+        "Copyright (c) 2026 Gerard Torrent.\n"
+        "License MIT: MIT License <https://opensource.org/licenses/MIT>.\n",
+        SCHEMA1_HASH, SCHEMA2_HASH, SCHEMA3_HASH);
 }
 
 static void handle_sig_logrotate(int signal)
@@ -88,7 +85,7 @@ static void handle_sig_logrotate(int signal)
         auto logger = spdlog::basic_logger_mt(PROJECT_NAME, LOG_FILENAME, true);
         spdlog::set_default_logger(logger);
     } catch (const spdlog::spdlog_ex &e) {
-        std::cerr << "Failed to recreate log file: " << e.what() << std::endl;
+        fprintf(stderr, "Failed to recreate log file: %s\n", e.what());
     }
 }
 
@@ -100,7 +97,7 @@ static void install_signal_handler(int signal, void (*handle)(int))
     sigemptyset(&sa.sa_mask);
 
     if (sigaction(signal, &sa, nullptr) == -1) {
-        std::cerr << "Error: Failed to install signal handler." << std::endl;
+        fprintf(stderr, "Error: Failed to install signal handler.\n");
         std::exit(EXIT_FAILURE);
     }
 }
@@ -126,8 +123,8 @@ int main(int argc, char *argv[])
     };
 
     if (argc <= 1) {
-        std::cerr << "Error: No arguments provided." << std::endl;
-        std::cerr << "Use the --help option for more information." << std::endl;
+        fprintf(stderr, "Error: No arguments provided.\n");
+        fprintf(stderr, "Use the --help option for more information.\n");
         return EXIT_FAILURE;
     }
 
@@ -157,7 +154,7 @@ int main(int argc, char *argv[])
                     log_level_arg = parse_log_level(optarg);
                 }
                 catch (const std::invalid_argument &e) {
-                    std::cerr << "Error: Invalid log level (" << optarg << ")." << std::endl;
+                    fprintf(stderr, "Error: Invalid log level (%s).\n", optarg);
                     return EXIT_FAILURE;
                 }
                 break;
@@ -167,7 +164,7 @@ int main(int argc, char *argv[])
                     addr_arg = addr_t{optarg};
                 }
                 catch (const std::exception &e) {
-                    std::cerr << "Error: " << e.what() << std::endl;
+                    fprintf(stderr, "Error: %s\n", e.what());
                     return EXIT_FAILURE;
                 }
                 break;
@@ -187,19 +184,19 @@ int main(int argc, char *argv[])
 
             default: // '?' (unexpected argument)
                 // getopt() prints message 'invalid option' (see opterr)
-                std::cerr << "Use the --help option for more information." << std::endl;
+                fprintf(stderr, "Use the --help option for more information.\n");
                 return EXIT_FAILURE;
         }
     }
 
     if (argc != optind) {
-        std::cerr << "Error: Unexpected argument (" << argv[optind] << ")." << std::endl;
-        std::cerr << "Use the --help option for more information." << std::endl;
+        fprintf(stderr, "Error: Unexpected argument (%s).\n", argv[optind]);
+        fprintf(stderr, "Use the --help option for more information.\n");
         return EXIT_FAILURE;
     }
 
     if (datadir_arg.empty()) {
-        std::cerr << "Error: Missing required argument -D <datadir>." << std::endl;
+        fprintf(stderr, "Error: Missing required argument -D <datadir>.\n");
         return EXIT_FAILURE;
     }
 
@@ -208,13 +205,13 @@ int main(int argc, char *argv[])
         std::error_code ec;
         fs::create_directories(datadir_arg, ec);
         if (ec) {
-            std::cerr << "Error: Unable to create directory " << datadir_arg << " (" << ec.message() << ")" << std::endl;
+            fprintf(stderr, "Error: Unable to create directory %s (%s)\n", datadir_arg.c_str(), ec.message().c_str());
             return EXIT_FAILURE;
         }
     }
 
     if (!fs::is_directory(datadir_arg)) {
-        std::cerr << "Error: Path " << datadir_arg << " is not a directory." << std::endl;
+        fprintf(stderr, "Error: Path %s is not a directory.\n", datadir_arg.c_str());
         return EXIT_FAILURE;
     }
 
@@ -222,7 +219,7 @@ int main(int argc, char *argv[])
         std::filesystem::current_path(datadir_arg);
     }
     catch (const std::exception &) {
-        std::cerr << "Error: Unable to change to directory " << datadir_arg << std::endl;
+        fprintf(stderr, "Error: Unable to change to directory %s\n", datadir_arg.c_str());
         return EXIT_FAILURE;
     }
 
@@ -259,8 +256,8 @@ int main(int argc, char *argv[])
 
         config.journal.check = check_journal_arg;
     }
-    catch(const std::exception &e) {
-        std::cerr << "Error accessing " << datadir_arg / CONFIG_FILENAME << ": " << e.what() << std::endl;
+    catch (const std::exception &e) {
+        fprintf(stderr, "Error accessing %s: %s\n", (datadir_arg / CONFIG_FILENAME).c_str(), e.what());
         return EXIT_FAILURE;
     }
 
@@ -287,12 +284,12 @@ int main(int argc, char *argv[])
             signal(SIGHUP, SIG_IGN);
     }
     catch (const spdlog::spdlog_ex &e) {
-        std::cerr << e.what() << std::endl;
+        fprintf(stderr, "%s\n", e.what());
         return EXIT_FAILURE;
     }
 
     if (daemonize_arg && daemon(1, 0) == -1) {
-        std::cerr << "Error: Failed to daemonize the process." << std::endl;
+        fprintf(stderr, "Error: Failed to daemonize the process.\n");
         return EXIT_FAILURE;
     }
 

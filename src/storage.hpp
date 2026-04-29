@@ -14,10 +14,21 @@
 
 namespace nplex {
 
+using journal_ptr = std::shared_ptr<ldb::journal_t>;
+
 struct snapshot_item_t
 {
     rev_t rev = 0;
     std::string filename{};
+    bool checked = false;
+};
+
+struct journal_item_t
+{
+    rev_t from_rev = 0;
+    rev_t to_rev = 0;
+    std::string filename{};
+    journal_ptr journal{};
     bool checked = false;
 };
 
@@ -54,7 +65,7 @@ class storage_t
      * 
      * @return Minimum revision.
      */
-    rev_t get_min_rev() const { return m_min_rev.load(); }
+    rev_t get_min_rev();
 
     /**
      * Get the maximum revision constructible.
@@ -125,18 +136,18 @@ class storage_t
 
   private:  // members
 
-    mutable std::mutex m_mutex;                     // Protects m_snapshots
+    mutable std::mutex m_mutex;                     // Protects m_snapshots and m_archives.
     const std::filesystem::path m_path;             // Storage path.
+    ldb::journal_t m_journal;                       // Current journal.
     std::map<rev_t, snapshot_item_t> m_snapshots;   // Map of available snapshots.
-    ldb::journal_t m_journal;                       // Journal object.
-    std::atomic<rev_t> m_min_rev = 0;               // Minimum constructible revision.
+    std::map<rev_t, journal_item_t> m_archives;     // Map of archived journals.
     bool m_check = false;                           // Whether to check snapshots and journals.
 
   private:  // methods
 
-    std::string get_snapshot_filename(rev_t rev);
+    std::string get_snapshot_filename(rev_t rev) const;
     void rebuild_map_snapshots();
-    void rebuild_min_rev();
+    void rebuild_map_archives();
 };
 
 using storage_ptr = std::shared_ptr<storage_t>;

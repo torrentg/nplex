@@ -4,6 +4,7 @@
 #include <charconv>
 #include <algorithm>
 #include <cstring>
+#include <fmt/std.h>
 #include <fmt/core.h>
 #include <spdlog/spdlog.h>
 #include "journal.h"
@@ -33,6 +34,7 @@ namespace fs = std::filesystem;
 // ==========================================================
 
 static const std::regex snapshot_pattern(R"(.*/?snapshot-\d+\.dat)");
+static const std::regex journal_pattern(R"(.*/?journal-\d+\.dat)");
 
 template <typename T>
 static const std::uint8_t * as_uint8_ptr(T *ptr) {
@@ -81,33 +83,85 @@ static std::string get_snapshot_content(std::ifstream &ifs)
     return content;
 }
 
-static void check_snapshot_content(const std::string &content)
+static void check_snapshot_content(const std::string_view &content)
 {
-    auto verifier = flatbuffers::Verifier(as_uint8_ptr(content.c_str()), content.length());
+    auto verifier = flatbuffers::Verifier(as_uint8_ptr(content.data()), content.size());
 
     if (!verifier.VerifyBuffer<nplex::msgs::Snapshot>(nullptr))
         throw nplex::nplex_exception("invalid snapshot content");
 }
 
-static nplex::rev_t parse_rev(const char* filename)
+/**
+ * Parse the revision number from a snapshot or journal filename.
+ * 
+ * @param[in] filename A filename of the form "<dir>/<stem>-<rev><.ext>".
+ * 
+ * @return Filename revision number.
+ */
+static nplex::rev_t parse_rev(const fs::path &filename)
 {
-    std::string_view str(filename);
-
-    assert(str.ends_with(".dat"));
-    str.remove_suffix(std::string(".dat").length());
+    // we take the filename stem, without directory or extension
+    auto stem = filename.stem().string();
+    std::string_view str(stem);
 
     auto pos = str.find_last_of('-');
-    assert(pos != std::string::npos);
+    if (pos == std::string::npos)
+        throw nplex::nplex_exception("invalid filename");
 
     str = str.substr(pos + 1);
-    assert(!str.empty());
+    if (str.empty())
+        throw nplex::nplex_exception("invalid filename");
 
     nplex::rev_t num = 0;
     auto [ptr, ec] = std::from_chars(str.begin(), str.end(), num);
     if (ec != std::errc())
-        throw nplex::nplex_exception("Invalid snapshot filename ({})", filename);
+        throw nplex::nplex_exception("invalid filename");
 
     return num;
+}
+
+static std::pair<nplex::rev_t, nplex::rev_t> get_journal_range(ldb::journal_t &journal)
+{
+    int rc = 0;
+    ldb_stats_t stats = {};
+
+    if ((rc = journal.stats(0, UINT64_MAX, &stats)) != LDB_OK)
+        throw nplex::nplex_exception("{}", ldb_strerror(rc));
+
+    return {stats.min_seqnum, stats.max_seqnum};
+}
+
+static std::pair<nplex::rev_t, nplex::rev_t> get_archives_range(const std::map<nplex::rev_t, nplex::journal_item_t> &archives)
+{
+    nplex::rev_t min_rev = (archives.empty() ? 0 : archives.begin()->second.from_rev);
+    nplex::rev_t max_rev = (archives.empty() ? 0 : archives.rbegin()->second.to_rev);
+
+    return {min_rev, max_rev};
+}
+
+static std::pair<nplex::rev_t, nplex::rev_t> get_updates_range(ldb::journal_t &journal, const std::map<nplex::rev_t, nplex::journal_item_t> &archives)
+{
+    auto [min_rev, max_rev] = get_journal_range(journal);
+    auto [min_arx, max_arx] = get_archives_range(archives);
+
+    // Case: no journal entries
+    if (!min_rev) {
+        min_rev = min_arx;
+        max_rev = max_arx;
+    }
+
+    if (min_arx && min_arx < min_rev)
+        min_rev = min_arx;
+
+    return {min_rev, max_rev};
+}
+
+static std::pair<nplex::rev_t, nplex::rev_t> get_snapshots_range(const std::map<nplex::rev_t, nplex::snapshot_item_t> &snapshots)
+{
+    nplex::rev_t min_snp = (snapshots.empty() ? 0 : snapshots.begin()->first);
+    nplex::rev_t max_snp = (snapshots.empty() ? 0 : snapshots.rbegin()->first);
+
+    return {min_snp, max_snp};
 }
 
 // ==========================================================
@@ -117,7 +171,7 @@ static nplex::rev_t parse_rev(const char* filename)
 std::string nplex::read_snapshot(const fs::path &file, bool check)
 {
     std::string filename = file.filename().string();
-    std::ifstream ifs(file, std::ios::binary | std::ios::ate);
+    std::ifstream ifs(file, std::ios::binary);
 
     if (!ifs)
         throw nplex_exception("Failed to open snapshot file ({})", filename);
@@ -132,48 +186,45 @@ std::string nplex::read_snapshot(const fs::path &file, bool check)
     return content;
 }
 
-ldb::journal_t nplex::open_journal(const std::filesystem::path &file, int flags)
+ldb::journal_t nplex::open_journal(const fs::path &file, int flags)
 {
+    auto dir  = file.parent_path();
+    auto name = file.stem().string();
+
+    // Open the journal
+    ldb::journal_t journal(dir, name, flags);
+
+    // Get the journal range minimum revision (if any)
+    bool is_empty = (get_journal_range(journal).first == 0);
+
+    // Read the journal metadata
     int rc = 0;
-    ldb_stats_t stats = {};
     journal_meta_t meta = {
         .magic = {0},
         .schema1_hash = SCHEMA1_HASH
     };
 
-    auto dir  = file.parent_path();
-    auto name = file.stem().string();
+    static_assert(LDB_METADATA_LEN >= sizeof(meta), "Metadata buffer too small");
+    if ((rc = journal.get_meta(reinterpret_cast<char *>(&meta), sizeof(meta))) != LDB_OK)
+        throw nplex_exception("Failed to read journal metadata ({})", ldb_strerror(rc));
 
-    ldb::journal_t journal(dir, name, flags);
-
-    if ((rc = journal.stats(0, UINT64_MAX, &stats)) != LDB_OK)
-        throw nplex_exception("Failed to get journal stats ({})", ldb_strerror(rc));
-
-    if (stats.min_seqnum == 0)
+    if (is_empty)
     {
         std::memcpy(meta.magic, JOURNAL_MAGIC, MAGIC_LEN);
+        meta.schema1_hash = SCHEMA1_HASH;
 
+        // Set/update the journal metadata
         if ((rc = journal.set_meta(reinterpret_cast<const char *>(&meta), sizeof(meta))) != LDB_OK)
-            throw nplex_exception("Failed to set journal metadata ({})", ldb_strerror(rc));
+            throw nplex_exception("Failed to write journal metadata ({})", ldb_strerror(rc));
     }
-    else
-    {
-        char buf[LDB_METADATA_LEN] = {};
 
-        static_assert(LDB_METADATA_LEN >= sizeof(meta), "Metadata buffer too small");
+    // Checking that journal content is a valid nplex journal
+    if (std::memcmp(meta.magic, JOURNAL_MAGIC, MAGIC_LEN) != 0)
+        throw nplex_exception("Invalid journal (magic mismatch)");
 
-        if ((rc = journal.get_meta(buf, sizeof(buf))) != LDB_OK)
-            throw nplex_exception("Failed to get journal metadata ({})", ldb_strerror(rc));
-
-        std::memcpy(&meta, buf, sizeof(meta));
-
-        if (std::memcmp(meta.magic, JOURNAL_MAGIC, MAGIC_LEN) != 0)
-            throw nplex_exception("Journal metadata has unknown format (missing magic)");
-
-        if (meta.schema1_hash != SCHEMA1_HASH)
-            throw nplex_exception("Journal schema mismatch: expected 0x{:08x}, found 0x{:08x}",
-                SCHEMA1_HASH, meta.schema1_hash);
-    }
+    // Checking that journal content is compatible with current schema
+    if (meta.schema1_hash != SCHEMA1_HASH)
+        throw nplex_exception("Invalid journal (schema1 mismatch)");
 
     return journal;
 }
@@ -182,23 +233,33 @@ ldb::journal_t nplex::open_journal(const std::filesystem::path &file, int flags)
 // storage_t methods
 // ==========================================================
 
-nplex::storage_t::storage_t(const std::filesystem::path &path, int flags) : m_path{path}
+nplex::storage_t::storage_t(const fs::path &path, int flags) : m_path{path}
 {
     m_check = flags & LDB_OPEN_CHECK;
     m_journal = open_journal(path / JOURNAL_NAME ".dat", flags);
+
+    rebuild_map_archives();
     rebuild_map_snapshots();
-    rebuild_min_rev();
+}
+
+nplex::rev_t nplex::storage_t::get_min_rev()
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+
+    auto [min_rev, max_rev] = get_updates_range(m_journal, m_archives);
+    auto [min_snp, max_snp] = get_snapshots_range(m_snapshots);
+
+    assert(!max_snp || max_snp <= max_rev);
+    assert( min_snp || min_rev <= 1);
+
+    return (min_rev <= 1 ? min_rev : min_snp);
 }
 
 nplex::rev_t nplex::storage_t::get_max_rev()
 {
-    int rc = 0;
-    ldb_stats_t stats = {};
+    std::lock_guard<std::mutex> lock(m_mutex);
 
-    if ((rc = m_journal.stats(0, UINT64_MAX, &stats)) != LDB_OK)
-        throw nplex_exception("{}", ldb_strerror(rc));
-
-    return stats.max_seqnum;
+    return get_updates_range(m_journal, m_archives).second;
 }
 
 /**
@@ -208,7 +269,7 @@ nplex::rev_t nplex::storage_t::get_max_rev()
  * 
  * @return Snapshot filename (empty if not found).
  */
-std::string nplex::storage_t::get_snapshot_filename(rev_t rev)
+std::string nplex::storage_t::get_snapshot_filename(rev_t rev) const
 {
     std::lock_guard<std::mutex> lock(m_mutex);
 
@@ -236,7 +297,7 @@ std::string nplex::storage_t::read_snapshot(rev_t rev)
         SPDLOG_DEBUG("Read snapshot {}", filename);
         return content;
     }
-    catch(const std::exception &e)
+    catch (const std::exception &e)
     {
         // Someone has altered the data dir content
         SPDLOG_WARN("Failed to read snapshot {}: {}", filename, e.what());
@@ -254,12 +315,9 @@ std::string nplex::storage_t::read_snapshot(rev_t rev)
 
 nplex::rev_t nplex::storage_t::write_snapshot(const std::string_view &data)
 {
-    auto verifier = flatbuffers::Verifier(as_uint8_ptr(data.data()), data.length());
+    ::check_snapshot_content(data);
 
-    if (!verifier.VerifyBuffer<nplex::msgs::Snapshot>(nullptr))
-        throw nplex_exception("Invalid snapshot data");
-
-    auto snapshot = flatbuffers::GetRoot<nplex::msgs::Snapshot>(data.data());
+    auto snapshot = flatbuffers::GetRoot<msgs::Snapshot>(data.data());
     rev_t rev = snapshot->rev();
 
     std::string filename = fmt::format(SNAPSHOT_FILENAME, rev);
@@ -326,10 +384,10 @@ std::size_t nplex::storage_t::read_entries(rev_t rev, const std::function<bool(c
         {
             auto verifier = flatbuffers::Verifier(as_uint8_ptr(entries[i].data), entries[i].data_len);
 
-            if (!verifier.VerifyBuffer<nplex::msgs::Update>(nullptr))
+            if (!verifier.VerifyBuffer<msgs::Update>(nullptr))
                 throw nplex_exception("Invalid journal entry (r{})", rev);
 
-            auto update = flatbuffers::GetRoot<nplex::msgs::Update>(entries[i].data);
+            auto update = flatbuffers::GetRoot<msgs::Update>(entries[i].data);
 
             assert(update->rev() == rev);
 
@@ -376,7 +434,7 @@ nplex::store_t nplex::storage_t::get_store(rev_t rev, const user_ptr &user)
     std::string str = read_snapshot(rev);
     if (!str.empty())
     {
-        auto snapshot = flatbuffers::GetRoot<nplex::msgs::Snapshot>(str.c_str());
+        auto snapshot = flatbuffers::GetRoot<msgs::Snapshot>(str.c_str());
         repo.load(snapshot, user);
         str = std::string{};
     }
@@ -385,7 +443,7 @@ nplex::store_t nplex::storage_t::get_store(rev_t rev, const user_ptr &user)
         return repo;
 
     // step2: define a function to update the repo with the journal updates
-    auto func = [&repo, rev, user](const nplex::msgs::Update *update) -> bool {
+    auto func = [&repo, rev, user](const msgs::Update *update) -> bool {
         repo.update(update, user);
         return (repo.rev() < rev);
     };
@@ -399,40 +457,126 @@ nplex::store_t nplex::storage_t::get_store(rev_t rev, const user_ptr &user)
     return repo;
 }
 
+/**
+ * @pre m_journal is open and valid
+ */
+void nplex::storage_t::rebuild_map_archives()
+{
+    rev_t rev = 0;
+    bool has_errors = false;
+    decltype(m_archives) archives;
+
+    for (auto const &dir_entry : fs::directory_iterator(m_path))
+    {
+        if (!std::regex_match(dir_entry.path().c_str(), journal_pattern))
+            continue;
+
+        auto filename = dir_entry.path().filename();
+        rev_t min_rev = 0;
+        rev_t max_rev = 0;
+
+        try
+        {
+            rev = parse_rev(filename);
+
+            auto journal = open_journal(dir_entry.path(), (m_check ? LDB_OPEN_CHECK : 0));
+
+            std::tie(min_rev, max_rev) = get_journal_range(journal);
+
+            if (rev != max_rev)
+                throw nplex_exception("revision mismatch");
+
+            if (archives.contains(rev))
+                throw nplex_exception("duplicate journal");
+        }
+        catch (const std::exception &e)
+        {
+            SPDLOG_WARN("Skipping file {}: {}", filename, e.what());
+            has_errors = true;
+            continue;
+        }
+
+        archives[max_rev] = journal_item_t{
+            .from_rev = min_rev,
+            .to_rev = max_rev,
+            .filename = filename,
+            .journal = nullptr,
+            .checked = m_check
+        };
+
+        SPDLOG_DEBUG("Found journal {}, revs = [r{}, r{}]", filename, min_rev, max_rev);
+    }
+
+    rev = 0;
+
+    // Checks for gaps and overlaps in journal revisions
+    for (const auto &[num, item] : archives)
+    {
+        if (rev && item.from_rev != rev + 1) {
+             SPDLOG_WARN("Found gap between archives, range = [r{}, r{}]", rev + 1, item.from_rev - 1);
+             has_errors = true;
+        }
+
+        rev = item.to_rev;
+    }
+
+    if (!archives.empty())
+    {
+        rev_t min_rev = get_journal_range(m_journal).first;
+        const auto &last_item = archives.rbegin()->second;
+
+        if (min_rev && last_item.to_rev + 1 != min_rev) {
+            SPDLOG_WARN("Found gap between archives and journal, range = [r{}, r{}]", last_item.to_rev + 1, min_rev - 1);
+            has_errors = true;
+        }
+    }
+
+    if (has_errors)
+        throw nplex_exception("Failed to rebuild journals map");
+
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_archives = std::move(archives);
+}
+
+/**
+ * @pre m_journal is open and valid
+ * @pre m_archives is up-to-date (call rebuild_map_archives before if needed)
+ */
 void nplex::storage_t::rebuild_map_snapshots()
 {
-    decltype( m_snapshots ) snapshots;
+    decltype(m_snapshots) snapshots;
+    rev_t min_rev = 0;
+    rev_t max_rev = 0;
 
-    for (auto const &dir_entry : std::filesystem::directory_iterator(m_path))
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        std::tie(min_rev, max_rev) = get_updates_range(m_journal, m_archives);
+    }
+
+    for (auto const &dir_entry : fs::directory_iterator(m_path))
     {
         if (!std::regex_match(dir_entry.path().c_str(), snapshot_pattern))
             continue;
 
-        std::string filename = dir_entry.path().filename().string();
-        nplex::rev_t rnum = 0;
-
-        try {
-            rnum = parse_rev(filename.c_str());
-        }
-        catch (const std::exception &e) {
-            SPDLOG_WARN("Invalid snapshot filename ({}), skipping", filename);
-            continue;
-        }
-
-        if (snapshots.contains(rnum))
-        {
-            SPDLOG_WARN("Duplicate snapshot revision ({}), skipping", filename);
-            continue;
-        }
+        auto filename = dir_entry.path().filename();
+        rev_t rev = 0;
 
         try
         {
+            rev = parse_rev(filename);
+
+            if (rev + 1 < min_rev || max_rev < rev)
+                throw nplex_exception("revision out-of-range");
+
             std::ifstream ifs(dir_entry.path(), std::ios::binary);
 
             if (!ifs)
                 throw nplex_exception("failed to open file");
 
             ::check_snapshot_header(ifs);
+
+            if (snapshots.contains(rev))
+                throw nplex_exception("duplicate snapshot");
 
             if (m_check)
             {
@@ -441,61 +585,25 @@ void nplex::storage_t::rebuild_map_snapshots()
 
                 auto *snapshot = flatbuffers::GetRoot<msgs::Snapshot>(content.c_str());
 
-                if (snapshot->rev() != rnum)
-                    throw nplex_exception("revision mismatch (filename: r{}, content: r{})", rnum, snapshot->rev());
+                if (snapshot->rev() != rev)
+                    throw nplex_exception("revision mismatch");
             }
         }
-        catch (const std::exception &e) {
+        catch (const std::exception &e)
+        {
             SPDLOG_WARN("Skipping file {}: {}", filename, e.what());
             continue;
         }
 
-        snapshots[rnum] = snapshot_item_t{
-            .rev = rnum,
-            .filename = filename,
+        snapshots[rev] = snapshot_item_t{
+            .rev = rev,
+            .filename = filename.string(),
             .checked = m_check
         };
 
-        SPDLOG_DEBUG("Found snapshot {}, rev = r{}", filename, rnum);
+        SPDLOG_DEBUG("Found snapshot {}, rev = r{}", filename, rev);
     }
 
     std::lock_guard<std::mutex> lock(m_mutex);
     m_snapshots = std::move(snapshots);
-}
-
-/**
- * @pre m_journal is open and valid
- * @pre m_snapshots is up-to-date (call rebuild_map_snapshots before if needed)
- */
-void nplex::storage_t::rebuild_min_rev()
-{
-    std::lock_guard<std::mutex> lock(m_mutex);
-    ldb_stats_t stats = {};
-    int rc = 0;
-
-    if ((rc = m_journal.stats(0, UINT64_MAX, &stats)) != LDB_OK)
-        throw nplex_exception("Failed to get journal stats ({})", ldb_strerror(rc));
-
-    rev_t min_rev = stats.min_seqnum;
-    rev_t max_rev = stats.max_seqnum;
-    SPDLOG_DEBUG("Journal range: [r{}, r{}]", min_rev, max_rev);
-
-    rev_t min_snp = (m_snapshots.empty() ? 0 : m_snapshots.begin()->first);
-    rev_t max_snp = (m_snapshots.empty() ? 0 : m_snapshots.rbegin()->first);
-    SPDLOG_DEBUG("Snapshot range: [r{}, r{}]", min_snp, max_snp);
-
-    if (max_snp && max_snp > max_rev)
-        throw nplex_exception("Found snapshot revision greater than max journal revision (r{} > r{})", max_snp, max_rev);
-
-    // get version of first snapshot greater-eq than min_rev
-    auto it = m_snapshots.lower_bound(min_rev);
-    rev_t rev0 = (it == m_snapshots.end() ? 0 : it->first);
-
-    if (rev0 == 0 && min_rev > 1)
-        throw nplex_exception("No snapshot available in range [r{}, r{}]", min_rev, max_rev);
-
-    if (min_rev > 1 && min_rev <= rev0)
-        SPDLOG_INFO("Found unused journal entries, range = [{}-{}]", min_rev, rev0);
-
-    m_min_rev = (min_rev == 1 ? 1 : rev0);
 }
