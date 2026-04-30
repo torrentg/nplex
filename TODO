@@ -6,4 +6,3 @@
 * Create timer to check if msg delivery exceeds X millis
 * Trace messages in json format
 * Considere to compress snapshots (see https://github.com/mateidavid/zstr)
-* Add checksum into snapshot header ?

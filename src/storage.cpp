@@ -4,6 +4,7 @@
 #include <charconv>
 #include <algorithm>
 #include <cstring>
+#include "cppcrc.h"
 #include <fmt/std.h>
 #include <fmt/core.h>
 #include <spdlog/spdlog.h>
@@ -20,6 +21,7 @@
 struct snapshot_header_t {
     uint8_t  magic[8];
     uint32_t schema2_hash;
+    uint32_t checksum;
 };
 
 struct journal_meta_t {
@@ -41,7 +43,7 @@ static const std::uint8_t * as_uint8_ptr(T *ptr) {
     return reinterpret_cast<const std::uint8_t *>(ptr);
 }
 
-static void check_snapshot_header(std::ifstream &ifs)
+static snapshot_header_t check_snapshot_header(std::ifstream &ifs)
 {
     snapshot_header_t hdr = {};
 
@@ -57,6 +59,16 @@ static void check_snapshot_header(std::ifstream &ifs)
 
     if (hdr.schema2_hash != SCHEMA2_HASH)
         throw nplex::nplex_exception("schema2 mismatch");
+
+    return hdr;
+}
+
+static void check_snapshot_checksum(const std::string_view &content, uint32_t expected)
+{
+    auto computed = CRC32::CRC32::calc(reinterpret_cast<const uint8_t*>(content.data()), content.size());
+
+    if (computed != expected)
+        throw nplex::nplex_exception("checksum mismatch");
 }
 
 static std::string get_snapshot_content(std::ifstream &ifs)
@@ -176,9 +188,11 @@ std::string nplex::read_snapshot(const fs::path &file, bool check)
     if (!ifs)
         throw nplex_exception("Failed to open snapshot file ({})", filename);
 
-    ::check_snapshot_header(ifs);
+    auto hdr = ::check_snapshot_header(ifs);
 
     std::string content = ::get_snapshot_content(ifs);
+
+    ::check_snapshot_checksum(content, hdr.checksum);
 
     if (check)
         ::check_snapshot_content(content);
@@ -303,6 +317,7 @@ std::string nplex::storage_t::read_snapshot(rev_t rev)
         SPDLOG_WARN("Failed to read snapshot {}: {}", filename, e.what());
     }
 
+    SPDLOG_INFO("Rebuilding snapshot map ...");
     rebuild_map_snapshots();
 
     filename = get_snapshot_filename(rev);
@@ -310,7 +325,15 @@ std::string nplex::storage_t::read_snapshot(rev_t rev)
     if (filename.empty())
         return {};
 
-    return nplex::read_snapshot(m_path / filename);
+    try {
+        auto content = nplex::read_snapshot(m_path / filename);
+        SPDLOG_DEBUG("Read snapshot {}", filename);
+        return content;
+    }
+    catch (const std::exception &e)
+    {
+        throw nplex_exception("Failed to read snapshot {}: {}", filename, e.what());
+    }
 }
 
 nplex::rev_t nplex::storage_t::write_snapshot(const std::string_view &data)
@@ -327,8 +350,9 @@ nplex::rev_t nplex::storage_t::write_snapshot(const std::string_view &data)
         throw nplex_exception("Failed to open snapshot file ({})", filename);
 
     snapshot_header_t hdr = {
-        .magic = {0}, 
-        .schema2_hash = SCHEMA2_HASH
+        .magic = {0},
+        .schema2_hash = SCHEMA2_HASH,
+        .checksum = CRC32::CRC32::calc(reinterpret_cast<const uint8_t*>(data.data()), data.size())
     };
 
     std::memcpy(hdr.magic, SNAPSHOT_MAGIC, MAGIC_LEN);
@@ -573,7 +597,7 @@ void nplex::storage_t::rebuild_map_snapshots()
             if (!ifs)
                 throw nplex_exception("failed to open file");
 
-            ::check_snapshot_header(ifs);
+            auto hdr = ::check_snapshot_header(ifs);
 
             if (snapshots.contains(rev))
                 throw nplex_exception("duplicate snapshot");
@@ -581,6 +605,7 @@ void nplex::storage_t::rebuild_map_snapshots()
             if (m_check)
             {
                 auto content = ::get_snapshot_content(ifs);
+                ::check_snapshot_checksum(content, hdr.checksum);
                 ::check_snapshot_content(content);
 
                 auto *snapshot = flatbuffers::GetRoot<msgs::Snapshot>(content.c_str());
