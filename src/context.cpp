@@ -152,7 +152,7 @@ nplex::context_t::context_t(uv_loop_t *loop, const config_t &config) : m_loop(lo
 
     int journal_flags = LDB_OPEN_CREATE | 
                         (config.journal.check ? LDB_OPEN_CHECK : 0) | 
-                        (config.journal.fsync ? 0 : LDB_OPEN_FSYNC);
+                        (config.journal.fsync ? LDB_OPEN_FSYNC : 0);
 
     m_storage = std::make_shared<storage_t>(path, journal_flags);
     m_journal_writer = std::make_unique<journal_writer>(m_storage->get_journal(), config.journal);

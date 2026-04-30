@@ -14,9 +14,9 @@
 #include "utils.hpp"
 #include "storage.hpp"
 
-#define READ_BATCH_ENTRIES  10000
-#define READ_BATCH_BYTES    (1 * 1024 * 1024)
-#define READ_BATCH_FACTOR   2
+static constexpr std::size_t READ_BATCH_ENTRIES = 10'000;
+static constexpr std::size_t READ_BATCH_BYTES   = 1 * 1024 * 1024;
+static constexpr std::size_t READ_BATCH_FACTOR  = 2;
 
 struct snapshot_header_t {
     uint8_t  magic[8];
@@ -27,6 +27,19 @@ struct snapshot_header_t {
 struct journal_meta_t {
     uint8_t  magic[8];
     uint32_t schema1_hash;
+};
+
+struct read_result_t {
+    nplex::rev_t rev = 0;           // next revision to read (i.e. last read revision + 1)
+    std::size_t count = 0;          // number of entries read
+    std::size_t bytes = 0;          // total bytes read (entries data only)
+    bool stopped = false;           // whether the callback requested to stop reading
+};
+
+struct read_buffer_t {
+    std::array<ldb_entry_t, READ_BATCH_ENTRIES> entries{};
+    std::vector<char> arena;
+    read_buffer_t() : arena(READ_BATCH_BYTES, 0) {}
 };
 
 namespace fs = std::filesystem;
@@ -132,12 +145,12 @@ static nplex::rev_t parse_rev(const fs::path &filename)
     return num;
 }
 
-static std::pair<nplex::rev_t, nplex::rev_t> get_journal_range(ldb::journal_t &journal)
+static std::pair<nplex::rev_t, nplex::rev_t> get_journal_range(const nplex::journal_ptr &journal)
 {
     int rc = 0;
     ldb_stats_t stats = {};
 
-    if ((rc = journal.stats(0, UINT64_MAX, &stats)) != LDB_OK)
+    if ((rc = journal->stats(0, UINT64_MAX, &stats)) != LDB_OK)
         throw nplex::nplex_exception("{}", ldb_strerror(rc));
 
     return {stats.min_seqnum, stats.max_seqnum};
@@ -151,7 +164,7 @@ static std::pair<nplex::rev_t, nplex::rev_t> get_archives_range(const std::map<n
     return {min_rev, max_rev};
 }
 
-static std::pair<nplex::rev_t, nplex::rev_t> get_updates_range(ldb::journal_t &journal, const std::map<nplex::rev_t, nplex::journal_item_t> &archives)
+static std::pair<nplex::rev_t, nplex::rev_t> get_updates_range(const nplex::journal_ptr &journal, const std::map<nplex::rev_t, nplex::journal_item_t> &archives)
 {
     auto [min_rev, max_rev] = get_journal_range(journal);
     auto [min_arx, max_arx] = get_archives_range(archives);
@@ -174,6 +187,75 @@ static std::pair<nplex::rev_t, nplex::rev_t> get_snapshots_range(const std::map<
     nplex::rev_t max_snp = (snapshots.empty() ? 0 : snapshots.rbegin()->first);
 
     return {min_snp, max_snp};
+}
+
+/**
+ * Read entries from a journal.
+ *
+ * @param[in] journal  Journal to read from.
+ * @param[in] rev      Starting revision (included).
+ * @param[in] num      Total entries to read.
+ * @param[in,out] rbuf Read buffers (entries array + data buffer).
+ * @param[in] func     Callback; returning false stops reading.
+ *
+ * @return Read result struct.
+ */
+static read_result_t read_journal(const nplex::journal_ptr &journal, nplex::rev_t rev, std::size_t num, read_buffer_t &rbuf, const std::function<bool(const nplex::msgs::Update *)> &func)
+{
+    std::size_t count = 0;
+    std::size_t bytes = 0;
+
+    while (count < num)
+    {
+        std::size_t num_reads = 0;
+        std::size_t len = std::min(std::size_t{READ_BATCH_ENTRIES}, num - count);
+
+        int rc = journal->read(rev, rbuf.entries.data(), len, rbuf.arena.data(), rbuf.arena.size(), &num_reads);
+
+        if (rc != LDB_OK && rc != LDB_ERR_NOT_FOUND)
+            throw nplex::nplex_exception("{}", ldb_strerror(rc));
+
+        if (num_reads)
+            SPDLOG_TRACE("Read journal entries, range = [r{}, r{}]", rev, rev + num_reads - 1);
+
+        for (std::size_t i = 0; i < num_reads; i++)
+        {
+            auto verifier = flatbuffers::Verifier(as_uint8_ptr(rbuf.entries[i].data), rbuf.entries[i].data_len);
+
+            if (!verifier.VerifyBuffer<nplex::msgs::Update>(nullptr))
+                throw nplex::nplex_exception("Invalid journal entry (r{})", rev);
+
+            auto update = flatbuffers::GetRoot<nplex::msgs::Update>(rbuf.entries[i].data);
+
+            if (update->rev() != rev)
+                throw nplex::nplex_exception("Unexpected revision in journal entry (r{}, expected r{})", update->rev(), rev);
+
+            bytes += rbuf.entries[i].data_len;
+            count++;
+            rev++;
+
+            if (!func(update))
+                return {rev, count, bytes, true};
+        }
+
+        if (num_reads < len)
+        {
+            // case: reached end of this journal
+            if (rbuf.entries[num_reads].seqnum == 0)
+                return {rev, count, bytes, false};
+
+            // case: buffer too short
+            size_t new_size = rbuf.arena.size();
+
+            while (new_size < 128 + rbuf.entries[num_reads].data_len)
+                new_size *= READ_BATCH_FACTOR;
+
+            if (rbuf.arena.size() < new_size)
+                rbuf.arena.resize(new_size, 0);
+        }
+    }
+
+    return {rev, count, bytes, false};
 }
 
 // ==========================================================
@@ -200,13 +282,13 @@ std::string nplex::read_snapshot(const fs::path &file, bool check)
     return content;
 }
 
-ldb::journal_t nplex::open_journal(const fs::path &file, int flags)
+nplex::journal_ptr nplex::open_journal(const fs::path &file, int flags)
 {
     auto dir  = file.parent_path();
     auto name = file.stem().string();
 
     // Open the journal
-    ldb::journal_t journal(dir, name, flags);
+    auto journal = std::make_shared<ldb::journal_t>(dir, name, flags);
 
     // Get the journal range minimum revision (if any)
     bool is_empty = (get_journal_range(journal).first == 0);
@@ -219,7 +301,7 @@ ldb::journal_t nplex::open_journal(const fs::path &file, int flags)
     };
 
     static_assert(LDB_METADATA_LEN >= sizeof(meta), "Metadata buffer too small");
-    if ((rc = journal.get_meta(reinterpret_cast<char *>(&meta), sizeof(meta))) != LDB_OK)
+    if ((rc = journal->get_meta(reinterpret_cast<char *>(&meta), sizeof(meta))) != LDB_OK)
         throw nplex_exception("Failed to read journal metadata ({})", ldb_strerror(rc));
 
     if (is_empty)
@@ -228,7 +310,7 @@ ldb::journal_t nplex::open_journal(const fs::path &file, int flags)
         meta.schema1_hash = SCHEMA1_HASH;
 
         // Set/update the journal metadata
-        if ((rc = journal.set_meta(reinterpret_cast<const char *>(&meta), sizeof(meta))) != LDB_OK)
+        if ((rc = journal->set_meta(reinterpret_cast<const char *>(&meta), sizeof(meta))) != LDB_OK)
             throw nplex_exception("Failed to write journal metadata ({})", ldb_strerror(rc));
     }
 
@@ -378,74 +460,69 @@ nplex::rev_t nplex::storage_t::write_snapshot(const std::string_view &data)
     return rev;
 }
 
+nplex::journal_ptr nplex::storage_t::get_archive(rev_t rev)
+{
+    std::string filename;
+    rev_t key = 0;
+
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+
+        auto it = m_archives.lower_bound(rev);
+
+        if (it == m_archives.end())
+            return m_journal;
+
+        key = it->first;
+
+        if (it->second.journal)
+            return it->second.journal;
+
+        filename = it->second.filename;
+    }
+
+    auto ptr = open_journal(m_path / filename, LDB_OPEN_READONLY);
+
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+
+        auto it = m_archives.find(key);
+
+        if (it == m_archives.end())
+            return ptr;
+
+        it->second.journal = ptr;
+
+        return it->second.journal;
+    }
+}
+
 std::size_t nplex::storage_t::read_entries(rev_t rev, const std::function<bool(const msgs::Update *)> &func, std::size_t num)
 {
-    if (rev == 0 || num == 0)
+    if (rev == 0 || num == 0 || !func)
         return 0;
 
-    int rc = 0;
+    auto start_time = uv_hrtime();
     std::size_t count = 0;
     std::size_t bytes = 0;
-    auto start_time = uv_hrtime();
-    ldb_entry_t entries[READ_BATCH_ENTRIES] = {};
-    std::vector<char> buf;
-
-    buf.resize(READ_BATCH_BYTES);
+    read_buffer_t rbuf;
 
     while (count < num)
     {
-        std::size_t num_reads = 0;
-        std::size_t len = std::min(std::size_t{READ_BATCH_ENTRIES}, num - count);
+        journal_ptr journal = get_archive(rev);
 
-        rc = m_journal.read(rev, entries, len, buf.data(), buf.size(), &num_reads);
+        auto res = read_journal(journal, rev, num - count, rbuf, func);
 
-        if (rc != LDB_OK && rc != LDB_ERR_NOT_FOUND)
-            throw nplex_exception("{}", ldb_strerror(rc));
+        rev   = res.rev;
+        count += res.count;
+        bytes += res.bytes;
 
-        SPDLOG_TRACE("Read journal entries, range = [r{}, r{}]", rev, rev + num_reads - (num_reads ? 1 : 0));
-
-        for (std::size_t i = 0; i < num_reads; i++)
-        {
-            auto verifier = flatbuffers::Verifier(as_uint8_ptr(entries[i].data), entries[i].data_len);
-
-            if (!verifier.VerifyBuffer<msgs::Update>(nullptr))
-                throw nplex_exception("Invalid journal entry (r{})", rev);
-
-            auto update = flatbuffers::GetRoot<msgs::Update>(entries[i].data);
-
-            assert(update->rev() == rev);
-
-            bytes += entries[i].data_len;
-            count++;
-            rev++;
-
-            if (!func(update))
-                goto READ_END;
-        }
-
-        if (num_reads < len)
-        {
-            // case: reached end of journal
-            if (entries[num_reads].seqnum == 0)
-                break;
-
-            // case: buffer too short
-            size_t new_size = buf.size();
-
-            while (new_size < 128 + entries[num_reads].data_len)
-                new_size *= READ_BATCH_FACTOR;
-
-            if (buf.size() < new_size)
-                buf.resize(new_size, 0);
-        }
+        if (res.stopped || res.count == 0)
+            break;
     }
 
-READ_END:
-
-    uint64_t duration_us = (uv_hrtime() - start_time) / 1000;
-
-    SPDLOG_TRACE("Journal read completed, num_entries={}, total_bytes={}, elapsed={}μs", 
-        count, bytes_to_string(bytes), duration_us);
+    SPDLOG_TRACE("Journal read completed, num_entries={}, total_bytes={}, elapsed={}μs",
+        count, bytes_to_string(bytes), (uv_hrtime() - start_time) / 1000);
 
     return count;
 }

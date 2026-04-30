@@ -177,7 +177,6 @@ add_custom_target(
 )
 
 add_compile_options(
-    -march=native
     -Wall
     -Wextra
     -Wshadow
@@ -201,9 +200,20 @@ endif()
 
 option(ENABLE_SANITIZERS "Enables AddressSanitizer and UndefinedBehaviorSanitizer." OFF)
 option(ENABLE_THREAD_SANITIZER "Enables ThreadSanitizer." OFF)
+option(ENABLE_COVERAGE "Compile and link code for coverage" OFF)
+option(ENABLE_PROFILER "Compile and link code for gprof profiling" OFF)
 
 if(ENABLE_SANITIZERS AND ENABLE_THREAD_SANITIZER)
     message(FATAL_ERROR "ENABLE_SANITIZERS and ENABLE_THREAD_SANITIZER cannot be enabled at the same time.")
+endif()
+if(ENABLE_SANITIZERS AND ENABLE_COVERAGE)
+    message(FATAL_ERROR "ENABLE_SANITIZERS and ENABLE_COVERAGE cannot be enabled at the same time.")
+endif()
+if(ENABLE_SANITIZERS AND ENABLE_PROFILER)
+    message(FATAL_ERROR "ENABLE_SANITIZERS and ENABLE_PROFILER cannot be enabled at the same time.")
+endif()
+if(ENABLE_COVERAGE AND ENABLE_PROFILER)
+    message(FATAL_ERROR "ENABLE_COVERAGE and ENABLE_PROFILER cannot be enabled at the same time.")
 endif()
 
 if(ENABLE_SANITIZERS)
@@ -215,6 +225,10 @@ if(ENABLE_SANITIZERS)
         -fsanitize-address-use-after-scope
         -fno-sanitize-recover
     )
+    add_link_options(
+        -fsanitize=address
+        -fsanitize=undefined
+    )
 endif()
 
 if(ENABLE_THREAD_SANITIZER)
@@ -222,17 +236,21 @@ if(ENABLE_THREAD_SANITIZER)
         -fno-omit-frame-pointer
         -fsanitize=thread
     )
+    add_link_options(
+        -fsanitize=thread
+    )
 endif()
 
-option(ENABLE_COVERAGE "Compile and link code for coverage" OFF)
 if(ENABLE_COVERAGE)
     add_compile_options(
         --coverage
         -O0
     )
+    add_link_options(
+        --coverage
+    )
 endif()
 
-option(ENABLE_PROFILER "Compile and link code for gprof profiling" OFF)
 if(ENABLE_PROFILER)
     add_compile_options(
         -O2
@@ -243,7 +261,6 @@ if(ENABLE_PROFILER)
     )
 endif()
 
-set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
 
 #set(
@@ -332,7 +349,9 @@ add_executable(
     ${CMAKE_CURRENT_LIST_DIR}/src/nplexcat.cpp
 )
 
-add_compile_definitions(
+target_compile_definitions(
+    nplex_lib 
+    PUBLIC
     SPDLOG_ACTIVE_LEVEL=0
     SPDLOG_FMT_EXTERNAL
 )
@@ -368,12 +387,15 @@ set_source_files_properties(
     COMPILE_OPTIONS "-Wno-conversion"
 )
 
+set_source_files_properties(
+    ${CMAKE_CURRENT_LIST_DIR}/src/storage.cpp
+    PROPERTIES 
+    COMPILE_OPTIONS "-Wno-conversion"
+)
+
 target_link_libraries(
     nplex_lib
-    "$<$<STREQUAL:${ENABLE_SANITIZERS},ON>:-lasan>"
-    "$<$<STREQUAL:${ENABLE_SANITIZERS},ON>:-lubsan>"
-    "$<$<STREQUAL:${ENABLE_THREAD_SANITIZER},ON>:-ltsan>"
-    "$<$<STREQUAL:${ENABLE_COVERAGE},ON>:-lgcov>"
+    PRIVATE
     Threads::Threads
     libuv::uv
     fmt::fmt

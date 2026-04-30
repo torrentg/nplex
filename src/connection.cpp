@@ -8,8 +8,8 @@
 #include "connection.hpp"
 
 // OOM protection against corrupted messages and DoS attacks
-#define MAX_RCV_MSG_BYTES (100 * 1024 * 1024) // 100 MiB
-#define MAX_RCV_MSG_BYTES_NO_USER (10 * 1024) // 10 KiB
+static constexpr std::size_t MAX_RCV_MSG_BYTES = 100 * 1024 * 1024; // 100 MiB
+static constexpr std::size_t MAX_RCV_MSG_BYTES_NO_USER = 10 * 1024; // 10 KiB
 
 // ==========================================================
 // Internal (static) functions

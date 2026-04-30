@@ -2,7 +2,6 @@
 
 #include <map>
 #include <mutex>
-#include <atomic>
 #include <string>
 #include <memory>
 #include <filesystem>
@@ -54,11 +53,17 @@ class storage_t
     ~storage_t() = default;
 
     /**
+     * Non-copyable class
+     */
+    storage_t(const storage_t &) = delete;
+    storage_t & operator=(const storage_t &) = delete;
+
+    /**
      * Get the journal object.
      * 
      * @return Reference to the journal.
      */
-    ldb::journal_t & get_journal() { return m_journal; }
+    ldb::journal_t & get_journal() { return *m_journal; }
 
     /**
      * Get the minimum revision constructible.
@@ -138,7 +143,7 @@ class storage_t
 
     mutable std::mutex m_mutex;                     // Protects m_snapshots and m_archives.
     const std::filesystem::path m_path;             // Storage path.
-    ldb::journal_t m_journal;                       // Current journal.
+    journal_ptr m_journal;                          // Current journal.
     std::map<rev_t, snapshot_item_t> m_snapshots;   // Map of available snapshots.
     std::map<rev_t, journal_item_t> m_archives;     // Map of archived journals.
     bool m_check = false;                           // Whether to check snapshots and journals.
@@ -148,6 +153,7 @@ class storage_t
     std::string get_snapshot_filename(rev_t rev) const;
     void rebuild_map_snapshots();
     void rebuild_map_archives();
+    journal_ptr get_archive(rev_t rev);
 };
 
 using storage_ptr = std::shared_ptr<storage_t>;
@@ -174,6 +180,6 @@ std::string read_snapshot(const std::filesystem::path &file, bool check = false)
  * 
  * @exception nplex_exception If the journal cannot be opened or the metadata is invalid.
  */
-ldb::journal_t open_journal(const std::filesystem::path &file, int flags);
+journal_ptr open_journal(const std::filesystem::path &file, int flags);
 
 } // namespace nplex

@@ -11,7 +11,7 @@
 #include "config.hpp"
 #include "server.hpp"
 
-#define MAX_QUEUED_CONNECTIONS 128
+static constexpr std::size_t MAX_QUEUED_CONNECTIONS = 128;
 
 // ==========================================================
 // Internal (static) functions

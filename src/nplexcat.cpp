@@ -58,11 +58,9 @@ static void dump_journal(const fs::path &path)
 {
     int rc = 0;
     ldb_stats_t stats = {};
-    ldb::journal_t journal{};
+    auto journal = nplex::open_journal(path, LDB_OPEN_READONLY);
 
-    journal = nplex::open_journal(path, LDB_OPEN_READONLY);
-
-    if ((rc = journal.stats(0, UINT64_MAX, &stats)) != LDB_OK)
+    if ((rc = journal->stats(0, UINT64_MAX, &stats)) != LDB_OK)
         throw nplex::nplex_exception("Failed to get journal stats ({})", ldb_strerror(rc));
     
     if (stats.min_seqnum == 0)
@@ -80,7 +78,7 @@ static void dump_journal(const fs::path &path)
         size_t want = std::min(BATCH, static_cast<size_t>(to_seq - seq + 1ULL));
         size_t num = 0;
 
-        if ((rc = journal.read(seq, entries, want, buf.data(), buf_len, &num)) != LDB_OK)
+        if ((rc = journal->read(seq, entries, want, buf.data(), buf_len, &num)) != LDB_OK)
         {
             if (rc == LDB_ERR_NOT_FOUND)
                 break;

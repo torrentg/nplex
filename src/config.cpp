@@ -14,60 +14,60 @@ using namespace std::literals;
 namespace nplex {
 
     // INI keys
-#define SECTION_USER_DEFAULTS                   "user-defaults"
-#define LOG_LEVEL                               "log-level"
-#define DISABLE_FSYNC                           "disable-fsync"
-#define NETWORK_ADDR                            "addr"
-#define MAX_SESSIONS                            "max-sessions"
-#define USER_PASSWORD                           "password"
-#define USER_ACTIVE                             "active"
-#define USER_CAN_FORCE                          "can-force"
-#define USER_CAN_MONITOR                        "can-monitor"
-#define USER_MAX_CONNECTIONS                    "max-connections"
-#define USER_KEEPALIVE_MILLIS                   "keepalive-millis"
-#define USER_MAX_UNACK_MSG                      "max-unack-msg"
-#define USER_MAX_UNACK_BYTES                    "max-unack-bytes"
-#define USER_TIMEOUT_FACTOR                     "timeout-factor"
-#define USER_ACL                                "acl"
-#define MAX_MSG_BYTES                           "max-msg-bytes"
-#define WRITE_QUEUE_MAX_LENGTH                  "write-queue-max-length"
-#define WRITE_QUEUE_MAX_BYTES                   "write-queue-max-bytes"
-#define FLUSH_MAX_ENTRIES                       "flush-max-entries"
-#define FLUSH_MAX_BYTES                         "flush-max-bytes"
-#define MAX_UPDATES_BETWEEN_SNAPSHOTS           "max-updates-between-snapshots"
-#define MAX_BYTES_BETWEEN_SNAPSHOTS             "max-bytes-between-snapshots"
-#define TOMBSTONE_RETENTION_MAX                 "tombstone-retention-max"
-#define TOMBSTONE_RETENTION_MIN                 "tombstone-retention-min"
-#define MAX_TOMBSTONES                          "max-tombstones"
-#define CACHE_MAX_BYTES                         "cache-max-bytes"
-#define CACHE_MAX_ENTRIES                       "cache-max-entries"
+static constexpr const char *SECTION_USER_DEFAULTS                      = "user-defaults";
+static constexpr const char *LOG_LEVEL                                  = "log-level";
+static constexpr const char *DISABLE_FSYNC                              = "disable-fsync";
+static constexpr const char *NETWORK_ADDR                               = "addr";
+static constexpr const char *MAX_SESSIONS                               = "max-sessions";
+static constexpr const char *USER_PASSWORD                              = "password";
+static constexpr const char *USER_ACTIVE                                = "active";
+static constexpr const char *USER_CAN_FORCE                             = "can-force";
+static constexpr const char *USER_CAN_MONITOR                           = "can-monitor";
+static constexpr const char *USER_MAX_CONNECTIONS                       = "max-connections";
+static constexpr const char *USER_KEEPALIVE_MILLIS                      = "keepalive-millis";
+static constexpr const char *USER_MAX_UNACK_MSG                         = "max-unack-msg";
+static constexpr const char *USER_MAX_UNACK_BYTES                       = "max-unack-bytes";
+static constexpr const char *USER_TIMEOUT_FACTOR                        = "timeout-factor";
+static constexpr const char *USER_ACL                                   = "acl";
+static constexpr const char *MAX_MSG_BYTES                              = "max-msg-bytes";
+static constexpr const char *WRITE_QUEUE_MAX_LENGTH                     = "write-queue-max-length";
+static constexpr const char *WRITE_QUEUE_MAX_BYTES                      = "write-queue-max-bytes";
+static constexpr const char *FLUSH_MAX_ENTRIES                          = "flush-max-entries";
+static constexpr const char *FLUSH_MAX_BYTES                            = "flush-max-bytes";
+static constexpr const char *MAX_UPDATES_BETWEEN_SNAPSHOTS              = "max-updates-between-snapshots";
+static constexpr const char *MAX_BYTES_BETWEEN_SNAPSHOTS                = "max-bytes-between-snapshots";
+static constexpr const char *TOMBSTONE_RETENTION_MAX                    = "tombstone-retention-max";
+static constexpr const char *TOMBSTONE_RETENTION_MIN                    = "tombstone-retention-min";
+static constexpr const char *MAX_TOMBSTONES                             = "max-tombstones";
+static constexpr const char *CACHE_MAX_BYTES                            = "cache-max-bytes";
+static constexpr const char *CACHE_MAX_ENTRIES                          = "cache-max-entries";
 
 // Defaults
-#define DEFAULT_CHECK_JOURNAL                   false
-#define DEFAULT_LOG_LEVEL                       nplex::log_level_e::INFO
-#define DEFAULT_DISABLE_FSYNC                   false
-#define DEFAULT_NETWORK_ADDR                    "localhost:14022"
-#define DEFAULT_MAX_SESSIONS                    64
-#define DEFAULT_MAX_MSG_BYTES                   (2 * 1024 * 1024)
-#define DEFAULT_QUEUE_MAX_LENGTH                1000
-#define DEFAULT_QUEUE_MAX_BYTES                 (350 * 1024 * 1024)
-#define DEFAULT_FLUSH_MAX_ENTRIES               50
-#define DEFAULT_FLUSH_MAX_BYTES                 (25 * 1024 * 1024)
-#define DEFAULT_USER_ACTIVE                     true
-#define DEFAULT_USER_CAN_FORCE                  false
-#define DEFAULT_USER_CAN_MONITOR                false
-#define DEFAULT_USER_MAX_CONNECTIONS            5
-#define DEFAULT_USER_KEEPALIVE_MILLIS           3000
-#define DEFAULT_USER_MAX_UNACK_MSG              1000
-#define DEFAULT_USER_MAX_UNACK_BYTES            (100 * 1024 * 1024)
-#define DEFAULT_USER_TIMEOUT_FACTOR             3.0
-#define DEFAULT_MAX_UPDATES_BETWEEN_SNAPSHOTS   50000
-#define DEFAULT_MAX_BYTES_BETWEEN_SNAPSHOTS     (100 * 1024 * 1024)
-#define DEFAULT_TOMBSTONE_RETENTION_MAX         20000
-#define DEFAULT_TOMBSTONE_RETENTION_MIN         5
-#define DEFAULT_MAX_TOMBSTONES                  1500
-#define DEFAULT_CACHE_MAX_ENTRIES               50000
-#define DEFAULT_CACHE_MAX_BYTES                 (500 * 1024 * 1024)
+static constexpr bool          DEFAULT_CHECK_JOURNAL                    = false;
+static constexpr nplex::log_level_e DEFAULT_LOG_LEVEL                   = nplex::log_level_e::INFO;
+static constexpr bool          DEFAULT_DISABLE_FSYNC                    = false;
+static constexpr const char   *DEFAULT_NETWORK_ADDR                     = "localhost:14022";
+static constexpr std::uint32_t DEFAULT_MAX_SESSIONS                     = 64;
+static constexpr std::uint32_t DEFAULT_MAX_MSG_BYTES                    = 2 * 1024 * 1024;
+static constexpr std::uint32_t DEFAULT_QUEUE_MAX_LENGTH                 = 1000;
+static constexpr std::uint32_t DEFAULT_QUEUE_MAX_BYTES                  = 350 * 1024 * 1024;
+static constexpr std::uint32_t DEFAULT_FLUSH_MAX_ENTRIES                = 50;
+static constexpr std::uint32_t DEFAULT_FLUSH_MAX_BYTES                  = 25 * 1024 * 1024;
+static constexpr bool          DEFAULT_USER_ACTIVE                      = true;
+static constexpr bool          DEFAULT_USER_CAN_FORCE                   = false;
+static constexpr bool          DEFAULT_USER_CAN_MONITOR                 = false;
+static constexpr std::uint32_t DEFAULT_USER_MAX_CONNECTIONS             = 5;
+static constexpr std::uint32_t DEFAULT_USER_KEEPALIVE_MILLIS            = 3000;
+static constexpr std::uint32_t DEFAULT_USER_MAX_UNACK_MSG               = 1000;
+static constexpr std::uint32_t DEFAULT_USER_MAX_UNACK_BYTES             = 100 * 1024 * 1024;
+static constexpr float         DEFAULT_USER_TIMEOUT_FACTOR              = 3.0;
+static constexpr std::uint32_t DEFAULT_MAX_UPDATES_BETWEEN_SNAPSHOTS    = 50000;
+static constexpr std::uint32_t DEFAULT_MAX_BYTES_BETWEEN_SNAPSHOTS      = 100 * 1024 * 1024;
+static constexpr std::uint32_t DEFAULT_TOMBSTONE_RETENTION_MAX          = 20000;
+static constexpr std::uint32_t DEFAULT_TOMBSTONE_RETENTION_MIN          = 5;
+static constexpr std::uint32_t DEFAULT_MAX_TOMBSTONES                   = 1500;
+static constexpr std::uint32_t DEFAULT_CACHE_MAX_ENTRIES                = 50000;
+static constexpr std::uint32_t DEFAULT_CACHE_MAX_BYTES                  = 500 * 1024 * 1024;
 
 static bool parse_bool(const std::string_view &str)
 {
