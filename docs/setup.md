@@ -22,10 +22,10 @@ make -j$(nproc)
 
 This produces three binaries in the `build/` directory:
 
-| Binary     | Description |
-|------------|-------------|
-| `nplex`    | The database server |
-| `nplexcat` | File viewer (dumps content as JSON) |
+| Binary       | Description |
+|--------------|-------------|
+| `nplex`      | The database server |
+| `nplex_dump` | Dumps file contents as JSON |
 
 ## Running nplex
 
@@ -95,14 +95,14 @@ and compile it.
 
 ### Support Tools
 
-Use `nplexcat` to dump a journal or snapshot file as JSON.
+Use `nplex_dump` to export a journal or snapshot file as JSON.
 
 ```bash
 # Getting help
-./nplexcat -h
+./nplex_dump -h
 
 # Dumps snapshot
-./nplexcat /path/to/datadir/snapshot-1234.dat
+./nplex_dump /path/to/datadir/snapshot-1234.dat
 ```
 
 ## Advanced Build Options

@@ -5,5 +5,5 @@
 * Support multiple journals (rotate-journal-max-bytes, rotate-journal-max-entries, rotate-journal-daily-at, max-open-archives)
 * Create timer to check if msg delivery exceeds X millis
 * Considere to compress snapshots (see https://github.com/mateidavid/zstr)
-* Rename nplexcat to nplex_dump (binary -> json)
+* Data replication (see https://github.com/eBay/NuRaft)
 * Considere to create nplex_restore (json -> binary)

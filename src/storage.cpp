@@ -245,9 +245,10 @@ static read_result_t read_journal(const nplex::journal_ptr &journal, nplex::rev_
                 return {rev, count, bytes, false};
 
             // case: buffer too short
+            size_t need = static_cast<size_t>(rbuf.entries[num_reads].data_len) + 128;
             size_t new_size = rbuf.arena.size();
 
-            while (new_size < 128 + rbuf.entries[num_reads].data_len)
+            while (new_size < need)
                 new_size *= READ_BATCH_FACTOR;
 
             if (rbuf.arena.size() < new_size)

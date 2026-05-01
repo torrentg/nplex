@@ -345,8 +345,8 @@ add_executable(
 )
 
 add_executable(
-    nplexcat
-    ${CMAKE_CURRENT_LIST_DIR}/src/nplexcat.cpp
+    nplex_dump
+    ${CMAKE_CURRENT_LIST_DIR}/src/nplex_dump.cpp
 )
 
 target_compile_definitions(
@@ -409,7 +409,7 @@ target_link_libraries(
 )
 
 target_link_libraries(
-    nplexcat
+    nplex_dump
     PRIVATE
     nplex_lib
 )

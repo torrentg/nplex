@@ -1,18 +1,21 @@
+#include <getopt.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <vector>
-#include <getopt.h>
 #include <fmt/core.h>
 #include "journal.h"
-#include "json.hpp"
-#include "storage.hpp"
-#include "exception.hpp"
 #include "common.hpp"
+#include "exception.hpp"
+#include "storage.hpp"
+#include "json.hpp"
 
-#define APP_NAME    "nplexcat"
+static constexpr char        APP_NAME[]    = "nplex_dump";
+static constexpr std::size_t BATCH_SIZE    = 10'000;
+static constexpr std::size_t BATCH_BYTES   = 1 * 1024 * 1024;
+static constexpr std::size_t BATCH_FACTOR  = 2;
 
 namespace fs = std::filesystem;
 
@@ -66,46 +69,46 @@ static void dump_journal(const fs::path &path)
     if (stats.min_seqnum == 0)
         return;
 
-    constexpr size_t BATCH = 128;
-    size_t buf_len = 1024 * 1024;
-    std::vector<char> buf(buf_len);
-    ldb_entry_t entries[BATCH + 1] = {};
+    std::vector<char> buf(BATCH_BYTES, 0);
+    ldb_entry_t entries[BATCH_SIZE] = {};
     uint64_t seq = stats.min_seqnum;
     uint64_t to_seq = stats.max_seqnum;
 
     while (seq <= to_seq)
     {
-        size_t want = std::min(BATCH, static_cast<size_t>(to_seq - seq + 1ULL));
+        size_t want = std::min(BATCH_SIZE, static_cast<size_t>(to_seq - seq + 1ULL));
         size_t num = 0;
 
-        if ((rc = journal->read(seq, entries, want, buf.data(), buf_len, &num)) != LDB_OK)
-        {
-            if (rc == LDB_ERR_NOT_FOUND)
-                break;
-
+        rc = journal->read(seq, entries, want, buf.data(), buf.size(), &num);
+        
+        if (rc != LDB_OK && rc != LDB_ERR_NOT_FOUND)
             throw nplex::nplex_exception("error reading journal: {}", ldb_strerror(rc));
-        }
-
-        if (num == 0)
-            break;
-
-        // buffer exhausted: entries[num] contains next entry but data == NULL
-        if (num < want && entries[num].seqnum != 0 && entries[num].data == nullptr)
-        {
-            size_t need = static_cast<size_t>(entries[num].data_len) + 64;
-
-            while (buf_len < need)
-                buf_len *= 2;
-
-            buf.resize(buf_len);
-        }
 
         for (size_t i = 0; i < num; ++i) {
             auto json = nplex::update_to_json(static_cast<const char *>(entries[i].data), entries[i].data_len);
             printf("%s\n", json.c_str());
         }
 
-        seq = entries[num - 1].seqnum + 1;
+        // buffer exhausted: entries[num] contains next entry but data == NULL
+        if (num < want)
+        {
+            // case: reached end of this journal
+            if (entries[num].seqnum == 0)
+                return;
+
+            // case: buffer too short
+            size_t need = static_cast<size_t>(entries[num].data_len) + 128;
+            size_t new_size = buf.size();
+
+            while (new_size < need)
+                new_size *= BATCH_FACTOR;
+
+            if (new_size > buf.size())
+                buf.resize(new_size);
+        }
+
+        if (num > 0)
+            seq = entries[num - 1].seqnum + 1;
     }
 }
 
@@ -126,7 +129,7 @@ static void version()
 static void print_help(FILE *out)
 {
     fprintf(out,
-        "%s - dump nplex snapshot or journal files as JSON.\n"
+        "%s - export nplex snapshot or journal files as JSON.\n"
         "\n"
         "Usage:\n"
         "  %s [-h] [-V] file1 [file2 ...]\n"
