@@ -109,7 +109,7 @@ struct update_dto_t {
     std::vector<std::string> deletes{};
 };
 
-enum log_level_e : std::uint8_t {
+enum class log_level_e : std::uint8_t {
     TRACE,    // developper messages
     DEBUG,    // connection initiated/terminated, data update, sent/recv message (except KEEPALIVE_PUSH), tasks duration
     INFO,     // users login/disconnection, snapshots

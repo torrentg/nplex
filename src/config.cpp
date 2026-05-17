@@ -11,8 +11,6 @@
 
 using namespace std::literals;
 
-namespace nplex {
-
     // INI keys
 static constexpr const char *SECTION_USER_DEFAULTS                      = "user-defaults";
 static constexpr const char *LOG_LEVEL                                  = "log-level";
@@ -68,6 +66,10 @@ static constexpr std::uint32_t DEFAULT_TOMBSTONE_RETENTION_MIN          = 5;
 static constexpr std::uint32_t DEFAULT_MAX_TOMBSTONES                   = 1500;
 static constexpr std::uint32_t DEFAULT_CACHE_MAX_ENTRIES                = 50000;
 static constexpr std::uint32_t DEFAULT_CACHE_MAX_BYTES                  = 500 * 1024 * 1024;
+
+// ==========================================================
+// Internal (static) functions
+// ==========================================================
 
 static bool parse_bool(const std::string_view &str)
 {
@@ -151,91 +153,127 @@ static std::uint32_t parse_bytes(const std::string_view &str)
     return static_cast<std::uint32_t>(num);
 }
 
-static acl_t parse_acl(const std::string_view &str)
+static nplex::acl_t parse_acl(const std::string_view &str)
 {
     if (str.size() < 6 || str[4] != ':')
         throw std::invalid_argument(fmt::format("Invalid acl ({})", str));
 
-    auto mode = parse_crud(str.substr(0, 4));
+    auto mode = nplex::parse_crud(str.substr(0, 4));
     std::string pattern{str.substr(5)};
 
-    return acl_t{mode, pattern};
+    return nplex::acl_t{mode, pattern};
+}
+
+static void parse_section_main(nplex::config_t *cfg, const char *name, const char *value)
+{
+    if (strcmp(name, NETWORK_ADDR) == 0) {
+        cfg->context.addr = nplex::addr_t{value};
+    } else if (strcmp(name, LOG_LEVEL) == 0) {
+        cfg->log_level = nplex::parse_log_level(value);
+    } else if (strcmp(name, MAX_SESSIONS) == 0) {
+        cfg->context.max_sessions = parse_uint32(value);
+    } else if (strcmp(name, DISABLE_FSYNC) == 0) {
+        cfg->journal.fsync = !parse_bool(value);
+    } else if (strcmp(name, MAX_MSG_BYTES) == 0) {
+        cfg->context.max_msg_bytes = parse_bytes(value);
+    } else if (strcmp(name, WRITE_QUEUE_MAX_LENGTH) == 0) {
+        cfg->journal.write_queue_max_entries = parse_uint32(value);
+    } else if (strcmp(name, WRITE_QUEUE_MAX_BYTES) == 0) {
+        cfg->journal.write_queue_max_bytes = parse_bytes(value);
+    } else if (strcmp(name, FLUSH_MAX_ENTRIES) == 0) {
+        cfg->journal.flush_max_entries = parse_uint32(value);
+    } else if (strcmp(name, FLUSH_MAX_BYTES) == 0) {
+        cfg->journal.flush_max_bytes = parse_bytes(value);
+    } else if (strcmp(name, MAX_UPDATES_BETWEEN_SNAPSHOTS) == 0) {
+        cfg->context.snapshot_max_entries = parse_uint32(value);
+    } else if (strcmp(name, MAX_BYTES_BETWEEN_SNAPSHOTS) == 0) {
+        cfg->context.snapshot_max_bytes = parse_bytes(value);
+    } else if (strcmp(name, TOMBSTONE_RETENTION_MAX) == 0) {
+        cfg->store.retention_max = parse_uint32(value);
+    } else if (strcmp(name, TOMBSTONE_RETENTION_MIN) == 0) {
+        cfg->store.retention_min = parse_uint32(value);
+    } else if (strcmp(name, MAX_TOMBSTONES) == 0) {
+        cfg->store.max_tombstones = parse_uint32(value);
+    } else if (strcmp(name, CACHE_MAX_ENTRIES) == 0) {
+        cfg->context.cache_max_entries = parse_uint32(value);
+    } else if (strcmp(name, CACHE_MAX_BYTES) == 0) {
+        cfg->context.cache_max_bytes = parse_bytes(value);
+    } else {
+        throw std::invalid_argument(fmt::format("Unrecognized entry ({})", name));
+    }
+}
+
+static void parse_section_default_user(nplex::user_t &user, const char *name, const char *value)
+{
+    if (strcmp(name, USER_ACTIVE) == 0) {
+        user.params.active = parse_bool(value);
+    } else if (strcmp(name, USER_CAN_FORCE) == 0) {
+        user.params.can_force = parse_bool(value);
+    } else if (strcmp(name, USER_CAN_MONITOR) == 0) {
+        user.params.can_monitor = parse_bool(value);
+    } else if (strcmp(name, USER_MAX_CONNECTIONS) == 0) {
+        user.params.max_connections = parse_uint32(value);
+    } else if (strcmp(name, USER_KEEPALIVE_MILLIS) == 0) {
+        user.params.connection.keepalive_millis = parse_uint32(value);
+    } else if (strcmp(name, USER_MAX_UNACK_MSG) == 0) {
+        user.params.connection.max_unack_msgs = parse_uint32(value);
+    } else if (strcmp(name, USER_MAX_UNACK_BYTES) == 0) {
+        user.params.connection.max_unack_bytes = parse_bytes(value);
+    } else if (strcmp(name, USER_TIMEOUT_FACTOR) == 0) {
+        user.params.connection.timeout_factor = parse_float(value);
+        if (user.params.connection.timeout_factor != 0.0f &&
+            user.params.connection.timeout_factor <= 1.0f)
+            throw std::invalid_argument(fmt::format("Invalid timeout factor ({})", value));
+    } else {
+        throw std::invalid_argument(fmt::format("Unrecognized entry ({})", name));
+    }
+}
+
+static void parse_section_user(nplex::user_t &user, const char *name, const char *value)
+{
+    if (strcmp(name, USER_PASSWORD) == 0) {
+        user.password = value;
+    } else if (strcmp(name, USER_ACTIVE) == 0) {
+        user.params.active = parse_bool(value);
+    } else if (strcmp(name, USER_CAN_FORCE) == 0) {
+        user.params.can_force = parse_bool(value);
+    } else if (strcmp(name, USER_CAN_MONITOR) == 0) {
+        user.params.can_monitor = parse_bool(value);
+    } else if (strcmp(name, USER_MAX_CONNECTIONS) == 0) {
+        user.params.max_connections = parse_uint32(value);
+    } else if (strcmp(name, USER_KEEPALIVE_MILLIS) == 0) {
+        user.params.connection.keepalive_millis = parse_uint32(value);
+    } else if (strcmp(name, USER_MAX_UNACK_MSG) == 0) {
+        user.params.connection.max_unack_msgs = parse_uint32(value);
+    } else if (strcmp(name, USER_MAX_UNACK_BYTES) == 0) {
+        user.params.connection.max_unack_bytes = parse_bytes(value);
+    } else if (strcmp(name, USER_TIMEOUT_FACTOR) == 0) {
+        user.params.connection.timeout_factor = parse_float(value);
+        if (user.params.connection.timeout_factor != 0.0f && user.params.connection.timeout_factor <= 1.0f)
+            throw std::invalid_argument(fmt::format("Invalid timeout factor ({})", value));
+    } else if (strcmp(name, USER_ACL) == 0) {
+        user.permissions.push_back(parse_acl(value));
+    } else {
+        throw std::invalid_argument(fmt::format("Unrecognized entry ({})", name));
+    }
 }
 
 static int cb_inih_inner(void *obj, const char *section, const char *name, const char *value)
 {
-    auto cfg = static_cast<config_t *>(obj);
+    auto cfg = static_cast<nplex::config_t *>(obj);
 
-    if (strcmp(section, "") == 0)
-    {
-        if (strcmp(name, NETWORK_ADDR) == 0) {
-            cfg->context.addr = addr_t{value};
-        } else if (strcmp(name, LOG_LEVEL) == 0) {
-            cfg->log_level = parse_log_level(value);
-        } else if (strcmp(name, MAX_SESSIONS) == 0) {
-            cfg->context.max_sessions = parse_uint32(value);
-        } else if (strcmp(name, DISABLE_FSYNC) == 0) {
-            cfg->journal.fsync = !parse_bool(value);
-        } else if (strcmp(name, MAX_MSG_BYTES) == 0) {
-            cfg->context.max_msg_bytes = parse_bytes(value);
-        } else if (strcmp(name, WRITE_QUEUE_MAX_LENGTH) == 0) {
-            cfg->journal.write_queue_max_entries = parse_uint32(value);
-        } else if (strcmp(name, WRITE_QUEUE_MAX_BYTES) == 0) {
-            cfg->journal.write_queue_max_bytes = parse_bytes(value);
-        } else if (strcmp(name, FLUSH_MAX_ENTRIES) == 0) {
-            cfg->journal.flush_max_entries = parse_uint32(value);
-        } else if (strcmp(name, FLUSH_MAX_BYTES) == 0) {
-            cfg->journal.flush_max_bytes = parse_bytes(value);
-        } else if (strcmp(name, MAX_UPDATES_BETWEEN_SNAPSHOTS) == 0) {
-            cfg->context.snapshot_max_entries = parse_uint32(value);
-        } else if (strcmp(name, MAX_BYTES_BETWEEN_SNAPSHOTS) == 0) {
-            cfg->context.snapshot_max_bytes = parse_bytes(value);
-        } else if (strcmp(name, TOMBSTONE_RETENTION_MAX) == 0) {
-            cfg->store.retention_max = parse_uint32(value);
-        } else if (strcmp(name, TOMBSTONE_RETENTION_MIN) == 0) {
-            cfg->store.retention_min = parse_uint32(value);
-        } else if (strcmp(name, MAX_TOMBSTONES) == 0) {
-            cfg->store.max_tombstones = parse_uint32(value);
-        } else if (strcmp(name, CACHE_MAX_ENTRIES) == 0) {
-            cfg->context.cache_max_entries = parse_uint32(value);
-        } else if (strcmp(name, CACHE_MAX_BYTES) == 0) {
-            cfg->context.cache_max_bytes = parse_bytes(value);
-        } else {
-            throw std::invalid_argument(fmt::format("Unrecognized entry ({})", name));
-        }
-
+    if (strcmp(section, "") == 0) {
+        parse_section_main(cfg, name, value);
         return true;
     }
 
-    if (strcmp(section, SECTION_USER_DEFAULTS) == 0)
-    {
-        if (strcmp(name, USER_ACTIVE) == 0) {
-            cfg->default_user.params.active = parse_bool(value);
-        } else if (strcmp(name, USER_CAN_FORCE) == 0) {
-            cfg->default_user.params.can_force = parse_bool(value);
-        } else if (strcmp(name, USER_CAN_MONITOR) == 0) {
-            cfg->default_user.params.can_monitor = parse_bool(value);
-        } else if (strcmp(name, USER_MAX_CONNECTIONS) == 0) {
-            cfg->default_user.params.max_connections = parse_uint32(value);
-        } else if (strcmp(name, USER_KEEPALIVE_MILLIS) == 0) {
-            cfg->default_user.params.connection.keepalive_millis = parse_uint32(value);
-        } else if (strcmp(name, USER_MAX_UNACK_MSG) == 0) {
-            cfg->default_user.params.connection.max_unack_msgs = parse_uint32(value);
-        } else if (strcmp(name, USER_MAX_UNACK_BYTES) == 0) {
-            cfg->default_user.params.connection.max_unack_bytes = parse_bytes(value);
-        } else if (strcmp(name, USER_TIMEOUT_FACTOR) == 0) {
-            cfg->default_user.params.connection.timeout_factor = parse_float(value);
-            if (cfg->default_user.params.connection.timeout_factor != 0.0f &&
-                cfg->default_user.params.connection.timeout_factor <= 1.0f)
-                throw std::invalid_argument(fmt::format("Invalid timeout factor ({})", value));
-        } else {
-            throw std::invalid_argument(fmt::format("Unrecognized entry ({})", name));
-        }
-
+    if (strcmp(section, SECTION_USER_DEFAULTS) == 0) {
+        parse_section_default_user(cfg->default_user, name, value);
         return true;
     }
 
-    auto it = std::find_if(cfg->users.begin(), cfg->users.end(), [section](const user_t &usr) {
+    // other sections are treated as user sections
+    auto it = std::find_if(cfg->users.begin(), cfg->users.end(), [section](const nplex::user_t &usr) {
         return (usr.name == section);
     });
 
@@ -245,30 +283,7 @@ static int cb_inih_inner(void *obj, const char *section, const char *name, const
         it->name = section;
     }
 
-    if (strcmp(name, USER_PASSWORD) == 0) {
-        it->password = value;
-    } else if (strcmp(name, USER_ACTIVE) == 0) {
-        it->params.active = parse_bool(value);
-    } else if (strcmp(name, USER_CAN_FORCE) == 0) {
-        it->params.can_force = parse_bool(value);
-    } else if (strcmp(name, USER_CAN_MONITOR) == 0) {
-        it->params.can_monitor = parse_bool(value);
-    } else if (strcmp(name, USER_MAX_CONNECTIONS) == 0) {
-        it->params.max_connections = parse_uint32(value);
-    } else if (strcmp(name, USER_KEEPALIVE_MILLIS) == 0) {
-        it->params.connection.keepalive_millis = parse_uint32(value);
-    } else if (strcmp(name, USER_MAX_UNACK_MSG) == 0) {
-        it->params.connection.max_unack_msgs = parse_uint32(value);
-    } else if (strcmp(name, USER_MAX_UNACK_BYTES) == 0) {
-        it->params.connection.max_unack_bytes = parse_bytes(value);
-    } else if (strcmp(name, USER_TIMEOUT_FACTOR) == 0) {
-        it->params.connection.timeout_factor = parse_float(value);
-        if (it->params.connection.timeout_factor != 0.0f && it->params.connection.timeout_factor <= 1.0f)
-            throw std::invalid_argument(fmt::format("Invalid timeout factor ({})", value));
-    } else if (strcmp(name, USER_ACL) == 0) {
-        it->permissions.push_back(parse_acl(value));
-    } else
-        throw std::invalid_argument(fmt::format("Unrecognized entry ({})", name));
+    parse_section_user(*it, name, value);
 
     return true;
 }
@@ -283,13 +298,13 @@ static int cb_inih(void *obj, const char *section, const char *name, const char 
     }
 }
 
-static void set_defaults(config_t &cfg)
+static void set_defaults(nplex::config_t &cfg)
 {
     // Global/general defaults
     cfg.log_level = DEFAULT_LOG_LEVEL;
 
     // Network defaults
-    cfg.context.addr = addr_t{DEFAULT_NETWORK_ADDR};
+    cfg.context.addr = nplex::addr_t{DEFAULT_NETWORK_ADDR};
     cfg.context.max_sessions = DEFAULT_MAX_SESSIONS;
     cfg.context.max_msg_bytes = DEFAULT_MAX_MSG_BYTES;
 
@@ -337,7 +352,7 @@ static void normalize_unlimited(T &value)
 }
 
 // Validació global + transformació de paràmetres
-static void normalize(config_t &cfg)
+static void normalize(nplex::config_t &cfg)
 {
     normalize_unlimited(cfg.context.max_sessions);
     normalize_unlimited(cfg.context.max_msg_bytes);
@@ -362,7 +377,11 @@ static void normalize(config_t &cfg)
     }
 }
 
-config_t::config_t(const fs::path &filepath)
+// ==========================================================
+// config_t methods
+// ==========================================================
+
+nplex::config_t::config_t(const fs::path &filepath)
 {
     set_defaults(*this);
 
@@ -370,7 +389,7 @@ config_t::config_t(const fs::path &filepath)
         load(filepath);
 }
 
-void config_t::load(const fs::path &filepath)
+void nplex::config_t::load(const fs::path &filepath)
 {
     int rc = ini_parse(filepath.c_str(), cb_inih, this);
 
@@ -385,7 +404,7 @@ void config_t::load(const fs::path &filepath)
     normalize(*this);
 }
 
-void config_t::save(const fs::path &filepath) const
+void nplex::config_t::save(const fs::path &filepath) const
 {
     std::ofstream ofs(filepath, std::ios::trunc);
 
@@ -395,7 +414,7 @@ void config_t::save(const fs::path &filepath) const
 
     ofs << NETWORK_ADDR << " = " << context.addr.str() << std::endl;
     ofs << LOG_LEVEL << " = " << to_string(log_level) << std::endl;
-    ofs << DISABLE_FSYNC << " = " << (journal.fsync ? "false" : "true") << std::endl;
+    ofs << DISABLE_FSYNC << " = " << fmt::format("{}", journal.fsync) << std::endl;
     ofs << std::endl;
 
     ofs << MAX_SESSIONS << " = " << context.max_sessions << std::endl;
@@ -414,9 +433,9 @@ void config_t::save(const fs::path &filepath) const
     ofs << std::endl;
 
     ofs << "[" << SECTION_USER_DEFAULTS << "]" << std::endl;
-    ofs << USER_ACTIVE << " = " << (default_user.params.active ? "true" : "false") << std::endl;
-    ofs << USER_CAN_FORCE << " = " << (default_user.params.can_force ? "true" : "false") << std::endl;
-    ofs << USER_CAN_MONITOR << " = " << (default_user.params.can_monitor ? "true" : "false") << std::endl;
+    ofs << USER_ACTIVE << " = " << fmt::format("{}", default_user.params.active) << std::endl;
+    ofs << USER_CAN_FORCE << " = " << fmt::format("{}", default_user.params.can_force) << std::endl;
+    ofs << USER_CAN_MONITOR << " = " << fmt::format("{}", default_user.params.can_monitor) << std::endl;
     ofs << USER_MAX_CONNECTIONS << " = " << default_user.params.max_connections << std::endl;
     ofs << USER_KEEPALIVE_MILLIS << " = " << default_user.params.connection.keepalive_millis << std::endl;
     ofs << USER_TIMEOUT_FACTOR << " = " << fmt::format("{:.1f}", default_user.params.connection.timeout_factor) << std::endl;
@@ -432,11 +451,11 @@ void config_t::save(const fs::path &filepath) const
         ofs << "[" << user.name << "]" << std::endl;
         ofs << USER_PASSWORD << " = " << user.password << std::endl;
         if (user.params.active != default_user.params.active)
-            ofs << USER_ACTIVE << " = " << (user.params.active ? "true" : "false") << std::endl;
+            ofs << USER_ACTIVE << " = " << fmt::format("{}", user.params.active) << std::endl;
         if (user.params.can_force != default_user.params.can_force)
-            ofs << USER_CAN_FORCE << " = " << (user.params.can_force ? "true" : "false") << std::endl;
+            ofs << USER_CAN_FORCE << " = " << fmt::format("{}", user.params.can_force) << std::endl;
         if (user.params.can_monitor != default_user.params.can_monitor)
-            ofs << USER_CAN_MONITOR << " = " << (user.params.can_monitor ? "true" : "false") << std::endl;
+            ofs << USER_CAN_MONITOR << " = " << fmt::format("{}", user.params.can_monitor) << std::endl;
         if (user.params.max_connections != default_user.params.max_connections)
             ofs << USER_MAX_CONNECTIONS << " = " << user.params.max_connections << std::endl;
         if (user.params.connection.keepalive_millis != default_user.params.connection.keepalive_millis)
@@ -471,5 +490,3 @@ void config_t::save(const fs::path &filepath) const
 
     ofs.close();
 }
-
-} // namespace nplex

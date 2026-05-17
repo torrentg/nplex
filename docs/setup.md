@@ -145,6 +145,10 @@ cppcheck --enable=all --inconclusive --std=c++20 --force \
 
 # Lines of code
 cloc --exclude-content="automatically generated" src deps
+
+# Code complexity
+pip install lizard
+lizard -C 20 --language cpp --exclude src/schema.hpp src/*.cpp
 ```
 
 ## Configuration Reference

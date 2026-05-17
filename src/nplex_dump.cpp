@@ -12,7 +12,8 @@
 #include "storage.hpp"
 #include "json.hpp"
 
-static constexpr char        APP_NAME[]    = "nplex_dump";
+#define APP_NAME "nplex_dump"
+
 static constexpr std::size_t BATCH_SIZE    = 10'000;
 static constexpr std::size_t BATCH_BYTES   = 1 * 1024 * 1024;
 static constexpr std::size_t BATCH_FACTOR  = 2;
@@ -34,7 +35,7 @@ static file_type_e detect_file_type(const fs::path &path)
     char header[8] = {};
 
     std::ifstream ifs(path, std::ios::binary);
-    if (!ifs.read(header, 8))
+    if (!ifs.read(header, sizeof(header)))
         return file_type_e::UNKNOWN;
 
     if (std::memcmp(header, SNAPSHOT_MAGIC, MAGIC_LEN) == 0)
@@ -60,19 +61,16 @@ static void dump_snapshot(const fs::path &path)
 static void dump_journal(const fs::path &path)
 {
     int rc = 0;
-    ldb_stats_t stats = {};
     auto journal = nplex::open_journal(path, LDB_OPEN_READONLY);
+        auto range = journal->get_range();
 
-    if ((rc = journal->stats(0, UINT64_MAX, &stats)) != LDB_OK)
-        throw nplex::nplex_exception("Failed to get journal stats ({})", ldb_strerror(rc));
-    
-    if (stats.min_seqnum == 0)
+    if (range.first == 0)
         return;
 
     std::vector<char> buf(BATCH_BYTES, 0);
     ldb_entry_t entries[BATCH_SIZE] = {};
-    uint64_t seq = stats.min_seqnum;
-    uint64_t to_seq = stats.max_seqnum;
+    uint64_t seq = range.first;
+    uint64_t to_seq = range.second;
 
     while (seq <= to_seq)
     {
@@ -80,7 +78,7 @@ static void dump_journal(const fs::path &path)
         size_t num = 0;
 
         rc = journal->read(seq, entries, want, buf.data(), buf.size(), &num);
-        
+
         if (rc != LDB_OK && rc != LDB_ERR_NOT_FOUND)
             throw nplex::nplex_exception("error reading journal: {}", ldb_strerror(rc));
 
@@ -97,14 +95,13 @@ static void dump_journal(const fs::path &path)
                 return;
 
             // case: buffer too short
-            size_t need = static_cast<size_t>(entries[num].data_len) + 128;
+            size_t need = static_cast<size_t>(entries[num].data_len) + 32;
             size_t new_size = buf.size();
 
             while (new_size < need)
                 new_size *= BATCH_FACTOR;
 
-            if (new_size > buf.size())
-                buf.resize(new_size);
+            buf.resize(new_size);
         }
 
         if (num > 0)

@@ -25,8 +25,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-#ifndef JOURNAL_H
-#define JOURNAL_H
+#ifndef LDB_JOURNAL_H
+#define LDB_JOURNAL_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -42,12 +42,10 @@ SOFTWARE.
  * Main features:
  *   - Variable length record type
  *   - Records uniquely identified by a sequential number (seqnum)
- *   - Records are indexed by timestamp (monotonic non-decreasing field)
- *   - There are no other indexes other than seqnum and timestamp
- *   - Records can be appended, read, and searched
+ *   - There are no other indexes other than seqnum
+ *   - Records can be appended and read by seqnum
  *   - Records cannot be updated or deleted
  *   - Allows reverting the last entries (rollback)
- *   - Allows removing obsolete entries (purge)
  *   - Supports read-write concurrency (multi-thread)
  *   - Automatic data recovery in case of catastrophic events
  *   - Minimal memory footprint
@@ -63,10 +61,9 @@ SOFTWARE.
  * 
  *     header        record1          data1          record2       data2
  * ┌──────┴──────┐┌─────┴─────┐┌────────┴────────┐┌─────┴─────┐┌─────┴─────┐...
- *   magic number   seqnum1        raw bytes 1      seqnum2     raw bytes 2
- *   format         timestamp1                      timestamp2
- *   etc            checksum1                       checksum2
- *                  length1                         length2
+ *   magic number    seqnum1       raw bytes 1       seqnum2    raw bytes 2
+ *      format       length1                         length2
+ *     metadata      chksum1                         chksum2
  * 
  * idx file format
  * ---------------
@@ -79,9 +76,9 @@ SOFTWARE.
  * 
  *      header      record1       record2
  * ┌──────┴──────┐┌─────┴─────┐┌─────┴─────┐...
- *   magic number   seqnum1      seqnum2
- *   format         timestamp1   timestamp2
- *   etc            pos1         pos2
+ *   magic number    offset1      offset2
+ *      format
+ *      seqnum1
  * 
  * We can access directly any record by seqnum because:
  *  - we know the first seqnum in the file
@@ -89,8 +86,7 @@ SOFTWARE.
  *  - idx header has fixed size
  *  - all idx records have same size
  *
- * We use the binary search method over the index records to search data by timestamp.
- * In all cases, we rely on the system file caches to store data in memory.
+ * We rely on the system file caches to store data in memory.
  * 
  * Concurrency
  * ---------------
@@ -100,7 +96,7 @@ SOFTWARE.
  * File read ops are done with [dat|idx]_fd.
  * 
  * We use 2 mutex:
- *   - data mutex: Ensures data integrity ([first|last]_[seqnum|timestamp])
+ *   - data mutex: Ensures data integrity ([min|max]_seqnum)
  *                 Reduced scope (variables update)
  *   - file mutex: Ensures no reads are done during destructive writes
  *                 Extended scope (function execution)
@@ -110,12 +106,11 @@ SOFTWARE.
  * -------------------------------------------------------------------
  *               ┌ open()         -       -     Initialize mutexes, create FILEs used to write and fds used to read
  *               ├ append()       -       W     dat and idx files flushed at the end. State updated after flush.
- * thread-write: ┼ rollback()     W       W     
- *               ├ purge()        W       W     
+ * thread-write: ┼ rollback()     W       W
+ *               ├ check()        W       W
  *               └ close()        -       -     Destroy mutexes, close files
- *               ┌ stats()        R       R     
- * thread-read:  ┼ read()         R       R     
- *               └ search()       R       R     
+ *               ┌ range()        R       R
+ * thread-read:  ┼ read()         R       R
  */
 
 #define LDB_VERSION_MAJOR          1
@@ -128,33 +123,34 @@ SOFTWARE.
 #define LDB_ERR_MEM               -3
 #define LDB_ERR_PATH              -4
 #define LDB_ERR_NAME              -5
-#define LDB_ERR_FILE_NOT_FOUND    -6
-#define LDB_ERR_READONLY          -7
-#define LDB_ERR_OPEN_DAT          -8
-#define LDB_ERR_READ_DAT          -9
-#define LDB_ERR_WRITE_DAT        -10
-#define LDB_ERR_OPEN_IDX         -11
-#define LDB_ERR_READ_IDX         -12
-#define LDB_ERR_WRITE_IDX        -13
-#define LDB_ERR_FMT_DAT          -14
-#define LDB_ERR_FMT_IDX          -15
-#define LDB_ERR_ENTRY_SEQNUM     -16
-#define LDB_ERR_ENTRY_TIMESTAMP  -17
-#define LDB_ERR_ENTRY_DATA       -18
-#define LDB_ERR_NOT_FOUND        -19
-#define LDB_ERR_TMP_FILE         -20
-#define LDB_ERR_CHECKSUM         -21
-#define LDB_ERR_LOCK             -22
+#define LDB_ERR_READONLY          -6
+#define LDB_ERR_NOFILE_DAT        -7
+#define LDB_ERR_NOFILE_IDX        -8
+#define LDB_ERR_INVL_DAT          -9
+#define LDB_ERR_INVL_IDX         -10
+#define LDB_ERR_CORRUPT_DAT      -11
+#define LDB_ERR_CORRUPT_IDX      -12
+#define LDB_ERR_CREATE_DAT       -13
+#define LDB_ERR_CREATE_IDX       -14
+#define LDB_ERR_OPEN_DAT         -15
+#define LDB_ERR_OPEN_IDX         -16
+#define LDB_ERR_READ_DAT         -17
+#define LDB_ERR_READ_IDX         -18
+#define LDB_ERR_WRITE_DAT        -19
+#define LDB_ERR_WRITE_IDX        -20
+#define LDB_ERR_SEQNUM           -21
+#define LDB_ERR_NODATA           -22
+#define LDB_ERR_CHECKSUM         -23
+#define LDB_ERR_NOT_FOUND        -24
+#define LDB_ERR_LOCK             -25
 
 #define LDB_OPEN_CREATE          (1 << 0)   // Create journal if it does not exist (default: false)
 #define LDB_OPEN_READONLY        (1 << 1)   // Open journal in read-only mode (default: false)
-#define LDB_OPEN_CHECK           (1 << 2)   // Check journal integrity (default: false)
-#define LDB_OPEN_REPAIR          (1 << 3)   // Repair journal if corrupted (default: false)
-#define LDB_OPEN_FSYNC           (1 << 4)   // Enable fsync after each write (default: false)
+#define LDB_OPEN_FSYNC           (1 << 2)   // Enable fsync after each write (default: false)
 
 #define LDB_DAT_MAGIC_NUMBER       0x74616478656C706EULL
 #define LDB_IDX_MAGIC_NUMBER       0x78646978656C706EULL
-#define LDB_FILE_FORMAT            2
+#define LDB_FILE_FORMAT            3
 #define LDB_METADATA_LEN          64
 
 #ifdef __cplusplus
@@ -164,24 +160,16 @@ extern "C" {
 struct ldb_impl_t;
 typedef struct ldb_impl_t ldb_journal_t;
 
-typedef enum ldb_search_e {
-    LDB_SEARCH_LOWER,             // Search for the first entry with a timestamp not less than the value.
-    LDB_SEARCH_UPPER              // Search for the first entry with a timestamp greater than the value.
-} ldb_search_e;
-
 typedef struct ldb_entry_t {
     uint64_t seqnum;              // Sequence number (0 = system assigned).
-    uint64_t timestamp;           // Timestamp (0 = system assigned).
     uint32_t data_len;            // Length of data (in bytes).
     void *data;                   // Pointer to data.
 } ldb_entry_t;
 
-typedef struct ldb_stats_t {
+typedef struct ldb_range_t {
     uint64_t min_seqnum;          // Minimum sequence number (0 means no entries).
     uint64_t max_seqnum;          // Maximum sequence number (0 means no entries).
-    uint64_t min_timestamp;       // Minimum timestamp (0 means undefined).
-    uint64_t max_timestamp;       // Maximum timestamp (0 means undefined).
-} ldb_stats_t;
+} ldb_range_t;
 
 /**
  * Returns ldb library version.
@@ -215,15 +203,15 @@ void ldb_free(ldb_journal_t *obj);
 /**
  * Opens a journal.
  * 
- * Creates the journal files (dat+idx) if they do not exist.
+ * Creates the journal files (dat+idx) if they do not exist (flag LDB_OPEN_CREATE).
  * Updates the index file if incomplete (not flushed + crash).
  * Rebuilds the index file when corrupted or not found.
  * 
  * @param[in,out] obj Uninitialized the journal object.
  * @param[in] path Directory where journal files are located.
  * @param[in] name Journal name (allowed characters: [a-zA-Z0-9_], max length = 32).
- * @param[in] flags Open flags (0, LDB_OPEN_CREATE, LDB_OPEN_READONLY, LDB_OPEN_CHECK,
- *                  LDB_OPEN_REPAIR, LDB_OPEN_FSYNC, or combination of them).
+ * @param[in] flags Open flags (0, LDB_OPEN_CREATE, LDB_OPEN_READONLY, LDB_OPEN_FSYNC,
+ *                  or combination of them).
  * 
  * @return Error code (0 = OK). On error, the journal is closed properly (ldb_close not required).
  *         You can check the errno value to get additional error details.
@@ -235,7 +223,7 @@ int ldb_open(ldb_journal_t *obj, const char *path, const char *name, int flags);
  * 
  * Closes open files and releases allocated memory.
  * 
- * @param[in,out] obj Journal to close.
+ * @param[in,out] obj Journal to close (can be NULL).
  * 
  * @return Return code (0 = OK).
  */
@@ -258,19 +246,22 @@ int ldb_set_meta(ldb_journal_t *obj, const char *meta, size_t len);
 int ldb_get_meta(ldb_journal_t *obj, char *meta, size_t len);
 
 /**
+ * Returns the range of sequence numbers available in the journal.
+ * 
+ * @param[in] obj Journal to use.
+ * 
+ * @return The range of sequence numbers available in the journal, or
+ *         {0, 0} if no entries are available, or
+ *         {UINT64_MAX, UINT64_MAX} if the journal is invalid.
+ */
+ldb_range_t ldb_get_range(ldb_journal_t *obj);
+
+/**
  * Appends entries to the journal.
  * 
  * Entries are identified by their seqnum. 
  * First entry can have any seqnum distinct from 0.
  * The rest of the entries must have consecutive values (no gaps).
- * 
- * Each entry has an associated timestamp (distinct from 0). 
- * If no timestamp value is provided (0 value), it is set to the current
- * time (milliseconds from epoch time). Otherwise, the meaning and units
- * of this field are user-defined. It is verified that the timestamp 
- * is equal to or greater than the timestamp of the preceding entry. 
- * It is legit for multiple records to have an identical timestamp 
- * because they were logged within the timestamp granularity.
  * 
  * This function is not 'atomic'. Entries are appended sequentially. 
  * On error (ex. disk full) written entries are flushed and remaining entries
@@ -280,10 +271,6 @@ int ldb_get_meta(ldb_journal_t *obj, char *meta, size_t len);
  *   - equals to 0 -> system assigns the sequential value.
  *   - distinct from 0 -> system checks that it is the next value.
  * 
- * Timestamp values:
- *   - equals to 0: system assigns the current UTC epoch time (in millis).
- *   - distinct from 0 -> system checks that it is greater than or equal to the previous timestamp.
- * 
  * File operations:
  *   - Data file is updated and flushed.
  *   - Index file is updated but not flushed.
@@ -292,9 +279,8 @@ int ldb_get_meta(ldb_journal_t *obj, char *meta, size_t len);
  * 
  * @param[in] obj Journal to modify.
  * @param[in,out] entries Entries to append to the journal. Memory pointed 
- *                  to by each entry is not modified. Seqnum and timestamp
- *                  are updated if they have value 0.
- *                  User must reset pointers before reuse.
+ *                  to by each entry is not modified. Seqnum are updated if 
+ *                  they have value 0. 
  * @param[in] len Number of entries to append.
  * @param[out] num Number of entries appended (can be NULL).
  * 
@@ -324,7 +310,7 @@ int ldb_append(ldb_journal_t *obj, ldb_entry_t *entries, size_t len, size_t *num
  *          entries[num] is filled correctly but data pointer is NULL
  *          If the current buffer size is great than entries[num].data_len you can
  *          call ldb_read(obj, entries[num].seqnum, entries, len - num, ...) again.
- *          Otherwise you need to reallocate the buffer with at least entries[num].data_len + 24 bytes.
+ *          Otherwise you need to reallocate the buffer with at least entries[num].data_len + 32 bytes.
  *   - unused entries are signaled with seqnum = 0
  * 
  * @param[in] obj Journal to use.
@@ -343,50 +329,6 @@ int ldb_append(ldb_journal_t *obj, ldb_entry_t *entries, size_t len, size_t *num
 int ldb_read(ldb_journal_t *obj, uint64_t seqnum, ldb_entry_t *entries, size_t len, char *buf, size_t buf_len, size_t *num);
 
 /**
- * Return statistics between seqnum1 and seqnum2 (both included).
- * 
- * The requested range [seqnum1, seqnum2] is clamped to the intersection with
- * the available journal data [min_seqnum, max_seqnum]:
- *   - If the ranges do not intersect: returns LDB_ERR_NOT_FOUND (empty result).
- *   - If the ranges partially intersect: stats are computed for the clamped range.
- *   - If the ranges fully overlap: stats are computed for all requested data.
- * 
- * Examples: (assuming that the journal has entries [10, 100])
- *   - Request [0, UINT64_MAX] -> clamped to [10, 100]
- *   - Request [20, 90]        -> clamped to [20, 90]
- *   - Request [5, 50]         -> clamped to [10, 50]
- *   - Request [50, 200]       -> clamped to [50, 100]
- *   - Request [5, 9]          -> returns LDB_ERR_NOT_FOUND
- *   - Request [101, 200]      -> returns LDB_ERR_NOT_FOUND
- *
- * Examples: (assuming that the journal is empty)
- *   - Request [0, 3]          -> clamped to [0, 0]
- *   - Request [3, 5]          -> LDB_ERR_NOT_FOUND
- * 
- * @param[in] obj Journal to use.
- * @param[in] seqnum1 First sequence number.
- * @param[in] seqnum2 Second sequence number (greater than or equal to seqnum1).
- * @param[out] stats Uninitialized statistics.
- * 
- * @return Error code (0 = OK).
- */
-int ldb_stats(ldb_journal_t *obj, uint64_t seqnum1, uint64_t seqnum2, ldb_stats_t *stats);
-
-/**
- * Searches for the seqnum corresponding to the given timestamp.
- * 
- * Uses the binary search algorithm over the index file.
- * 
- * @param[in] obj Journal to use.
- * @param[in] ts Timestamp to search.
- * @param[in] mode Search mode.
- * @param[out] seqnum Resulting seqnum (distinct from NULL, 0 = NOT_FOUND).
- * 
- * @return Error code (0 = OK).
- */
-int ldb_search(ldb_journal_t *obj, uint64_t ts, ldb_search_e mode, uint64_t *seqnum);
-
-/**
  * Removes all entries greater than seqnum.
  * 
  * File operations:
@@ -401,31 +343,108 @@ int ldb_search(ldb_journal_t *obj, uint64_t ts, ldb_search_e mode, uint64_t *seq
 long ldb_rollback(ldb_journal_t *obj, uint64_t seqnum);
 
 /**
- * Remove all entries less than seqnum.
+ * Checks (and optionally repairs) the integrity of a journal.
+ *
+ * If repair is true, the journal must not be open in read-only mode.
+ *
+ *   Data file issue                              Repairable
+ *   -------------------------------------------  ----------
+ *   Checksum mismatch in a record (+)            Yes (zeroed)
+ *   Non-consecutive sequence numbers             Yes (zeroed)
+ *   Trailing data after last valid record        Yes (zeroed)
  * 
- * This function is expensive because it recreates the dat and idx files.
+ * (+) The checksum covers both the record header and its data. 
+ *     If it does not match, the record is deemed invalid and 
+ *     everything from that point onward is zeroed out.
  * 
- * To prevent data loss in case of outage, we do:
- *   - A temporary data file is created.
- *   - Preserved records are copied from the dat file to the temporary file.
- *   - Temporary, dat and idx files are closed
- *   - The idx file is removed
- *   - The temporary file is renamed to dat
- *   - The dat file is opened
- *   - The idx file is rebuilt
- * 
- * @param[in] obj Journal to update.
- * @param[in] seqnum Sequence number up to which records are removed.
- * 
- * @return Number of removed entries, or error if negative.
+ *   Index file issue                             Repairable
+ *   -------------------------------------------  ----------
+ *   Index seqnum mismatch with dat               Yes (rebuilt)
+ *   Sequence gap in index records                Yes (rebuilt)
+ *   Index entry position out of bounds           Yes (rebuilt)
+ *   Missing index records                        Yes (rebuilt)
+ *   Trailing data after last valid record        Yes (zeroed)
+ *
+ * @param[in] obj    Open journal to check.
+ * @param[in] repair If true, attempt to repair detected issues.
+ *                   Requires journal not opened in read-only mode.
+ *
+ * @return LDB_OK if the journal is consistent (or was successfully repaired),
+ *         LDB_ERR_ARG if obj is NULL,
+ *         LDB_ERR_READONLY if repair is true but journal is read-only,
+ *         otherwise an error code.
  */
-long ldb_purge(ldb_journal_t *obj, uint64_t seqnum);
+int ldb_check(ldb_journal_t *obj, bool repair);
+
+/**
+ * Splits a journal into two journals at the given sequence number.
+ *
+ * The source journal is opened with an exclusive lock and must already exist.
+ * Journal A receives entries [seqnum1 .. seqnum-1] and journal B receives
+ * entries [seqnum .. seqnum2]. Both output journals inherit the header
+ * (including metadata) of the source journal. Index files are not generated;
+ * they will be rebuilt automatically on the first ldb_open().
+ *
+ * The caller is responsible for ensuring:
+ *   - seqnum is strictly inside the range (min_seqnum < seqnum <= max_seqnum)
+ *   - name_a and name_b are valid journal names and do not already exist
+ *   - name_a and name_b fit within the maximum name length
+ *
+ * If creation of journal B fails after journal A has been created,
+ * journal A is removed before returning the error.
+ *
+ * Side effect: if the source index file is missing, it is rebuilt in the
+ * source directory before the split is performed.
+ *
+ * @param[in] path    Directory where source and output journals are located.
+ * @param[in] name    Source journal name.
+ * @param[in] seqnum  First sequence number that goes into journal B.
+ * @param[in] name_a  Output journal name for the first half.
+ * @param[in] name_b  Output journal name for the second half.
+ *
+ * @return LDB_OK on success, or an error code on failure.
+ */
+int ldb_split(const char *path, const char *name, uint64_t seqnum, const char *name_a, const char *name_b);
+
+/**
+ * Joins two consecutive journals into a new journal.
+ *
+ * Both source journals are opened with an exclusive lock and must already exist.
+ * The output journal receives entries [name1.min_seqnum .. name2.max_seqnum] and
+ * inherits the header (including metadata) of the first source journal (name1).
+ * The index file of the output journal is generated during the operation.
+ *
+ * If one of the source journals is empty, the result is a copy of the other.
+ * If both are empty, the result is an empty journal inheriting name1's header.
+ *
+ * The caller is responsible for ensuring:
+ *   - name1, name2 and name are valid journal names, all distinct from each other
+ *   - name does not already exist
+ *   - name1 and name2 are in the same directory (path)
+ *   - name2.min_seqnum == name1.max_seqnum + 1 (consecutiveness)
+ *
+ * On success, the source journals (name1 and name2) are removed.
+ * On error, any partially created output files are removed and
+ * the source journals are left intact.
+ *
+ * Side effect: if a source index file is missing, it is rebuilt before
+ * the join is performed.
+ *
+ * @param[in] path   Directory where source and output journals are located.
+ * @param[in] name1  First source journal name.
+ * @param[in] name2  Second source journal name.
+ * @param[in] name   Output journal name.
+ *
+ * @return LDB_OK on success, or an error code on failure.
+ */
+int ldb_join(const char *path, const char *name1, const char *name2, const char *name);
 
 #ifdef __cplusplus
 }
 
 #include <stdexcept>
 #include <filesystem>
+#include <functional>
 
 namespace ldb {
 
@@ -493,28 +512,25 @@ class journal_t
         return ldb_get_meta(m_journal, meta, len);
     }
 
-    int append(ldb_entry_t *entries, size_t len, size_t *num) { 
+    std::pair<uint64_t, uint64_t> get_range() {
+        ldb_range_t range = ldb_get_range(m_journal);
+        return {range.min_seqnum, range.max_seqnum};
+    }
+
+    int append(ldb_entry_t *entries, size_t len, size_t *num) {
         return ldb_append(m_journal, entries, len, num);
     }
 
-    int read(uint64_t seqnum, ldb_entry_t *entries, size_t len, char *buf, size_t buf_len, size_t *num) { 
+    int read(uint64_t seqnum, ldb_entry_t *entries, size_t len, char *buf, size_t buf_len, size_t *num) {
         return ldb_read(m_journal, seqnum, entries, len, buf, buf_len, num);
-    }
-
-    int stats(uint64_t seqnum1, uint64_t seqnum2, ldb_stats_t *stats) {
-        return ldb_stats(m_journal, seqnum1, seqnum2, stats);
-    }
-
-    int search(uint64_t ts, ldb_search_e mode, uint64_t *seqnum) {
-        return ldb_search(m_journal, ts, mode, seqnum);
     }
 
     long rollback(uint64_t seqnum) {
         return ldb_rollback(m_journal, seqnum);
     }
 
-    long purge(uint64_t seqnum) {
-        return ldb_purge(m_journal, seqnum);
+    int check(bool repair = false) {
+        return ldb_check(m_journal, repair);
     }
 
   private:
@@ -522,8 +538,16 @@ class journal_t
     ldb_journal_t *m_journal = nullptr;
 };
 
+inline int split(const std::filesystem::path &path, const std::string &name, uint64_t seqnum, const std::string &name_a, const std::string &name_b) {
+    return ldb_split(path.c_str(), name.c_str(), seqnum, name_a.c_str(), name_b.c_str());
+}
+
+inline int join(const std::filesystem::path &path, const std::string &name1, const std::string &name2, const std::string &name) {
+    return ldb_join(path.c_str(), name1.c_str(), name2.c_str(), name.c_str());
+}
+
 } // namespace ldb
 
 #endif
 
-#endif /* JOURNAL_H */
+#endif /* LDB_JOURNAL_H */

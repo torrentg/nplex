@@ -145,7 +145,6 @@ void nplex::journal_writer::run()
 
                 ldb_entry_t entry = {
                     .seqnum = it->update.meta->rev,
-                    .timestamp = static_cast<std::uint64_t>(it->update.meta->timestamp.count()),
                     .data_len = static_cast<std::uint32_t>(it->buffer.size()),
                     .data = reinterpret_cast<char *>(it->buffer.data())
                 };

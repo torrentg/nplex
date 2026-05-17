@@ -18,15 +18,25 @@ static constexpr std::size_t READ_BATCH_ENTRIES = 10'000;
 static constexpr std::size_t READ_BATCH_BYTES   = 1 * 1024 * 1024;
 static constexpr std::size_t READ_BATCH_FACTOR  = 2;
 
-struct snapshot_header_t {
+struct snapshot_header_t
+{
     uint8_t  magic[8];
     uint32_t schema2_hash;
     uint32_t checksum;
+
+    snapshot_header_t(uint32_t chk = 0) : schema2_hash(SCHEMA2_HASH), checksum(chk) {
+        std::memcpy(magic, SNAPSHOT_MAGIC, sizeof(magic));
+    }
 };
 
-struct journal_meta_t {
+struct journal_meta_t
+{
     uint8_t  magic[8];
     uint32_t schema1_hash;
+
+    journal_meta_t() : schema1_hash(SCHEMA1_HASH) {
+        std::memcpy(magic, JOURNAL_MAGIC, sizeof(magic));
+    }
 };
 
 struct read_result_t {
@@ -56,9 +66,9 @@ static const std::uint8_t * as_uint8_ptr(T *ptr) {
     return reinterpret_cast<const std::uint8_t *>(ptr);
 }
 
-static snapshot_header_t check_snapshot_header(std::ifstream &ifs)
+static snapshot_header_t get_snapshot_header(std::ifstream &ifs)
 {
-    snapshot_header_t hdr = {};
+    snapshot_header_t hdr;
 
     ifs.seekg(0, std::ios::beg);
     if (!ifs)
@@ -147,13 +157,7 @@ static nplex::rev_t parse_rev(const fs::path &filename)
 
 static std::pair<nplex::rev_t, nplex::rev_t> get_journal_range(const nplex::journal_ptr &journal)
 {
-    int rc = 0;
-    ldb_stats_t stats = {};
-
-    if ((rc = journal->stats(0, UINT64_MAX, &stats)) != LDB_OK)
-        throw nplex::nplex_exception("{}", ldb_strerror(rc));
-
-    return {stats.min_seqnum, stats.max_seqnum};
+    return journal->get_range();
 }
 
 static std::pair<nplex::rev_t, nplex::rev_t> get_archives_range(const std::map<nplex::rev_t, nplex::journal_item_t> &archives)
@@ -245,18 +249,51 @@ static read_result_t read_journal(const nplex::journal_ptr &journal, nplex::rev_
                 return {rev, count, bytes, false};
 
             // case: buffer too short
-            size_t need = static_cast<size_t>(rbuf.entries[num_reads].data_len) + 128;
+            size_t need = static_cast<size_t>(rbuf.entries[num_reads].data_len) + 32;
             size_t new_size = rbuf.arena.size();
 
             while (new_size < need)
                 new_size *= READ_BATCH_FACTOR;
 
-            if (rbuf.arena.size() < new_size)
-                rbuf.arena.resize(new_size, 0);
+            rbuf.arena.resize(new_size, 0);
         }
     }
 
     return {rev, count, bytes, false};
+}
+
+static void check_journal_signatures(const nplex::journal_ptr &journal)
+{
+    int rc = 0;
+    journal_meta_t meta;
+
+    static_assert(LDB_METADATA_LEN >= sizeof(meta), "Metadata buffer too small");
+
+    if ((rc = journal->get_meta(reinterpret_cast<char *>(&meta), sizeof(meta))) != LDB_OK)
+        throw nplex::nplex_exception("Failed to read journal metadata ({})", ldb_strerror(rc));
+
+    bool is_empty = (get_journal_range(journal).first == 0);
+
+    if (is_empty)
+    {
+        journal_meta_t expected_meta;
+
+        if (std::memcmp(&meta, &expected_meta, sizeof(journal_meta_t)) == 0)
+            return;
+
+        if ((rc = journal->set_meta(reinterpret_cast<const char *>(&expected_meta), sizeof(expected_meta))) != LDB_OK)
+            throw nplex::nplex_exception("Failed to write journal metadata ({})", ldb_strerror(rc));
+
+        return;
+    }
+
+    // Checking that journal content is a valid nplex journal
+    if (std::memcmp(meta.magic, JOURNAL_MAGIC, MAGIC_LEN) != 0)
+        throw nplex::nplex_exception("Invalid journal (magic mismatch)");
+
+    // Checking that journal content is compatible with current schema
+    if (meta.schema1_hash != SCHEMA1_HASH)
+        throw nplex::nplex_exception("Invalid journal (schema1 mismatch)");
 }
 
 // ==========================================================
@@ -271,7 +308,7 @@ std::string nplex::read_snapshot(const fs::path &file, bool check)
     if (!ifs)
         throw nplex_exception("Failed to open snapshot file ({})", filename);
 
-    auto hdr = ::check_snapshot_header(ifs);
+    auto hdr = ::get_snapshot_header(ifs);
 
     std::string content = ::get_snapshot_content(ifs);
 
@@ -288,40 +325,9 @@ nplex::journal_ptr nplex::open_journal(const fs::path &file, int flags)
     auto dir  = file.parent_path();
     auto name = file.stem().string();
 
-    // Open the journal
     auto journal = std::make_shared<ldb::journal_t>(dir, name, flags);
 
-    // Get the journal range minimum revision (if any)
-    bool is_empty = (get_journal_range(journal).first == 0);
-
-    // Read the journal metadata
-    int rc = 0;
-    journal_meta_t meta = {
-        .magic = {0},
-        .schema1_hash = SCHEMA1_HASH
-    };
-
-    static_assert(LDB_METADATA_LEN >= sizeof(meta), "Metadata buffer too small");
-    if ((rc = journal->get_meta(reinterpret_cast<char *>(&meta), sizeof(meta))) != LDB_OK)
-        throw nplex_exception("Failed to read journal metadata ({})", ldb_strerror(rc));
-
-    if (is_empty)
-    {
-        std::memcpy(meta.magic, JOURNAL_MAGIC, MAGIC_LEN);
-        meta.schema1_hash = SCHEMA1_HASH;
-
-        // Set/update the journal metadata
-        if ((rc = journal->set_meta(reinterpret_cast<const char *>(&meta), sizeof(meta))) != LDB_OK)
-            throw nplex_exception("Failed to write journal metadata ({})", ldb_strerror(rc));
-    }
-
-    // Checking that journal content is a valid nplex journal
-    if (std::memcmp(meta.magic, JOURNAL_MAGIC, MAGIC_LEN) != 0)
-        throw nplex_exception("Invalid journal (magic mismatch)");
-
-    // Checking that journal content is compatible with current schema
-    if (meta.schema1_hash != SCHEMA1_HASH)
-        throw nplex_exception("Invalid journal (schema1 mismatch)");
+    ::check_journal_signatures(journal);
 
     return journal;
 }
@@ -330,10 +336,17 @@ nplex::journal_ptr nplex::open_journal(const fs::path &file, int flags)
 // storage_t methods
 // ==========================================================
 
-nplex::storage_t::storage_t(const fs::path &path, int flags) : m_path{path}
+nplex::storage_t::storage_t(const fs::path &path, bool check, bool fsync) : m_path{path}
 {
-    m_check = flags & LDB_OPEN_CHECK;
-    m_journal = open_journal(path / JOURNAL_NAME ".dat", flags);
+    fs::path filename = path / JOURNAL_NAME ".dat";
+    int flags = LDB_OPEN_CREATE | (fsync ? LDB_OPEN_FSYNC : 0);
+
+    m_journal = open_journal(filename, flags);
+
+    if (check) {
+        m_journal->check(true);
+        m_check = check;
+    }
 
     rebuild_map_archives();
     rebuild_map_snapshots();
@@ -432,13 +445,8 @@ nplex::rev_t nplex::storage_t::write_snapshot(const std::string_view &data)
     if (!ofs)
         throw nplex_exception("Failed to open snapshot file ({})", filename);
 
-    snapshot_header_t hdr = {
-        .magic = {0},
-        .schema2_hash = SCHEMA2_HASH,
-        .checksum = CRC32::CRC32::calc(reinterpret_cast<const uint8_t*>(data.data()), data.size())
-    };
-
-    std::memcpy(hdr.magic, SNAPSHOT_MAGIC, MAGIC_LEN);
+    uint32_t chk = CRC32::CRC32::calc(reinterpret_cast<const uint8_t*>(data.data()), data.size());
+    snapshot_header_t hdr{chk};
 
     ofs.write(reinterpret_cast<const char*>(&hdr), sizeof(hdr));
     if (!ofs)
@@ -581,7 +589,10 @@ void nplex::storage_t::rebuild_map_archives()
         {
             rev = parse_rev(filename);
 
-            auto journal = open_journal(dir_entry.path(), (m_check ? LDB_OPEN_CHECK : 0));
+            auto journal = open_journal(dir_entry.path(), 0);
+
+            if (m_check)
+                journal->check(true);
 
             std::tie(min_rev, max_rev) = get_journal_range(journal);
 
@@ -675,7 +686,7 @@ void nplex::storage_t::rebuild_map_snapshots()
             if (!ifs)
                 throw nplex_exception("failed to open file");
 
-            auto hdr = ::check_snapshot_header(ifs);
+            auto hdr = ::get_snapshot_header(ifs);
 
             if (snapshots.contains(rev))
                 throw nplex_exception("duplicate snapshot");
