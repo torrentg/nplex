@@ -1,7 +1,7 @@
 #pragma once
 
-#include <chrono>
 #include "common.hpp"
+#include <chrono>
 
 namespace nplex {
 

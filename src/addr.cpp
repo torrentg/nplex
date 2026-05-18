@@ -1,8 +1,8 @@
-#include <regex>
-#include <charconv>
-#include <exception>
-#include <fmt/core.h>
 #include "addr.hpp"
+#include <fmt/core.h>
+#include <exception>
+#include <charconv>
+#include <regex>
 
 // IPv4 address (see https://digitalfortress.tech/tricks/top-15-commonly-used-regex/)
 #define IPV4_PATTERN "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$"

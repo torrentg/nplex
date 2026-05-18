@@ -1,11 +1,11 @@
-#include <set>
-#include <chrono>
-#include <cassert>
-#include <algorithm>
-#include "match.h"
+#include "store.hpp"
 #include "utils.hpp"
 #include "exception.hpp"
-#include "store.hpp"
+#include "match.h"
+#include <algorithm>
+#include <cassert>
+#include <chrono>
+#include <set>
 
 // ==========================================================
 // Internal to compilation unit

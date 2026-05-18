@@ -1,16 +1,17 @@
 #pragma once
 
-#include <uv.h>
-#include <flatbuffers/flatbuffers.h>
 #include "common.hpp"
 #include "schema.hpp"
 #include "connection.hpp"
+#include <flatbuffers/flatbuffers.h>
+#include <uv.h>
 
 namespace nplex {
 
 // Forward declarations
 struct user_t;
 struct context_t;
+class store_t;
 using user_ptr = std::shared_ptr<user_t>;
 using context_ptr = std::shared_ptr<context_t>;
 

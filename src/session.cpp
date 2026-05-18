@@ -1,12 +1,12 @@
-#include <cassert>
-#include <spdlog/spdlog.h>
+#include "session.hpp"
 #include "exception.hpp"
 #include "messaging.hpp"
 #include "utils.hpp"
 #include "user.hpp"
 #include "context.hpp"
-#include "session.hpp"
 #include "tasks.hpp"
+#include <spdlog/spdlog.h>
+#include <cassert>
 
 // maximum time (in millis) for a not logged user
 static constexpr std::uint32_t TIMEOUT_NO_USER = 5000;

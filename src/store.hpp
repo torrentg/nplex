@@ -1,11 +1,11 @@
 #pragma once
 
-#include <map>
-#include "cqueue.hpp"
 #include "common.hpp"
 #include "schema.hpp"
 #include "params.hpp"
 #include "user.hpp"
+#include "cqueue.hpp"
+#include <map>
 
 namespace nplex {
 

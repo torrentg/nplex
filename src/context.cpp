@@ -1,9 +1,4 @@
-#include <cassert>
-#include <cstring>
-#include <spdlog/spdlog.h>
-#include <fmt/core.h>
-#include <fmt/ranges.h>
-#include "journal.h"
+#include "context.hpp"
 #include "journal_writer.hpp"
 #include "exception.hpp"
 #include "storage.hpp"
@@ -11,7 +6,12 @@
 #include "config.hpp"
 #include "tasks.hpp"
 #include "user.hpp"
-#include "context.hpp"
+#include "journal.h"
+#include <spdlog/spdlog.h>
+#include <fmt/core.h>
+#include <fmt/ranges.h>
+#include <cassert>
+#include <cstring>
 
 // ==========================================================
 // Internal (static) functions

@@ -1,12 +1,12 @@
 #pragma once
 
-#include <exception>
-#include <functional>
-#include <uv.h>
 #include "common.hpp"
 #include "storage.hpp"
 #include "messaging.hpp"
 #include "store.hpp"
+#include <uv.h>
+#include <functional>
+#include <exception>
 
 namespace nplex {
 

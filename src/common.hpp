@@ -1,13 +1,13 @@
 #pragma once
 
+#include "buildinfo.hpp"
+#include "cstring.hpp"
 #include <set>
 #include <vector>
 #include <memory>
-#include <cstdint>
 #include <string>
 #include <chrono>
-#include "cstring.hpp"
-#include "buildinfo.hpp"
+#include <cstdint>
 
 #define PROJECT_NAME            "nplex"
 #define PROJECT_URL             "https://github.com/torrentg/nplex"

@@ -1,11 +1,11 @@
-#include <cassert>
-#include <arpa/inet.h>
-#include <spdlog/spdlog.h>
-#include <flatbuffers/flatbuffers.h>
+#include "connection.hpp"
 #include "messaging.hpp"
 #include "context.hpp"
 #include "session.hpp"
-#include "connection.hpp"
+#include <spdlog/spdlog.h>
+#include <flatbuffers/flatbuffers.h>
+#include <cassert>
+#include <arpa/inet.h>
 
 // OOM protection against corrupted messages and DoS attacks
 static constexpr std::size_t MAX_RCV_MSG_BYTES = 100 * 1024 * 1024; // 100 MiB

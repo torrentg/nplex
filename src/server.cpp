@@ -1,15 +1,15 @@
+#include "server.hpp"
+#include "exception.hpp"
+#include "messaging.hpp"
+#include "context.hpp"
+#include "config.hpp"
+#include <spdlog/spdlog.h>
 #include <cstdlib>
 #include <cstring>
 #include <cassert>
 #include <stdexcept>
 #include <filesystem>
 #include <sys/socket.h>
-#include <spdlog/spdlog.h>
-#include "exception.hpp"
-#include "messaging.hpp"
-#include "context.hpp"
-#include "config.hpp"
-#include "server.hpp"
 
 static constexpr std::size_t MAX_QUEUED_CONNECTIONS = 128;
 

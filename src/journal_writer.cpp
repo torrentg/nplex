@@ -1,11 +1,11 @@
-#include <cassert>
-#include <spdlog/spdlog.h>
-#include "journal.h"
+#include "journal_writer.hpp"
 #include "exception.hpp"
 #include "messaging.hpp"
 #include "common.hpp"
 #include "utils.hpp"
-#include "journal_writer.hpp"
+#include "journal.h"
+#include <spdlog/spdlog.h>
+#include <cassert>
 
 // ==========================================================
 // Internal (static) variables and functions

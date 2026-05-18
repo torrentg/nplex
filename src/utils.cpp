@@ -1,8 +1,8 @@
+#include "utils.hpp"
+#include "utf8.h"
+#include <fmt/core.h>
 #include <ctime>
 #include <arpa/inet.h>
-#include <fmt/core.h>
-#include "utf8.h"
-#include "utils.hpp"
 
 std::uint32_t nplex::ntohl_ptr(const char *ptr)
 {

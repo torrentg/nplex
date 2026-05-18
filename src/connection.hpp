@@ -1,9 +1,9 @@
 #pragma once
 
-#include <chrono>
-#include <uv.h>
 #include "addr.hpp"
 #include "params.hpp"
+#include <uv.h>
+#include <chrono>
 
 // Forward declaration
 namespace flatbuffers {

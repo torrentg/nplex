@@ -1,18 +1,18 @@
+#include "storage.hpp"
+#include "exception.hpp"
+#include "messaging.hpp"
+#include "utils.hpp"
+#include "journal.h"
+#include "cppcrc.h"
+#include <fmt/std.h>
+#include <fmt/core.h>
+#include <spdlog/spdlog.h>
 #include <regex>
 #include <limits>
 #include <fstream>
 #include <charconv>
 #include <algorithm>
 #include <cstring>
-#include "cppcrc.h"
-#include <fmt/std.h>
-#include <fmt/core.h>
-#include <spdlog/spdlog.h>
-#include "journal.h"
-#include "exception.hpp"
-#include "messaging.hpp"
-#include "utils.hpp"
-#include "storage.hpp"
 
 static constexpr std::size_t READ_BATCH_ENTRIES = 10'000;
 static constexpr std::size_t READ_BATCH_BYTES   = 1 * 1024 * 1024;

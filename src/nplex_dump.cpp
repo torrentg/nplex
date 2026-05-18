@@ -1,16 +1,16 @@
-#include <getopt.h>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <filesystem>
-#include <fstream>
-#include <vector>
-#include <fmt/core.h>
-#include "journal.h"
 #include "common.hpp"
 #include "exception.hpp"
 #include "storage.hpp"
 #include "json.hpp"
+#include "journal.h"
+#include <fmt/core.h>
+#include <filesystem>
+#include <fstream>
+#include <vector>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <getopt.h>
 
 #define APP_NAME "nplex_dump"
 

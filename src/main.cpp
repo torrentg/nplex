@@ -1,17 +1,17 @@
-#include <getopt.h>
-#include <cstdlib>
-#include <cstdint>
-#include <csignal>
-#include <filesystem>
-#include <string>
-#include <spdlog/spdlog.h>
-#include <spdlog/sinks/basic_file_sink.h>
-#include <spdlog/sinks/stdout_color_sinks.h>
 #include "common.hpp"
 #include "config.hpp"
 #include "utils.hpp"
 #include "addr.hpp"
 #include "server.hpp"
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/basic_file_sink.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
+#include <string>
+#include <filesystem>
+#include <cstdlib>
+#include <cstdint>
+#include <csignal>
+#include <getopt.h>
 
 using namespace std;
 using namespace nplex;

@@ -1,5 +1,5 @@
-#include "match.h"
 #include "user.hpp"
+#include "match.h"
 
 bool nplex::user_t::is_authorized(uint8_t mode, const char *key) const
 {

@@ -1,7 +1,7 @@
 #pragma once
 
-#include <cstdint>
 #include "addr.hpp"
+#include <cstdint>
 
 namespace nplex {
 

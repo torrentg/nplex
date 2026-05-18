@@ -1,12 +1,12 @@
-#include <cassert>
-#include "cppcrc.h"
-#include "journal.h"
+#include "messaging.hpp"
 #include "user.hpp"
 #include "utils.hpp"
 #include "store.hpp"
 #include "session.hpp"
 #include "exception.hpp"
-#include "messaging.hpp"
+#include "journal.h"
+#include "cppcrc.h"
+#include <cassert>
 
 using namespace nplex::msgs;
 using namespace flatbuffers;
@@ -14,7 +14,6 @@ using namespace flatbuffers;
 // ==========================================================
 // Internal (static) functions
 // ==========================================================
-
 
 static std::string create_string(const flatbuffers::Vector<std::uint8_t> *value)
 {

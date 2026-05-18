@@ -1,12 +1,12 @@
-#include <cassert>
-#include <cstddef>
-#include <spdlog/spdlog.h>
+#include "tasks.hpp"
 #include "exception.hpp"
 #include "messaging.hpp"
 #include "session.hpp"
 #include "context.hpp"
 #include "utils.hpp"
-#include "tasks.hpp"
+#include <spdlog/spdlog.h>
+#include <cstddef>
+#include <cassert>
 
 // ==========================================================
 // snapshot_task_t methods
