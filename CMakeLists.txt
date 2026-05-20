@@ -95,6 +95,9 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
 # Find flatc executable
 find_program(FLATC_EXECUTABLE NAMES flatc REQUIRED)
 
+# Find xxd executable (used to embed readme_template.md into the binary)
+find_program(XXD_EXECUTABLE NAMES xxd REQUIRED)
+
 # Generate binary schemas at configure time and compute their hashes
 foreach(_SCHEMA IN ITEMS schema1 schema2 schema3)
     execute_process(
@@ -167,11 +170,39 @@ add_custom_command(
     COMMENT "Copying schema.hpp to src directory"
 )
 
+# Generate readme_template.h from src/readme_template.md
+add_custom_command(
+    OUTPUT "${CMAKE_BINARY_DIR}/readme_template.h"
+    COMMAND ${XXD_EXECUTABLE} -i -n readme_content
+        "${PROJECT_SOURCE_DIR}/src/readme_template.md"
+        "${CMAKE_BINARY_DIR}/readme_template.h"
+    DEPENDS "${PROJECT_SOURCE_DIR}/src/readme_template.md"
+    COMMENT "Generating readme_template.h from src/readme_template.md"
+)
+
+add_custom_target(
+    GENERATE_readme_template ALL
+    DEPENDS "${CMAKE_BINARY_DIR}/readme_template.h"
+)
+
+# Copy readme_template.h to src/readme_template.h
+add_custom_command(
+    OUTPUT "${PROJECT_SOURCE_DIR}/src/readme_template.h"
+    COMMAND ${CMAKE_COMMAND} -E copy
+        "${CMAKE_BINARY_DIR}/readme_template.h"
+        "${PROJECT_SOURCE_DIR}/src/readme_template.h"
+    DEPENDS
+        GENERATE_readme_template
+        "${CMAKE_BINARY_DIR}/readme_template.h"
+    COMMENT "Copying readme_template.h to src directory"
+)
+
 # Copy generated files to src/ directory
 add_custom_target(
     copy_generated
     ALL
     DEPENDS
+        "${PROJECT_SOURCE_DIR}/src/readme_template.h"
         "${PROJECT_SOURCE_DIR}/src/buildinfo.hpp"
         "${PROJECT_SOURCE_DIR}/src/schema.hpp"
 )

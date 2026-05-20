@@ -22,11 +22,9 @@ story entirely.
 The second was a control room for a metro line — a massive project spanning over four years,
 around fifteen people full-time, across multiple sites. The stack was RabbitMQ with roughly
 twelve Java micro-services handling a few hundred transactions per second at peak. Java was
-the right choice for the organizational context: a large, rotating team where everyone could
-read and contribute. But each "micro"-service consumed over a gigabyte of memory, took more
-than thirty seconds to start, and the garbage collector introduced periodic freezes — visible
-hiccups in a system that was supposed to feel alive. CPU consumption was, to put it
-charitably, generous.
+the right choice for a large and rotating team. But each "micro"-service consumed over a 
+gigabyte of memory, took more than thirty seconds to start, and the garbage collector 
+introduced periodic freezes.
 
 Both experiences were victories. The systems worked. The clients were satisfied. But I kept a
 private list of things I would do differently if I ever had the chance to start from a blank
@@ -50,7 +48,7 @@ errands, holidays spent refactoring instead of resting.
 
 The first attempt — **memdb** — was not born from wisdom. It was born from impatience. Replication seemed like the most exciting part of the problem, so that is where I started — no server, no client, no database, just replication. And not by reading what others had already done. No. I would design my own consensus mechanism. Something better, obviously, than anything that had been peer-reviewed and battle-tested over decades. Looking back, the word that comes to mind is *reckless*. The codebase swelled past thirty thousand lines across more than a hundred substantial commits. And what did all that effort produce? A replication layer for a database that did not yet exist. memdb collapsed under its own ambition before a single key-value pair was ever stored.
 
-The second attempt — **raft6** — was wiser, at least at first. This time I did the reading. I studied distributed systems properly, worked through the Raft paper, and understood the consensus problem from first principles. Raft — the algorithm I should have started with — was elegant, formally described, and exactly the kind of intellectual challenge I had been looking for. I embraced it with the energy of someone who had just discovered the right answer after a long detour. But if memdb had been defeated by arrogance, raft6 was defeated by architecture. Armed with new knowledge and a head full of design patterns, I tried to build the entire system behind clean hexagonal layers: isolate everything, abstract everything, make every boundary testable. It sounds beautiful in a conference talk. In practice, with an event loop at the core, it was an architectural nightmare. libuv wants to own its handles. The event loop *is* the application — trying to abstract it away is like trying to abstract away gravity. Fifteen thousand lines of code, two hundred and fifty commits, and the project drowned in its own layers of indirection.
+The second attempt — **raft6** — was wiser, at least at first. This time I did the reading. I studied distributed systems properly, worked through the Raft paper, and understood the consensus problem from first principles. Armed with new knowledge and a head full of design patterns, I tried to build the entire system behind clean hexagonal layers: isolate everything, abstract everything, make every boundary testable. In practice, with an event loop at the core, it was an architectural nightmare. Fifteen thousand lines of code, two hundred and fifty commits, and the project drowned in its own layers of indirection.
 
 The third attempt — **nplex** — was the one that stuck. After two failures, I adopted a deliberately pragmatic stance: no more chasing elegance for its own sake, no more building features before the foundation existed. Start with the basics — a server, a client, a store, a journal — and let complexity grow only when justified by real needs. Nplex reused parts of the previous attempts where they made sense and discarded the rest without ceremony. It was also the project where I decided to draw a line: ship what works, accept the limitations, and close the chapter. If it grows, it will be because someone else finds it useful — not because I cannot stop tinkering.
 
@@ -65,30 +63,23 @@ Along the way, several pieces of code proved self-contained enough to become ind
 
 ## Lessons Learned
 
-The lessons learned here are nothing extraordinary; they have been written and repeated in 
-countless books and articles. But there is a world of difference between reading advice and living 
-through the experience yourself. Only by making the mistakes firsthand did these lessons truly take 
-root.
+The lessons learned here are nothing extraordinary; they’ve been written and repeated in countless books and articles. I’ve stumbled over almost all of them.
 
 **Don't start from the roof.** It is tempting to begin with the most intellectually stimulating part of a project, but a replication layer without a database underneath is a roof without walls. I learned that you must build the boring, foundational parts first—those are what everything else stands on.
 
-**Don't reinvent the wheel.** The temptation to build everything from scratch — your own algorithm, your own protocol, your own everything — is real, especially when you are excited about a problem. But someone else has almost certainly faced the same challenge before, thought it through more carefully, and written about it. Reading their work is not a shortcut or a sign of weakness. It is the only sensible starting point. I spent months designing a consensus algorithm that already existed in textbooks. The lesson cost me dearly.
+**Don't reinvent the wheel.** I spent months designing a consensus algorithm that already existed in textbooks. The temptation to build everything from scratch is real. But someone else has almost certainly faced the same challenge before, thought it through more carefully, and written about it.
 
-**Beware of architecture astronautics.** My raft6 experience showed that trying to isolate every layer behind clean abstractions can backfire when the runtime model resists. Hexagonal architecture and an event loop that demands ownership of its handles are not natural allies. Sometimes, the pragmatic choice is to accept coupling where the framework imposes it.
+**Beware of architecture astronautics.** My raft6 experience showed that trying to isolate every layer behind clean abstractions can backfire when the runtime model resists. Sometimes, the pragmatic choice is to accept coupling where the framework imposes it.
 
-**Don’t try to fit a square peg into a round hole.** libuv is written in C and imposes C-style ownership. I tried using uvw (a C++ wrapper) and fought it endlessly. The solution was to work with libuv's idioms, not against them. Likewise, disk access is best done directly with the system API—sometimes a simple write() is all you need.
+**Avoid shiny distractions.** At one point I started writing a client in Node.js. On another occasion, I modeled keys with four hierarchical levels for optimized lookup. In both cases it was interesting and educational, but a waste of time relative to the project's goals.
 
-**Trying to shape things too early often does more harm than good.** I tried to model keys with four hierarchical levels for optimized lookup. It was a solution to a problem that did not yet exist. Abstraction should come from evidence, not imagination.
-
-**Objects are not always the answer.** Sometimes a struct is enough. Not everything needs a class with inheritance, encapsulation, and visitor patterns. Public visibility is not a sin if it is not exposed to the user. new/delete can be appropriate when ownership is clear.
+**When OOP gets in the way.** libuv is written in C and imposes C-style ownership. I tried using uvw (a C++ wrapper) and fought it endlessly. The solution was to work with libuv's idioms, not against them. Likewise, disk access is best done directly with the system API—sometimes a simple write() is all you need. Sometimes a struct is enough. Not everything needs a class with inheritance, encapsulation, and visitor patterns. Public visibility is not a sin if it is not exposed to the user. new/delete can be appropriate when ownership is clear.
 
 **Use the tools the language provides.** I avoided dynamic polymorphism for fear of performance loss, and ended up with convoluted template machinery that saved nanoseconds in a system where the bottleneck was always the network or disk. A virtual method costs nothing meaningful when you are waiting for a TCP packet.
 
 **Invest in the API.** The clearest measure of a library's quality is how simple it is to use, not how clever the implementation is. I spent significant time making the nplex-cpp client API as clear as possible, even if it meant more internal work.
 
-**Test the right things.** Unit tests were straightforward. Functional tests for a client-server system were not. How do you test a server without a client? The Nplex answer: build the client in parallel, so it becomes both consumer and test harness.
-
-**Avoid shiny distractions.** At one point I started writing a client in Node.js. It was interesting and educational, but a waste of time relative to the project's goals.
+**Test the right things.** Unit tests were straightforward. Functional tests for a client-server system were not. How do you test a server without a client? I solved it by building the client in parallel, so it became both a consumer and a test harness.
 
 **Divide and conquer.** The best decision was to extract self-contained components into independent libraries, each with its own repository and tests. They look simple from the outside, but were not simple to build. Having them independent, tested, and public gave me great confidence in the project's foundation.
 

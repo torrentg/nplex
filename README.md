@@ -125,8 +125,9 @@ cover parts of what Nplex offers — [etcd](https://etcd.io/),
 
 ## Documentation
 
-- **[Getting Started](docs/setup.md)** — Building, configuration, architecture, and protocol details.
-- **[Project History](docs/history.md)** — The story behind Nplex: motivations, lessons learned, and sub-projects.
+- **[Getting Started](docs/setup.md)** — Building, running, and architecture details.
+- **[Configuration Reference](docs/config.md)** — All configuration parameters with defaults and descriptions.
+- **[Project History](docs/history.md)** — The story behind Nplex: motivations and lessons learned.
 
 ## Maintainers
 

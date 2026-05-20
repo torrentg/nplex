@@ -14,6 +14,7 @@
 
 #define CONFIG_FILENAME         "nplex.ini"
 #define LOG_FILENAME            "nplex.log"
+#define README_FILENAME         "README.md"
 #define JOURNAL_NAME            "journal"
 #define SNAPSHOT_FILENAME       "snapshot-{}.dat"
 #define JOURNAL_MAGIC           "NPLEXLOG"

@@ -132,22 +132,6 @@ bool nplex::store_t::upsert_entry(const key_t &key, const value_ptr &value)
     return true;
 }
 
-bool nplex::store_t::delete_entry(const char *key)
-{
-    assert(key);
-
-    auto it = m_data.find(key);
-
-    if (it == m_data.end())
-        return false;
-
-    update_meta(it->second->m_meta, it->first, meta_e::SUBTRACT);
-
-    m_data.erase(it);
-
-    return true;
-}
-
 bool nplex::store_t::mark_as_removed(const key_t &key, const meta_ptr &meta)
 {
     auto it = m_data.find(key);

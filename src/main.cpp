@@ -3,14 +3,18 @@
 #include "utils.hpp"
 #include "addr.hpp"
 #include "server.hpp"
+#include "readme_template.h"
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <string>
 #include <filesystem>
+#include <fstream>
 #include <cstdlib>
 #include <cstdint>
 #include <csignal>
+#include <ctime>
+#include <optional>
 #include <getopt.h>
 
 using namespace std;
@@ -19,6 +23,16 @@ using namespace nplex;
 namespace fs = std::filesystem;
 
 static server_t server;
+
+struct args_t
+{
+    fs::path            datadir;
+    addr_t              addr;
+    log_level_e         log_level = log_level_e::NONE;
+    bool                check     = false;
+    bool                daemonize = false;
+    std::optional<bool> fsync_off;
+};
 
 static spdlog::level::level_enum to_spdlog(log_level_e level)
 {
@@ -102,15 +116,9 @@ static void install_signal_handler(int signal, void (*handle)(int))
     }
 }
 
-int main(int argc, char *argv[])
+static args_t parse_args(int argc, char *argv[])
 {
-    addr_t addr_arg;
-    fs::path datadir_arg;
-    log_level_e log_level_arg = log_level_e::NONE;
-    bool check_journal_arg = false;
-    bool disable_fsync_arg = false;
-    bool daemonize_arg = false;
-    bool has_disable_fsync_arg = false;
+    args_t args;
 
     // short options
     const char* const options1 = "cdVhFD:l:a:";
@@ -125,7 +133,7 @@ int main(int argc, char *argv[])
     if (argc <= 1) {
         fprintf(stderr, "Error: No arguments provided.\n");
         fprintf(stderr, "Use the --help option for more information.\n");
-        return EXIT_FAILURE;
+        std::exit(EXIT_FAILURE);
     }
 
     while (true)
@@ -139,90 +147,92 @@ int main(int argc, char *argv[])
         {
             case 'h': // -h or --help (show help and exit)
                 help();
-                return EXIT_SUCCESS;
+                std::exit(EXIT_SUCCESS);
 
             case 'V': // -V or --version (show version and exit)
                 version();
-                return EXIT_SUCCESS;
+                std::exit(EXIT_SUCCESS);
 
             case 'D': // -D datadir (set data directory)
-                datadir_arg = optarg;
+                args.datadir = optarg;
                 break;
 
             case 'l': // -l loglevel (set log level)
                 try {
-                    log_level_arg = parse_log_level(optarg);
+                    args.log_level = parse_log_level(optarg);
                 }
-                catch (const std::invalid_argument &e) {
+                catch (const std::invalid_argument &) {
                     fprintf(stderr, "Error: Invalid log level (%s).\n", optarg);
-                    return EXIT_FAILURE;
+                    std::exit(EXIT_FAILURE);
                 }
                 break;
 
             case 'a': // -a host:port (set address to listen on)
                 try {
-                    addr_arg = addr_t{optarg};
+                    args.addr = addr_t{optarg};
                 }
                 catch (const std::exception &e) {
                     fprintf(stderr, "Error: %s\n", e.what());
-                    return EXIT_FAILURE;
+                    std::exit(EXIT_FAILURE);
                 }
                 break;
 
             case 'c': // -c (check journal at startup)
-                check_journal_arg = true;
+                args.check = true;
                 break;
 
             case 'd': // -d (run as daemon)
-                daemonize_arg = true;
+                args.daemonize = true;
                 break;
 
             case 'F': // -F (turn fsync off)
-                disable_fsync_arg = true;
-                has_disable_fsync_arg = true;
+                args.fsync_off = true;
                 break;
 
             default: // '?' (unexpected argument)
                 // getopt() prints message 'invalid option' (see opterr)
                 fprintf(stderr, "Use the --help option for more information.\n");
-                return EXIT_FAILURE;
+                std::exit(EXIT_FAILURE);
         }
     }
 
     if (argc != optind) {
         fprintf(stderr, "Error: Unexpected argument (%s).\n", argv[optind]);
         fprintf(stderr, "Use the --help option for more information.\n");
-        return EXIT_FAILURE;
+        std::exit(EXIT_FAILURE);
     }
 
-    if (datadir_arg.empty()) {
+    if (args.datadir.empty()) {
         fprintf(stderr, "Error: Missing required argument -D <datadir>.\n");
-        return EXIT_FAILURE;
+        std::exit(EXIT_FAILURE);
     }
 
-    if (!fs::exists(datadir_arg))
+    return args;
+}
+
+static void setup_datadir(const fs::path &datadir)
+{
+    if (!fs::exists(datadir))
     {
         std::error_code ec;
-        fs::create_directories(datadir_arg, ec);
-        if (ec) {
-            fprintf(stderr, "Error: Unable to create directory %s (%s)\n", datadir_arg.c_str(), ec.message().c_str());
-            return EXIT_FAILURE;
-        }
+        fs::create_directories(datadir, ec);
+        if (ec)
+            throw std::runtime_error("Error: Unable to create directory " + datadir.string() + " (" + ec.message() + ")");
     }
 
-    if (!fs::is_directory(datadir_arg)) {
-        fprintf(stderr, "Error: Path %s is not a directory.\n", datadir_arg.c_str());
-        return EXIT_FAILURE;
-    }
+    if (!fs::is_directory(datadir))
+        throw std::runtime_error("Error: Path " + datadir.string() + " is not a directory.");
 
     try {
-        std::filesystem::current_path(datadir_arg);
+        fs::current_path(datadir);
     }
     catch (const std::exception &) {
-        fprintf(stderr, "Error: Unable to change to directory %s\n", datadir_arg.c_str());
-        return EXIT_FAILURE;
+        throw std::runtime_error("Error: Unable to change to directory " + datadir.string());
     }
+}
 
+static config_t init_config(const args_t &args)
+{
     config_t config;
 
     try
@@ -231,64 +241,103 @@ int main(int argc, char *argv[])
 
         if (!fs::exists(config_file))
         {
-            if (addr_arg.port())
-                config.context.addr = addr_arg;
+            if (args.addr.port())
+                config.context.addr = args.addr;
 
-            if (log_level_arg != log_level_e::NONE)
-                config.log_level = log_level_arg;
+            if (args.log_level != log_level_e::NONE)
+                config.log_level = args.log_level;
 
-            if (has_disable_fsync_arg)
-                config.journal.fsync = !disable_fsync_arg;
+            if (args.fsync_off.has_value())
+                config.journal.fsync = !args.fsync_off.value();
 
             config.save(config_file);
         }
 
         config.load(config_file);
 
-        if (addr_arg.port())
-            config.context.addr = addr_arg;
+        if (args.addr.port())
+            config.context.addr = args.addr;
 
-        if (log_level_arg != log_level_e::NONE)
-            config.log_level = log_level_arg;
+        if (args.log_level != log_level_e::NONE)
+            config.log_level = args.log_level;
 
-        if (has_disable_fsync_arg)
-            config.journal.fsync = !disable_fsync_arg;
+        if (args.fsync_off.has_value())
+            config.journal.fsync = !args.fsync_off.value();
 
-        config.journal.check = check_journal_arg;
+        config.journal.check = args.check;
     }
     catch (const std::exception &e) {
-        fprintf(stderr, "Error accessing %s: %s\n", (datadir_arg / CONFIG_FILENAME).c_str(), e.what());
-        return EXIT_FAILURE;
+        throw std::runtime_error(std::string("Error accessing ") + CONFIG_FILENAME + ": " + e.what());
     }
 
+    return config;
+}
+
+static void setup_readme()
+{
     try
     {
-        spdlog::set_default_logger(
-            daemonize_arg ?
-                spdlog::basic_logger_mt(PROJECT_NAME, LOG_FILENAME):
-                spdlog::stdout_color_mt(PROJECT_NAME)
-        );
+        fs::path readme_file = README_FILENAME;
 
-        spdlog::flush_on(spdlog::level::debug);
-        spdlog::set_level(to_spdlog(config.log_level));
+        if (!fs::exists(readme_file))
+        {
+            std::ofstream f(readme_file, std::ios::binary);
+            if (!f)
+                throw std::runtime_error("cannot open file for writing");
 
-        // @see https://github.com/gabime/spdlog/wiki/3.-Custom-formatting#pattern-flags
-        if (config.log_level <= log_level_e::DEBUG)
-            spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%t] [%s:%#] [%-5l] %v");
-        else
-            spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%-5l] %v");
-
-        if (daemonize_arg)
-            install_signal_handler(SIGHUP, handle_sig_logrotate);
-        else
-            signal(SIGHUP, SIG_IGN);
+            std::time_t t = std::time(nullptr);
+            char datebuf[11] = {};
+            std::strftime(datebuf, sizeof(datebuf), "%Y-%m-%d", std::localtime(&t));
+            f << "<!-- created by " PROJECT_NAME " " PROJECT_VERSION " on " << datebuf << " -->\n";
+            f.write(reinterpret_cast<const char *>(readme_content), readme_content_len);
+        }
     }
-    catch (const spdlog::spdlog_ex &e) {
+    catch (const std::exception &e) {
+        fprintf(stderr, "Warning: Unable to create %s: %s\n", README_FILENAME, e.what());
+    }
+}
+
+static void init_logger(bool daemonize, log_level_e level)
+{
+    spdlog::set_default_logger(
+        daemonize ?
+            spdlog::basic_logger_mt(PROJECT_NAME, LOG_FILENAME):
+            spdlog::stdout_color_mt(PROJECT_NAME)
+    );
+
+    spdlog::flush_on(spdlog::level::debug);
+    spdlog::set_level(to_spdlog(level));
+
+    // @see https://github.com/gabime/spdlog/wiki/3.-Custom-formatting#pattern-flags
+    if (level <= log_level_e::DEBUG)
+        spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%t] [%s:%#] [%-5l] %v");
+    else
+        spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%-5l] %v");
+
+    if (daemonize)
+        install_signal_handler(SIGHUP, handle_sig_logrotate);
+    else
+        signal(SIGHUP, SIG_IGN);
+}
+
+int main(int argc, char *argv[])
+{
+    args_t args{};
+    config_t config{};
+
+    try {
+        args = parse_args(argc, argv);
+        setup_datadir(args.datadir);
+        config = init_config(args);
+        setup_readme();
+        init_logger(args.daemonize, config.log_level);
+    }
+    catch (const std::exception &e) {
         fprintf(stderr, "%s\n", e.what());
         return EXIT_FAILURE;
     }
 
-    if (daemonize_arg && daemon(1, 0) == -1) {
+    if (args.daemonize && daemon(1, 0) == -1) {
         fprintf(stderr, "Error: Failed to daemonize the process.\n");
         return EXIT_FAILURE;
     }

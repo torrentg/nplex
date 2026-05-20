@@ -176,15 +176,6 @@ class store_t
     bool upsert_entry(const key_t &key, const value_ptr &value);
 
     /**
-     * Delete an entry updating content accordingly.
-     * 
-     * @param[in] key Key to delete.
-     * 
-     * @return true = entry delete, false = otherwise.
-     */
-    bool delete_entry(const char *key);
-
-    /**
      * Mark an entry as deleted.
      * 
      * Append the key to the removed keys set.

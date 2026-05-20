@@ -357,13 +357,13 @@ void nplex::context_t::publish(std::span<const update_t> updates)
         session->push_changes(updates);
 }
 
-void nplex::context_t::publish(const session_ptr &obj)
+void nplex::context_t::publish(const session_ptr &session)
 {
-    if (!obj || !obj->is_logged())
+    if (!session || !session->is_logged())
         return;
 
-    for (auto &session : m_sessions)
-        session->push_session(obj);
+    for (auto &s : m_sessions)
+        s->push_session(session);
 }
 
 nplex::user_ptr nplex::context_t::get_user(const std::string &name) const

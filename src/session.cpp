@@ -409,12 +409,12 @@ void nplex::session_t::do_sync(std::size_t cid)
 
 const char * nplex::session_t::strerror() const
 {
-    auto error = m_con.error();
+    auto errnum = m_con.error();
 
-    if (error < 0)
-        return uv_strerror(error);
+    if (errnum < 0)
+        return uv_strerror(errnum);
 
-    switch (error)
+    switch (errnum)
     {
         case ERR_CLOSED_BY_LOCAL: return "closed by server";
         case ERR_CLOSED_BY_PEER: return "closed by peer";
