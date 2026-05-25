@@ -132,6 +132,11 @@ make -j$(nproc)
 ./nplex -D test
 gprof ./nplex gmon.out
 
+# Flame graph
+perf record -F 999 -g ./nplex -D test
+perf script | stackcollapse-perf.pl | flamegraph.pl > flamegraph.svg
+firefox flamegraph.svg
+
 # Code coverage
 cmake -DENABLE_COVERAGE=ON ..
 make -j$(nproc)
@@ -168,7 +173,6 @@ lizard -C 20 --language cpp --exclude src/schema.hpp src/*.[ch]pp
 | [FastGlobbing](https://github.com/Robert-van-Engelen/FastGlobbing) | Wildcard pattern matching | CPOL |
 | [cstring](https://github.com/torrentg/cstring) | Immutable C-string with reference counting | LGPL-3.0 |
 | [journal](https://github.com/torrentg/journal) | Log-structured append-only storage | MIT |
-| [cppcrc](https://github.com/DarrenLevine/cppcrc) | Header-only CRC generation | MIT |
 | [cqueue](https://github.com/torrentg/cqueue) | Circular queue | LGPL-3.0 |
 | [base64](https://github.com/tobiaslocker/base64) | Base64 encoder / decoder | MIT |
 | [utf8.h](https://github.com/sheredom/utf8.h) | UTF-8 string functions | Unlicense |

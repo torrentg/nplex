@@ -75,6 +75,17 @@ inline bool is_valid_key(const key_t &key) { return is_valid_key(key.view()); }
 std::string to_iso8601(std::chrono::milliseconds ms_since_epoch);
 
 /**
+ * Calculate CRC32 checksum.
+ * 
+ * @param[in] buf Pointer to the buffer.
+ * @param[in] len Length of the buffer.
+ * @param[in] crc0 Initial CRC value.
+ * 
+ * @return uint32_t Calculated CRC32 checksum.
+ */
+uint32_t crc32(const char* buf, size_t len, uint32_t crc0 = 0);
+
+/**
  * Serialize an ACL mode to a string.
  * 
  * The return string is in the format "crud" where each character is 

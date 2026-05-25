@@ -88,11 +88,14 @@ void nplex::journal_writer::write(update_t &&upd)
     auto buffer = serialize_update(upd);
     auto entry_size = buffer.size();
 
+    bool was_empty;
+
     {
         std::lock_guard<std::mutex> lock(m_mutex);
 
         assert(!m_queue.empty() || m_bytes_in_queue == 0);
 
+        was_empty = m_queue.empty();
         m_queue.push(cmd_t{std::move(upd), std::move(buffer)});
         m_bytes_in_queue += entry_size;
 
@@ -100,7 +103,8 @@ void nplex::journal_writer::write(update_t &&upd)
             m_queue.size(), bytes_to_string(m_bytes_in_queue));
     }
 
-    m_cond.notify_one();
+    if (was_empty)
+        m_cond.notify_one();
 }
 
 void nplex::journal_writer::run()

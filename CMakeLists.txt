@@ -321,7 +321,6 @@ target_sources(
     nplex_lib
     PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/deps/base64.hpp
-    ${CMAKE_CURRENT_LIST_DIR}/deps/cppcrc.h
     ${CMAKE_CURRENT_LIST_DIR}/deps/cqueue.hpp
     ${CMAKE_CURRENT_LIST_DIR}/deps/cstring.hpp
     ${CMAKE_CURRENT_LIST_DIR}/deps/ini.c
@@ -396,8 +395,8 @@ target_include_directories(
 set_source_files_properties(
     ${CMAKE_CURRENT_LIST_DIR}/deps/journal.c
     PROPERTIES 
-    COMPILE_DEFINITIONS _POSIX_C_SOURCE=200809L
-    COMPILE_OPTIONS "-Wno-useless-cast"
+    COMPILE_DEFINITIONS _GNU_SOURCE
+    COMPILE_OPTIONS "-Wno-useless-cast;-Wno-sign-conversion;-Wno-conversion"
 )
 
 set_source_files_properties(

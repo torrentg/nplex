@@ -3,7 +3,6 @@
 #include "messaging.hpp"
 #include "utils.hpp"
 #include "journal.h"
-#include "cppcrc.h"
 #include <fmt/std.h>
 #include <fmt/core.h>
 #include <spdlog/spdlog.h>
@@ -88,7 +87,7 @@ static snapshot_header_t get_snapshot_header(std::ifstream &ifs)
 
 static void check_snapshot_checksum(const std::string_view &content, uint32_t expected)
 {
-    auto computed = CRC32::CRC32::calc(reinterpret_cast<const uint8_t*>(content.data()), content.size());
+    auto computed = nplex::crc32(content.data(), content.size());
 
     if (computed != expected)
         throw nplex::nplex_exception("checksum mismatch");
@@ -445,7 +444,7 @@ nplex::rev_t nplex::storage_t::write_snapshot(const std::string_view &data)
     if (!ofs)
         throw nplex_exception("Failed to open snapshot file ({})", filename);
 
-    uint32_t chk = CRC32::CRC32::calc(reinterpret_cast<const uint8_t*>(data.data()), data.size());
+    uint32_t chk = crc32(data.data(), data.size());
     snapshot_header_t hdr{chk};
 
     ofs.write(reinterpret_cast<const char*>(&hdr), sizeof(hdr));

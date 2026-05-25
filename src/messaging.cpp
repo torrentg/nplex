@@ -5,7 +5,6 @@
 #include "session.hpp"
 #include "exception.hpp"
 #include "journal.h"
-#include "cppcrc.h"
 #include <cassert>
 
 using namespace nplex::msgs;
@@ -35,7 +34,7 @@ static flatbuffers::Offset<nplex::msgs::Update> serialize_update(flatbuffers::Fl
 
         auto kv = CreateKeyValue(
             builder, 
-            builder.CreateString(key),
+            builder.CreateString(key.c_str(), key.size()),
             builder.CreateVector(
                 reinterpret_cast<const uint8_t *>(value->data().c_str()), 
                 value->data().size()
@@ -59,7 +58,7 @@ static flatbuffers::Offset<nplex::msgs::Update> serialize_update(flatbuffers::Fl
     return CreateUpdate(
         builder,
         update.meta->rev,
-        builder.CreateString(update.meta->user),
+        builder.CreateString(update.meta->user.c_str(), update.meta->user.size()),
         static_cast<std::uint64_t>(update.meta->timestamp.count()),
         update.meta->tx_type,
         (upserts.empty() ? 0 : builder.CreateVector(upserts)),
@@ -122,9 +121,9 @@ nplex::output_msg_t::output_msg_t(DetachedBuffer &&msg) : content(std::move(msg)
 
     metadata = htonl(0); // not-compressed
 
-    checksum = CRC32::CRC32::calc(reinterpret_cast<const std::uint8_t *>(&len), sizeof(len));
-    checksum = CRC32::CRC32::calc(reinterpret_cast<const std::uint8_t *>(&metadata), sizeof(metadata), checksum);
-    checksum = CRC32::CRC32::calc(reinterpret_cast<const std::uint8_t *>(content.data()), content.size(), checksum);
+    checksum = crc32(reinterpret_cast<const char *>(&len), sizeof(len));
+    checksum = crc32(reinterpret_cast<const char *>(&metadata), sizeof(metadata), checksum);
+    checksum = crc32(reinterpret_cast<const char *>(content.data()), content.size(), checksum);
     checksum = htonl(checksum);
 
     buf[0] = uv_buf_init(reinterpret_cast<char *>(&len), sizeof(len));
@@ -146,7 +145,7 @@ const nplex::msgs::Message * nplex::parse_network_msg(const char *ptr, size_t le
 
     std::uint32_t checksum = ntohl_ptr(ptr + len - sizeof(std::uint32_t));
 
-    if (checksum != CRC32::CRC32::calc(reinterpret_cast<const std::uint8_t *>(ptr), len - sizeof(std::uint32_t)))
+    if (checksum != crc32(ptr, len - sizeof(std::uint32_t)))
         return nullptr;
 
     ptr += 2 * sizeof(std::uint32_t);
