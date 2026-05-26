@@ -105,16 +105,11 @@ class journal_writer
 
   private:
 
-    struct cmd_t {
-        update_t update;                            // Update to write to the journal
-        flatbuffers::DetachedBuffer buffer;         // Serialized update
-    };
-
     ldb::journal_t &m_journal;                      // Reference to the journal object
     journal_params_t m_params;                      // Journal parameters
 
-    gto::cqueue<cmd_t> m_queue;                     // Queue of pending write commands
-    std::size_t m_bytes_in_queue = 0;               // Total bytes in the queue
+    gto::cqueue<update_t> m_queue;                  // Queue of pending writes
+    std::atomic<std::size_t> m_bytes_in_queue = 0;  // Total bytes in the queue
 
     std::thread m_thread;                           // Writer thread
     std::atomic<bool> m_running{false};             // Running flag

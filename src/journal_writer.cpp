@@ -85,19 +85,16 @@ void nplex::journal_writer::write(update_t &&upd)
         return;
     }
 
-    auto buffer = serialize_update(upd);
-    auto entry_size = buffer.size();
-
-    bool was_empty;
+    bool was_empty = false;
 
     {
         std::lock_guard<std::mutex> lock(m_mutex);
 
-        assert(!m_queue.empty() || m_bytes_in_queue == 0);
-
         was_empty = m_queue.empty();
-        m_queue.push(cmd_t{std::move(upd), std::move(buffer)});
-        m_bytes_in_queue += entry_size;
+
+        m_bytes_in_queue += estimate_bytes(upd);
+
+        m_queue.push(std::move(upd));
 
         SPDLOG_TRACE("journal entry queued. queue-length={}, queue-bytes={}", 
             m_queue.size(), bytes_to_string(m_bytes_in_queue));
@@ -110,20 +107,22 @@ void nplex::journal_writer::write(update_t &&upd)
 void nplex::journal_writer::run()
 {
     std::size_t num_writes = 0;
-    std::vector<ldb_entry_t> batch;
-    std::vector<update_t> updates;
+    std::vector<std::pair<update_t, flatbuffers::DetachedBuffer>> items_batch;
+    std::vector<ldb_entry_t> entries_batch;
     std::size_t bytes_batch = 0;
     std::uint64_t start_time = 0;
+    std::vector<update_t> updates;
     int ldb_rc = LDB_OK;
 
-    batch.reserve(32);
+    items_batch.reserve(32);
+    entries_batch.reserve(32);
     updates.reserve(32);
 
     SPDLOG_DEBUG("journal_writer thread started");
 
     while (m_running.load() || !m_queue.empty())
     {
-        // Step1: Prepare batch of entries to write to journal
+        // Step1: Get data from queue
         {
             std::unique_lock<std::mutex> lock(m_mutex);
 
@@ -134,88 +133,83 @@ void nplex::journal_writer::run()
             if (m_queue.empty() && !m_running.load())
                 break;
 
-            bytes_batch = 0;
-            batch.clear();
+            items_batch.clear();
 
-            for (auto it = m_queue.begin(); it != m_queue.end(); ++it)
+            while (!m_queue.empty())
             {
-                auto bytes = it->buffer.size();
+                size_t bytes = estimate_bytes(m_queue.front());
 
-                if (!batch.empty() && batch.size() >= m_params.flush_max_entries)
+                if (!items_batch.empty() && bytes_batch + bytes > m_params.flush_max_bytes)
                     break;
 
-                if (!batch.empty() && bytes_batch + bytes > m_params.flush_max_bytes)
+                if (!items_batch.empty() && items_batch.size() >= m_params.flush_max_entries)
                     break;
 
-                ldb_entry_t entry = {
-                    .seqnum = it->update.meta->rev,
-                    .data_len = static_cast<std::uint32_t>(it->buffer.size()),
-                    .data = reinterpret_cast<char *>(it->buffer.data())
-                };
+                items_batch.push_back({std::move(m_queue.pop()), flatbuffers::DetachedBuffer()});
 
-                batch.push_back(entry);
                 bytes_batch += bytes;
             }
-
-            if (batch.empty())
-                continue;
         }
 
-        // Step2: Write batch to journal
+        if (items_batch.empty())
+            continue;
+
+        // Step2: Prepare batch of entries to write to journal
+        entries_batch.clear();
+
+        for (auto &[upd, buffer] : items_batch)
+        {
+            buffer = serialize_update(upd);
+
+            ldb_entry_t entry = {
+                .seqnum = upd.meta->rev,
+                .data_len = static_cast<std::uint32_t>(buffer.size()),
+                .data = reinterpret_cast<char *>(buffer.data())
+            };
+
+            entries_batch.push_back(entry);
+        }
+
+        // Step3: Write batch to journal
         start_time = uv_hrtime();
 
-        ldb_rc = m_journal.append(batch.data(), batch.size(), &num_writes);
+        ldb_rc = m_journal.append(entries_batch.data(), entries_batch.size(), &num_writes);
 
         SPDLOG_TRACE("journal_writer wrote {}/{} entries ({} bytes) in {}μs", 
-            num_writes, batch.size(), bytes_to_string(bytes_batch), (uv_hrtime() - start_time) / 1000);
+            num_writes, entries_batch.size(), bytes_to_string(bytes_batch), (uv_hrtime() - start_time) / 1000);
 
-        if (ldb_rc != LDB_OK) {
-            SPDLOG_DEBUG("journal_writer append failed: {}", ldb_strerror(ldb_rc));
-        }
+        if (ldb_rc != LDB_OK)
+            SPDLOG_ERROR("journal_writer append failed: {}", ldb_strerror(ldb_rc));
 
-        // Step3: Reports back results via callback and remove entries from m_queue
-        {
-            std::lock_guard<std::mutex> lock(m_mutex);
+        // Step4: Reports back results via callback and remove entries from m_queue
+        // Written entries
+        updates.clear();
+        for (std::size_t i = 0; i < num_writes; ++i)
+            updates.emplace_back(std::move(items_batch[i].first));
 
-            // Written entries
-            updates.clear();
-            for (std::size_t i = 0; i < num_writes; ++i)
-            {
-                assert(!m_queue.empty());
-                auto cmd = m_queue.pop_front();
+        if (!updates.empty() && m_result_cb)
+            m_result_cb(true, std::move(updates));
 
-                assert(cmd.buffer.size() <= m_bytes_in_queue);
-                m_bytes_in_queue -= cmd.buffer.size();
+        // Remaining staged entries (not written)
+        updates.clear();
+        for (std::size_t i = num_writes; i < entries_batch.size(); ++i)
+            updates.emplace_back(std::move(items_batch[i].first));
 
-                updates.emplace_back(std::move(cmd.update));
-            }
+        if (!updates.empty() && m_result_cb)
+            m_result_cb(false, std::move(updates));
 
-            if (!updates.empty() && m_result_cb)
-                m_result_cb(true, std::move(updates));
+        // Notify error if write failed
+        if (ldb_rc != LDB_OK && m_error_cb)
+            m_error_cb(std::make_exception_ptr(nplex_exception(ldb_strerror(ldb_rc))));
 
-            // Remaining staged entries (not written)
-            updates.clear();
-            for (std::size_t i = num_writes; i < batch.size(); ++i)
-            {
-                assert(!m_queue.empty());
-                auto cmd = m_queue.pop_front();
+        // Update state
+        assert(m_bytes_in_queue >= bytes_batch);
+        m_bytes_in_queue -= bytes_batch;
 
-                assert(cmd.buffer.size() <= m_bytes_in_queue);
-                m_bytes_in_queue -= cmd.buffer.size();
-
-                updates.emplace_back(std::move(cmd.update));
-            }
-
-            if (!updates.empty() && m_result_cb)
-                m_result_cb(false, std::move(updates));
-
-            if (ldb_rc != LDB_OK && m_error_cb)
-                m_error_cb(std::make_exception_ptr(nplex_exception(ldb_strerror(ldb_rc))));
-
-            assert(!m_queue.empty() || m_bytes_in_queue == 0);
-        }
-
-        batch.clear();
+        // Clear batches for next iteration
+        bytes_batch = 0;
+        entries_batch.clear();
+        items_batch.clear();
         updates.clear();
     }
 

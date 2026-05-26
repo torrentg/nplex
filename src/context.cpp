@@ -316,15 +316,19 @@ void nplex::context_t::on_updates_written_1(bool success, std::vector<update_t> 
         return;
     }
 
+    bool was_empty = false;
+
     {
         std::lock_guard<std::mutex> lock(m_pending_publish_mutex);
+
+        was_empty = m_pending_publish.empty();
 
         m_pending_publish.insert(m_pending_publish.end(),
             std::make_move_iterator(updates.begin()),
             std::make_move_iterator(updates.end()));
     }
 
-    if (m_async_updates_written)
+    if (m_async_updates_written && was_empty)
         uv_async_send(m_async_updates_written.get());
 }
 

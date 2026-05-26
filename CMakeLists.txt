@@ -40,6 +40,8 @@ find_package(
     spdlog 1.8 REQUIRED
 )
 
+find_library(JEMALLOC_LIB jemalloc)
+
 # ---------------------------------------------------------------------------
 # FlatBuffers schema pipeline
 #
@@ -426,6 +428,7 @@ set_source_files_properties(
 target_link_libraries(
     nplex_lib
     PRIVATE
+    ${JEMALLOC_LIB}
     Threads::Threads
     libuv::uv
     fmt::fmt
@@ -435,6 +438,7 @@ target_link_libraries(
 target_link_libraries(
     nplex
     PRIVATE
+    ${JEMALLOC_LIB}
     nplex_lib
 )
 

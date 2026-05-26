@@ -133,6 +133,9 @@ make -j$(nproc)
 gprof ./nplex gmon.out
 
 # Flame graph
+cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+      -DCMAKE_CXX_FLAGS="-fno-omit-frame-pointer" \
+      -DCMAKE_C_FLAGS="-fno-omit-frame-pointer" ..
 perf record -F 999 -g ./nplex -D test
 perf script | stackcollapse-perf.pl | flamegraph.pl > flamegraph.svg
 firefox flamegraph.svg
@@ -186,3 +189,4 @@ lizard -C 20 --language cpp --exclude src/schema.hpp src/*.[ch]pp
 | [libuv](https://github.com/libuv/libuv) | Cross-platform async I/O | MIT |
 | [flatbuffers](https://github.com/google/flatbuffers) | Efficient binary serialization | Apache-2.0 |
 | [spdlog](https://github.com/gabime/spdlog) | Logging library | MIT |
+| [jemalloc](https://github.com/jemalloc/jemalloc) | A general purpose malloc implementation | FreeBSD |
