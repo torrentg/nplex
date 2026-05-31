@@ -4,9 +4,7 @@
 #include "addr.hpp"
 #include "server.hpp"
 #include "readme_template.h"
-#include <spdlog/spdlog.h>
-#include <spdlog/sinks/basic_file_sink.h>
-#include <spdlog/sinks/stdout_color_sinks.h>
+#include "logger.hpp"
 #include <string>
 #include <filesystem>
 #include <fstream>
@@ -33,19 +31,6 @@ struct args_t
     bool                daemonize = false;
     std::optional<bool> fsync_off;
 };
-
-static spdlog::level::level_enum to_spdlog(log_level_e level)
-{
-    switch (level)
-    {
-        case log_level_e::TRACE:   return spdlog::level::trace;
-        case log_level_e::DEBUG:   return spdlog::level::debug;
-        case log_level_e::INFO:    return spdlog::level::info;
-        case log_level_e::WARN:    return spdlog::level::warn;
-        case log_level_e::ERROR:   return spdlog::level::err;
-        default: return spdlog::level::info;
-    }
-}
 
 static void help()
 {
@@ -94,11 +79,9 @@ static void handle_sig_logrotate(int signal)
         return;
 
     try {
-        SPDLOG_TRACE("SIGHUP signal received. Recreating log file.");
-        spdlog::drop(PROJECT_NAME);
-        auto logger = spdlog::basic_logger_mt(PROJECT_NAME, LOG_FILENAME, true);
-        spdlog::set_default_logger(logger);
-    } catch (const spdlog::spdlog_ex &e) {
+        LOG_TRACE("SIGHUP signal received. Recreating log file.");
+        reopen_logger();
+    } catch (const std::exception &e) {
         fprintf(stderr, "Failed to recreate log file: %s\n", e.what());
     }
 }
@@ -297,29 +280,6 @@ static void setup_readme()
     }
 }
 
-static void init_logger(bool daemonize, log_level_e level)
-{
-    spdlog::set_default_logger(
-        daemonize ?
-            spdlog::basic_logger_mt(PROJECT_NAME, LOG_FILENAME):
-            spdlog::stdout_color_mt(PROJECT_NAME)
-    );
-
-    spdlog::flush_on(spdlog::level::debug);
-    spdlog::set_level(to_spdlog(level));
-
-    // @see https://github.com/gabime/spdlog/wiki/3.-Custom-formatting#pattern-flags
-    if (level <= log_level_e::DEBUG)
-        spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%t] [%s:%#] [%-5l] %v");
-    else
-        spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%-5l] %v");
-
-    if (daemonize)
-        install_signal_handler(SIGHUP, handle_sig_logrotate);
-    else
-        signal(SIGHUP, SIG_IGN);
-}
-
 int main(int argc, char *argv[])
 {
     args_t args{};
@@ -337,6 +297,11 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
+    if (args.daemonize)
+        install_signal_handler(SIGHUP, handle_sig_logrotate);
+    else
+        signal(SIGHUP, SIG_IGN);
+
     if (args.daemonize && daemon(1, 0) == -1) {
         fprintf(stderr, "Error: Failed to daemonize the process.\n");
         return EXIT_FAILURE;
@@ -349,7 +314,7 @@ int main(int argc, char *argv[])
         return EXIT_SUCCESS;
     }
     catch (const std::exception &e) {
-        SPDLOG_ERROR("{}", e.what());
+        LOG_ERROR("{}", e.what());
         return EXIT_FAILURE;
     }
 }

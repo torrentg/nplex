@@ -52,4 +52,9 @@ Please follow these rules:
 
 ## Notes
 
+You can add leading zeros to revision numbers (e.g., rename `snapshot-5000.dat` to `snapshot-005000.dat`).
+
+Use `ls -lv` to sort files by revision number.
+
 `jtools` is a program for managing journal files belonging to the [journal project](https://github.com/torrentg/journal).
+

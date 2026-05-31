@@ -4,7 +4,6 @@
 #include "session.hpp"
 #include "context.hpp"
 #include "utils.hpp"
-#include <spdlog/spdlog.h>
 #include <cstddef>
 #include <cassert>
 

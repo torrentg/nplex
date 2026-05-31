@@ -4,10 +4,10 @@
 #include "storage.hpp"
 #include "session.hpp"
 #include "config.hpp"
+#include "logger.hpp"
 #include "tasks.hpp"
 #include "user.hpp"
 #include "journal.h"
-#include <spdlog/spdlog.h>
 #include <fmt/core.h>
 #include <fmt/ranges.h>
 #include <cassert>
@@ -23,7 +23,7 @@ static bool is_valid_user(const nplex::user_t &user)
         return false;
 
     if (user.password.empty()) {
-        SPDLOG_WARN("User {} discarded (no password)", user.name);
+        LOG_WARN("User {} discarded (no password)", user.name);
         return false;
     }
 
@@ -33,7 +33,7 @@ static bool is_valid_user(const nplex::user_t &user)
         sum += perm.mode;
 
     if (sum == 0) {
-        SPDLOG_WARN("User {} discarded (no acls)", user.name);
+        LOG_WARN("User {} discarded (no acls)", user.name);
         return false;
     }
 
@@ -59,7 +59,7 @@ static std::map<std::string, nplex::user_ptr> create_users(const std::vector<npl
     if (ret.empty())
         throw nplex_exception("No valid users found");
 
-    SPDLOG_INFO("Users: [{}]", fmt::join(valid_users, ", "));
+    LOG_INFO("Users: [{}]", fmt::join(valid_users, ", "));
 
     return ret;
 }
@@ -73,7 +73,7 @@ static void cb_task_run(uv_work_t *req)
         task->run();
     }
     catch (const std::exception &e) {
-        SPDLOG_ERROR("Task {} error: {}", task->name(), e.what());
+        LOG_ERROR("Task {} error: {}", task->name(), e.what());
         task->excpt = std::current_exception();
     }
 }
@@ -88,15 +88,15 @@ static void cb_task_after(uv_work_t *req, int status)
 
     uint64_t duration_us = (uv_hrtime() - task->start_time) / 1000;
 
-    SPDLOG_TRACE("Task {}: duration = {} μs", task->name(), duration_us);
+    LOG_TRACE("Task {}: duration = {} μs", task->name(), duration_us);
 
     if (status == UV_ECANCELED) {
-        SPDLOG_DEBUG("Task {} cancelled", task->name());
+        LOG_DEBUG("Task {} cancelled", task->name());
         goto END;
     }
 
     if (status != 0) {
-        SPDLOG_ERROR("Task {} error: {}", task->name(), uv_strerror(status));
+        LOG_ERROR("Task {} error: {}", task->name(), uv_strerror(status));
         goto ERR;
     }
 
@@ -110,7 +110,7 @@ static void cb_task_after(uv_work_t *req, int status)
         goto END;
     }
     catch (const std::exception &e) {
-        SPDLOG_ERROR("Task {} exception: {}", task->name(), e.what());
+        LOG_ERROR("Task {} exception: {}", task->name(), e.what());
         goto ERR;
     }
 
@@ -155,7 +155,7 @@ nplex::context_t::context_t(uv_loop_t *loop, const config_t &config) : m_loop(lo
 
     m_rev_0 = m_storage->get_min_rev();
     m_rev_w = m_storage->get_max_rev();
-    SPDLOG_INFO("Data range: [r{}, r{}]", m_rev_0, m_rev_w);
+    LOG_INFO("Data range: [r{}, r{}]", m_rev_0, m_rev_w);
 
     // set store content
     m_store = m_storage->get_store(m_rev_w);
@@ -180,7 +180,7 @@ nplex::context_t::context_t(uv_loop_t *loop, const config_t &config) : m_loop(lo
             try {
                 if (ex) std::rethrow_exception(ex);
             } catch (const std::exception &e) {
-                SPDLOG_ERROR("Exception in journal writer: {}", e.what());
+                LOG_ERROR("Exception in journal writer: {}", e.what());
             }
             stop();
         }
@@ -268,12 +268,12 @@ void nplex::context_t::append_session(uv_stream_t *stream)
         return;
 
     if (m_sessions.size() >= m_params.max_sessions) {
-        SPDLOG_WARN("Incomming connection rejected (max {} clients reached)", m_params.max_sessions);
+        LOG_WARN("Incomming connection rejected (max {} clients reached)", m_params.max_sessions);
         return;
     }
 
     auto session = std::make_shared<session_t>(shared_from_this(), stream);
-    SPDLOG_DEBUG("New connection: {}", session->id());
+    LOG_DEBUG("New connection: {}", session->id());
 
     m_sessions.insert(session);
 }
@@ -289,9 +289,9 @@ void nplex::context_t::release_session(session_t *session)
         return;
 
     if (session->user())
-        SPDLOG_INFO("Session closed: {} ({})", session->id(), session->strerror());
+        LOG_INFO("Session closed: {} ({})", session->id(), session->strerror());
     else
-        SPDLOG_DEBUG("Connection closed: {} ({})", session->id(), session->strerror());
+        LOG_DEBUG("Connection closed: {} ({})", session->id(), session->strerror());
 
     if (session->user() && session->user()->num_connections > 0)
         session->user()->num_connections--;
@@ -311,7 +311,7 @@ void nplex::context_t::on_updates_written_1(bool success, std::vector<update_t> 
     if (!success) {
         auto min_rev = updates.empty() ? 0 : updates.front().meta->rev;
         auto max_rev = updates.empty() ? 0 : updates.back().meta->rev;
-        SPDLOG_ERROR("Unable to write updates r{}-r{} to journal", min_rev, max_rev);
+        LOG_ERROR("Unable to write updates r{}-r{} to journal", min_rev, max_rev);
         stop();
         return;
     }
@@ -389,12 +389,12 @@ std::tuple<nplex::msgs::SubmitCode, nplex::rev_t> nplex::context_t::try_commit(c
 
     auto rc = m_store.try_commit(user, msg, update);
     if (rc != msgs::SubmitCode::ACCEPTED) {
-        SPDLOG_DEBUG("Commit rejected: user={}, crev={}, rc={}", user.name, msg->crev(), static_cast<int>(rc));
+        LOG_DEBUG("Commit rejected: user={}, crev={}, rc={}", user.name, msg->crev(), static_cast<int>(rc));
         return { rc, 0 };
     }
 
     assert(m_store.rev() == update.meta->rev);
-    SPDLOG_DEBUG("Commit accepted: rev={}, user={}, tx-type={}", update.meta->rev, update.meta->user.c_str(), update.meta->tx_type);
+    LOG_DEBUG("Commit accepted: rev={}, user={}, tx-type={}", update.meta->rev, update.meta->user.c_str(), update.meta->tx_type);
 
     auto erev = update.meta->rev;
     persist(std::move(update));
@@ -412,7 +412,7 @@ void nplex::context_t::check_for_snapshot()
         return;
 
     auto rev = m_store.rev();
-    SPDLOG_INFO("Creating snapshot at r{}", rev);
+    LOG_INFO("Creating snapshot at r{}", rev);
 
     flatbuffers::FlatBufferBuilder builder;
     auto snapshot = m_store.serialize(builder);

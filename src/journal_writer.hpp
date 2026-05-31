@@ -109,12 +109,13 @@ class journal_writer
     journal_params_t m_params;                      // Journal parameters
 
     gto::cqueue<update_t> m_queue;                  // Queue of pending writes
+    std::atomic<std::size_t> m_queue_size = 0;     // Number of entries in the queue
     std::atomic<std::size_t> m_bytes_in_queue = 0;  // Total bytes in the queue
 
     std::thread m_thread;                           // Writer thread
     std::atomic<bool> m_running{false};             // Running flag
     std::condition_variable m_cond;                 // Used by producer to notify consumer that m_queue is not empty
-    mutable std::mutex m_mutex;                     // Protects m_queue and m_bytes_in_queue
+    mutable std::mutex m_mutex;                     // Protects m_queue
 
     result_callback_t m_result_cb;                  // Callback invoked on each write completion
     error_callback_t m_error_cb;                    // Callback invoked on exception

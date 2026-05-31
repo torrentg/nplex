@@ -1,11 +1,11 @@
 #include "storage.hpp"
 #include "exception.hpp"
 #include "messaging.hpp"
+#include "logger.hpp"
 #include "utils.hpp"
 #include "journal.h"
 #include <fmt/std.h>
 #include <fmt/core.h>
-#include <spdlog/spdlog.h>
 #include <regex>
 #include <limits>
 #include <fstream>
@@ -219,7 +219,7 @@ static read_result_t read_journal(const nplex::journal_ptr &journal, nplex::rev_
             throw nplex::nplex_exception("{}", ldb_strerror(rc));
 
         if (num_reads)
-            SPDLOG_TRACE("Read journal entries, range = [r{}, r{}]", rev, rev + num_reads - 1);
+            LOG_TRACE("Read journal entries, range = [r{}, r{}]", rev, rev + num_reads - 1);
 
         for (std::size_t i = 0; i < num_reads; i++)
         {
@@ -403,16 +403,16 @@ std::string nplex::storage_t::read_snapshot(rev_t rev)
     try
     {
         auto content = nplex::read_snapshot(m_path / filename);
-        SPDLOG_DEBUG("Read snapshot {}", filename);
+        LOG_DEBUG("Read snapshot {}", filename);
         return content;
     }
     catch (const std::exception &e)
     {
         // Someone has altered the data dir content
-        SPDLOG_WARN("Failed to read snapshot {}: {}", filename, e.what());
+        LOG_WARN("Failed to read snapshot {}: {}", filename, e.what());
     }
 
-    SPDLOG_INFO("Rebuilding snapshot map ...");
+    LOG_INFO("Rebuilding snapshot map ...");
     rebuild_map_snapshots();
 
     filename = get_snapshot_filename(rev);
@@ -422,7 +422,7 @@ std::string nplex::storage_t::read_snapshot(rev_t rev)
 
     try {
         auto content = nplex::read_snapshot(m_path / filename);
-        SPDLOG_DEBUG("Read snapshot {}", filename);
+        LOG_DEBUG("Read snapshot {}", filename);
         return content;
     }
     catch (const std::exception &e)
@@ -529,7 +529,7 @@ std::size_t nplex::storage_t::read_entries(rev_t rev, const std::function<bool(c
             break;
     }
 
-    SPDLOG_TRACE("Journal read completed, num_entries={}, total_bytes={}, elapsed={}μs",
+    LOG_TRACE("Journal read completed, num_entries={}, total_bytes={}, elapsed={}μs",
         count, bytes_to_string(bytes), (uv_hrtime() - start_time) / 1000);
 
     return count;
@@ -603,7 +603,7 @@ void nplex::storage_t::rebuild_map_archives()
         }
         catch (const std::exception &e)
         {
-            SPDLOG_WARN("Skipping file {}: {}", filename, e.what());
+            LOG_WARN("Skipping file {}: {}", filename, e.what());
             has_errors = true;
             continue;
         }
@@ -616,7 +616,7 @@ void nplex::storage_t::rebuild_map_archives()
             .checked = m_check
         };
 
-        SPDLOG_DEBUG("Found journal {}, revs = [r{}, r{}]", filename, min_rev, max_rev);
+        LOG_DEBUG("Found journal {}, revs = [r{}, r{}]", filename, min_rev, max_rev);
     }
 
     rev = 0;
@@ -625,7 +625,7 @@ void nplex::storage_t::rebuild_map_archives()
     for (const auto &[num, item] : archives)
     {
         if (rev && item.from_rev != rev + 1) {
-             SPDLOG_WARN("Found gap between archives, range = [r{}, r{}]", rev + 1, item.from_rev - 1);
+             LOG_WARN("Found gap between archives, range = [r{}, r{}]", rev + 1, item.from_rev - 1);
              has_errors = true;
         }
 
@@ -638,7 +638,7 @@ void nplex::storage_t::rebuild_map_archives()
         const auto &last_item = archives.rbegin()->second;
 
         if (min_rev && last_item.to_rev + 1 != min_rev) {
-            SPDLOG_WARN("Found gap between archives and journal, range = [r{}, r{}]", last_item.to_rev + 1, min_rev - 1);
+            LOG_WARN("Found gap between archives and journal, range = [r{}, r{}]", last_item.to_rev + 1, min_rev - 1);
             has_errors = true;
         }
     }
@@ -704,7 +704,7 @@ void nplex::storage_t::rebuild_map_snapshots()
         }
         catch (const std::exception &e)
         {
-            SPDLOG_WARN("Skipping file {}: {}", filename, e.what());
+            LOG_WARN("Skipping file {}: {}", filename, e.what());
             continue;
         }
 
@@ -714,7 +714,7 @@ void nplex::storage_t::rebuild_map_snapshots()
             .checked = m_check
         };
 
-        SPDLOG_DEBUG("Found snapshot {}, rev = r{}", filename, rev);
+        LOG_DEBUG("Found snapshot {}, rev = r{}", filename, rev);
     }
 
     std::lock_guard<std::mutex> lock(m_mutex);

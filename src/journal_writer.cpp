@@ -2,9 +2,9 @@
 #include "exception.hpp"
 #include "messaging.hpp"
 #include "common.hpp"
+#include "logger.hpp"
 #include "utils.hpp"
 #include "journal.h"
-#include <spdlog/spdlog.h>
 #include <cassert>
 
 // ==========================================================
@@ -34,10 +34,13 @@ nplex::journal_writer::~journal_writer()
 
 bool nplex::journal_writer::is_blocked() const
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    if (m_queue_size.load() >= m_params.write_queue_max_entries)
+        return true;
 
-    return (m_queue.size() >= m_params.write_queue_max_entries) || 
-           ((m_bytes_in_queue + 1) > m_params.write_queue_max_bytes);
+    if (m_bytes_in_queue.load() + 1 > m_params.write_queue_max_bytes)
+        return true;
+
+    return false;
 }
 
 void nplex::journal_writer::start(result_callback_t &&result_cb, error_callback_t &&error_cb)
@@ -81,7 +84,7 @@ void nplex::journal_writer::stop()
 void nplex::journal_writer::write(update_t &&upd)
 {
     if (!m_running.load()) {
-        SPDLOG_TRACE("Trying to write to journal_writer while not running");
+        LOG_TRACE("Trying to write to journal_writer while not running");
         return;
     }
 
@@ -91,14 +94,14 @@ void nplex::journal_writer::write(update_t &&upd)
         std::lock_guard<std::mutex> lock(m_mutex);
 
         was_empty = m_queue.empty();
-
         m_bytes_in_queue += estimate_bytes(upd);
+        m_queue_size += 1;
 
         m_queue.push(std::move(upd));
-
-        SPDLOG_TRACE("journal entry queued. queue-length={}, queue-bytes={}", 
-            m_queue.size(), bytes_to_string(m_bytes_in_queue));
     }
+
+    LOG_TRACE("journal entry queued. queue-length={}, queue-bytes={}", 
+        m_queue_size.load(), bytes_to_string(m_bytes_in_queue.load()));
 
     if (was_empty)
         m_cond.notify_one();
@@ -118,7 +121,7 @@ void nplex::journal_writer::run()
     entries_batch.reserve(32);
     updates.reserve(32);
 
-    SPDLOG_DEBUG("journal_writer thread started");
+    LOG_DEBUG("journal_writer thread started");
 
     while (m_running.load() || !m_queue.empty())
     {
@@ -145,7 +148,7 @@ void nplex::journal_writer::run()
                 if (!items_batch.empty() && items_batch.size() >= m_params.flush_max_entries)
                     break;
 
-                items_batch.push_back({std::move(m_queue.pop()), flatbuffers::DetachedBuffer()});
+                items_batch.push_back({m_queue.pop(), flatbuffers::DetachedBuffer()});
 
                 bytes_batch += bytes;
             }
@@ -175,11 +178,11 @@ void nplex::journal_writer::run()
 
         ldb_rc = m_journal.append(entries_batch.data(), entries_batch.size(), &num_writes);
 
-        SPDLOG_TRACE("journal_writer wrote {}/{} entries ({} bytes) in {}μs", 
+        LOG_TRACE("journal_writer wrote {}/{} entries ({} bytes) in {}μs", 
             num_writes, entries_batch.size(), bytes_to_string(bytes_batch), (uv_hrtime() - start_time) / 1000);
 
         if (ldb_rc != LDB_OK)
-            SPDLOG_ERROR("journal_writer append failed: {}", ldb_strerror(ldb_rc));
+            LOG_ERROR("journal_writer append failed: {}", ldb_strerror(ldb_rc));
 
         // Step4: Reports back results via callback and remove entries from m_queue
         // Written entries
@@ -204,7 +207,9 @@ void nplex::journal_writer::run()
 
         // Update state
         assert(m_bytes_in_queue >= bytes_batch);
+        assert(m_queue_size >= items_batch.size());
         m_bytes_in_queue -= bytes_batch;
+        m_queue_size -= items_batch.size();
 
         // Clear batches for next iteration
         bytes_batch = 0;
@@ -213,7 +218,7 @@ void nplex::journal_writer::run()
         updates.clear();
     }
 
-    SPDLOG_DEBUG("journal_writer thread stopped");
+    LOG_DEBUG("journal_writer thread stopped");
 
     return;
 }

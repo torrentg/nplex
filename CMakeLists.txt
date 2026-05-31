@@ -348,6 +348,8 @@ target_sources(
     ${CMAKE_CURRENT_LIST_DIR}/src/journal_writer.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/json.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/json.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/logger.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/logger.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/messaging.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/messaging.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/params.hpp

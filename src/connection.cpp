@@ -2,7 +2,7 @@
 #include "messaging.hpp"
 #include "context.hpp"
 #include "session.hpp"
-#include <spdlog/spdlog.h>
+#include "logger.hpp"
 #include <flatbuffers/flatbuffers.h>
 #include <cassert>
 #include <arpa/inet.h>
@@ -151,13 +151,13 @@ static void cb_tcp_write(uv_write_t *req, int status)
 
 static void cb_close_timer(uv_handle_t *handle)
 {
-    SPDLOG_TRACE("Closing timer");
+    LOG_TRACE("Closing timer");
     delete reinterpret_cast<uv_timer_t *>(handle);
 }
 
 static void cb_close_connection(uv_handle_t *handle)
 {
-    SPDLOG_TRACE("Closing connection");
+    LOG_TRACE("Closing connection");
 
     using namespace nplex;
 
@@ -175,7 +175,7 @@ static void cb_close_connection(uv_handle_t *handle)
 
 static void cb_tcp_shutdown(uv_shutdown_t *req, int status)
 {
-    SPDLOG_TRACE("Shutdown connection");
+    LOG_TRACE("Shutdown connection");
 
     using namespace nplex;
 

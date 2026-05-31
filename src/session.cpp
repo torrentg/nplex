@@ -5,7 +5,7 @@
 #include "user.hpp"
 #include "context.hpp"
 #include "tasks.hpp"
-#include <spdlog/spdlog.h>
+#include "logger.hpp"
 #include <cassert>
 
 // maximum time (in millis) for a not logged user
@@ -75,7 +75,7 @@ void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
 
     if (m_con.is_blocked())
     {
-        SPDLOG_INFO("{} exceeded output queue limits (shutdown)", m_id);
+        LOG_INFO("{} exceeded output queue limits (shutdown)", m_id);
         m_con.shutdown(ERR_UNACK);
         return;
     }
@@ -83,9 +83,9 @@ void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
     m_con.send(std::move(buf));
 
     if (type == msgs::MsgContent::KEEPALIVE_PUSH)
-        SPDLOG_TRACE("Sent {} to {} ({})", msgs::EnumNameMsgContent(type), m_id, bytes_to_string(bytes));
+        LOG_TRACE("Sent {} to {} ({})", msgs::EnumNameMsgContent(type), m_id, bytes_to_string(bytes));
     else
-        SPDLOG_DEBUG("Sent {} to {} ({})", msgs::EnumNameMsgContent(type), m_id, bytes_to_string(bytes));
+        LOG_DEBUG("Sent {} to {} ({})", msgs::EnumNameMsgContent(type), m_id, bytes_to_string(bytes));
 }
 
 void nplex::session_t::process_delivery([[maybe_unused]] const msgs::Message *msg)
@@ -107,7 +107,7 @@ void nplex::session_t::process_request(const msgs::Message *msg)
         return;
     }
 
-    SPDLOG_DEBUG("Received {} from {}", msgs::EnumNameMsgContent(msg->content_type()), m_id);
+    LOG_DEBUG("Received {} from {}", msgs::EnumNameMsgContent(msg->content_type()), m_id);
 
     switch (msg->content_type())
     {
@@ -216,7 +216,7 @@ void nplex::session_t::process_login_request(const msgs::LoginRequest *req)
     m_con.enable_keepalive();
     m_con.enable_connection_lost();
 
-    SPDLOG_INFO("New session: {}", m_id);
+    LOG_INFO("New session: {}", m_id);
 
     send(
         create_login_msg(
@@ -244,7 +244,7 @@ void nplex::session_t::process_snapshot_request(const msgs::SnapshotRequest *req
     if (rev == 0)
         rev = m_context->last_persisted_rev();
 
-    SPDLOG_INFO("{} requested snapshot at r{}", m_id, rev);
+    LOG_INFO("{} requested snapshot at r{}", m_id, rev);
 
     // case: requested snapshot out of range
     if (rev < m_context->minimum_rev() || rev > m_context->last_persisted_rev())
@@ -288,7 +288,7 @@ void nplex::session_t::process_updates_request(const msgs::UpdatesRequest *req)
     if (rev == 0)
         rev = m_context->last_persisted_rev();
 
-    SPDLOG_DEBUG("{} requested updates from r{}", m_id, rev);
+    LOG_DEBUG("{} requested updates from r{}", m_id, rev);
 
     // case: requested updates out of range (reject)
     if (rev < m_context->minimum_rev())

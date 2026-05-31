@@ -182,15 +182,4 @@ std::string read_snapshot(const std::filesystem::path &file, bool check = false)
  */
 journal_ptr open_journal(const std::filesystem::path &file, int flags);
 
-/**
- * Check a journal file.
- * 
- * @param[in] file Journal file path (with dat or idx extension).
- * @param[in] repair Whether to attempt to repair the journal if errors are found.
- * @param[in] cb Callback function to receive warning messages.
- * 
- * @exception nplex_exception If the journal has errors.
- */
-void check_journal(const std::filesystem::path &file, bool repair, std::function<void(const char*)> cb = nullptr);
-
 } // namespace nplex

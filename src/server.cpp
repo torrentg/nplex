@@ -3,7 +3,7 @@
 #include "messaging.hpp"
 #include "context.hpp"
 #include "config.hpp"
-#include <spdlog/spdlog.h>
+#include "logger.hpp"
 #include <cstdlib>
 #include <cstring>
 #include <cassert>
@@ -84,7 +84,7 @@ static struct sockaddr_storage get_sockaddr(uv_loop_t *loop, const nplex::addr_t
 
 static void cb_signal_handler(uv_signal_t *handle, int signum)
 {
-    SPDLOG_WARN("Signal received: {}({})", ::strsignal(signum), signum);
+    LOG_WARN("Signal received: {}({})", ::strsignal(signum), signum);
     uv_signal_stop(handle);
     uv_stop(handle->loop);
 }
@@ -99,23 +99,23 @@ static void cb_close_handle(uv_handle_t *handle, void *arg)
     switch(handle->type)
     {
         case UV_SIGNAL:
-            SPDLOG_TRACE("Closing UV_SIGNAL");
+            LOG_TRACE("Closing UV_SIGNAL");
             uv_close(handle, nullptr);
             break;
         case UV_TCP:
-            SPDLOG_TRACE("Closing UV_TCP");
+            LOG_TRACE("Closing UV_TCP");
             uv_close(handle, nullptr);
             break;
         case UV_ASYNC:
-            SPDLOG_TRACE("Closing UV_ASYNC");
+            LOG_TRACE("Closing UV_ASYNC");
             uv_close(handle, nullptr);
             break;
         case UV_TIMER:
-            SPDLOG_TRACE("Closing UV_TIMER");
+            LOG_TRACE("Closing UV_TIMER");
             uv_close(handle, (uv_close_cb) free);
             break;
         default:
-            SPDLOG_TRACE("Closing UV_{}", uv_handle_type_name(handle->type));
+            LOG_TRACE("Closing UV_{}", uv_handle_type_name(handle->type));
             uv_close(handle, (uv_close_cb) free);
     }
 }
@@ -123,7 +123,7 @@ static void cb_close_handle(uv_handle_t *handle, void *arg)
 static void cb_tcp_connection(uv_stream_t *stream, int status)
 {
     if (status < 0) {
-        SPDLOG_WARN(uv_strerror(status));
+        LOG_WARN("{}", uv_strerror(status));
         return;
     }
 
@@ -139,7 +139,7 @@ static void cb_tcp_connection(uv_stream_t *stream, int status)
 
 void nplex::server_t::init(const config_t &config)
 {
-    SPDLOG_INFO("Initializing Nplex server ...");
+    LOG_INFO("Initializing Nplex server ...");
 
     try {
         init_event_loop(config);
@@ -210,7 +210,7 @@ void nplex::server_t::init_network(const config_t &config)
     if ((rc = uv_listen(reinterpret_cast<uv_stream_t *>(m_tcp.get()), MAX_QUEUED_CONNECTIONS, ::cb_tcp_connection)) != 0)
         throw nplex_exception(uv_strerror(rc));
 
-    SPDLOG_INFO("Nplex listening on {}", config.context.addr.str());
+    LOG_INFO("Nplex listening on {}", config.context.addr.str());
 }
 
 void nplex::server_t::run() noexcept
@@ -222,12 +222,12 @@ void nplex::server_t::run() noexcept
 
     try {
         m_context->open();
-        SPDLOG_INFO("Nplex server started");
+        LOG_INFO("Nplex server started");
         uv_run(m_loop.get(), UV_RUN_DEFAULT);
     }
     catch (const std::exception &e) {
         excp = std::current_exception();
-        SPDLOG_ERROR("{}", e.what());
+        LOG_ERROR("{}", e.what());
     }
 
     // stoping context (sessions, writer thread, etc)
@@ -249,7 +249,7 @@ void nplex::server_t::run() noexcept
     m_sigterm.reset();
     m_loop.reset();
 
-    SPDLOG_INFO("Nplex server terminated");
+    LOG_INFO("Nplex server terminated");
 
     if (excp)
         std::rethrow_exception(excp);
