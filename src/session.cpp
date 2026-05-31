@@ -418,6 +418,7 @@ const char * nplex::session_t::strerror() const
     {
         case ERR_CLOSED_BY_LOCAL: return "closed by server";
         case ERR_CLOSED_BY_PEER: return "closed by peer";
+        case ERR_EXCD_LIMITS: return "exceeded limits";
         case ERR_MSG_ERROR: return "invalid message";
         case ERR_MSG_UNEXPECTED: return "unexpected message";
         case ERR_MSG_SIZE: return "message too large";

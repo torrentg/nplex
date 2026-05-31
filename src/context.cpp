@@ -267,15 +267,17 @@ void nplex::context_t::append_session(uv_stream_t *stream)
     if (!m_running)
         return;
 
-    if (m_sessions.size() >= m_params.max_sessions) {
-        LOG_WARN("Incomming connection rejected (max {} clients reached)", m_params.max_sessions);
-        return;
-    }
-
+    // Always accept the connection to avoid pending connections in the kernel backlog
     auto session = std::make_shared<session_t>(shared_from_this(), stream);
     LOG_DEBUG("New connection: {}", session->id());
 
     m_sessions.insert(session);
+
+    // If max_sessions exceeded, disconnect the newly accepted connection immediately
+    if (m_sessions.size() > m_params.max_sessions) {
+        LOG_WARN("Incomming connection rejected (max {} clients reached)", m_params.max_sessions);
+        session->disconnect(ERR_EXCD_LIMITS);
+    }
 }
 
 void nplex::context_t::release_session(session_t *session)

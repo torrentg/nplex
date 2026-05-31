@@ -29,16 +29,17 @@
 // Error codes (values less than 1000 are considered libuv errors)
 #define ERR_CLOSED_BY_LOCAL     1000
 #define ERR_CLOSED_BY_PEER      1001
-#define ERR_MSG_ERROR           1002
-#define ERR_MSG_UNEXPECTED      1003
-#define ERR_MSG_SIZE            1004
-#define ERR_USR_NOT_FOUND       1005
-#define ERR_USR_INVL_PWD        1006
-#define ERR_USR_MAX_CONN        1007
-#define ERR_MAX_CONN            1008
-#define ERR_SCHEMA              1009
-#define ERR_CONNECTION_LOST     1010
-#define ERR_UNACK               1011
+#define ERR_EXCD_LIMITS         1002
+#define ERR_MSG_ERROR           1003
+#define ERR_MSG_UNEXPECTED      1004
+#define ERR_MSG_SIZE            1005
+#define ERR_USR_NOT_FOUND       1006
+#define ERR_USR_INVL_PWD        1007
+#define ERR_USR_MAX_CONN        1008
+#define ERR_MAX_CONN            1009
+#define ERR_SCHEMA              1010
+#define ERR_CONNECTION_LOST     1011
+#define ERR_UNACK               1012
 
 #define UNUSED(x)               (void)(x)
 
