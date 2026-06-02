@@ -414,7 +414,7 @@ void nplex::config_t::save(const fs::path &filepath) const
 
     ofs << NETWORK_ADDR << " = " << context.addr.str() << std::endl;
     ofs << LOG_LEVEL << " = " << to_string(log_level) << std::endl;
-    ofs << DISABLE_FSYNC << " = " << fmt::format("{}", journal.fsync) << std::endl;
+    ofs << DISABLE_FSYNC << " = " << fmt::format("{}", !journal.fsync) << std::endl;
     ofs << std::endl;
 
     ofs << MAX_SESSIONS << " = " << context.max_sessions << std::endl;

@@ -153,16 +153,16 @@ static void to_json(const Update *upd, std::string &out)
     out += ":";
     json_append_number(upd->tx_type(), out);
 
-    if (upd->upserts() && !upd->upserts()->empty())
+    if (upd->upserts() && upd->upserts()->size() > 0)
     {
         out += ",";
         json_append_text("upserts", out);
         out += ":";
         out += "[";
 
-        size_t len = static_cast<size_t>(upd->upserts()->size());
+        auto len = upd->upserts()->size();
 
-        for (size_t i = 0; i < len; ++i)
+        for (decltype(len) i = 0; i < len; ++i)
         {
             to_json(upd->upserts()->Get(i), out);
 
@@ -173,16 +173,16 @@ static void to_json(const Update *upd, std::string &out)
         out += "]";
     }
 
-    if (upd->deletes() && !upd->deletes()->empty())
+    if (upd->deletes() && upd->deletes()->size() > 0)
     {
         out += ",";
         json_append_text("deletes", out);
         out += ":";
         out += "[";
 
-        size_t len = static_cast<size_t>(upd->deletes()->size());
+        auto len = upd->deletes()->size();
 
-        for (size_t i = 0; i < len; ++i)
+        for (decltype(len) i = 0; i < len; ++i)
         {
             const auto &key = upd->deletes()->Get(i);
 

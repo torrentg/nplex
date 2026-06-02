@@ -7,3 +7,4 @@
 * Considere to compress snapshots (see https://github.com/mateidavid/zstr)
 * Data replication (see https://github.com/eBay/NuRaft)
 * Considere to create nplex_restore (json -> binary)
+* Add authentication abuse protection: track failed login attempts per IP/user within a sliding time window (e.g. max N failures in last X seconds) and temporarily block or slow down further attempts (exponential back-off or fixed cooldown)

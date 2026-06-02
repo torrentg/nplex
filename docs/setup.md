@@ -8,7 +8,7 @@ This document covers building, configuring, running, and understanding the inter
 
 Install the required system packages according to your distro (see [Dependencies](#dependencies)): 
 
-`C++ compiler, cmake, fmtlib, libuv, flatbuffers and spdlog`
+`C++ compiler, cmake, pkg-config, fmtlib, libuv, flatbuffers, spdlog, jemalloc`
 
 ### Compile (release mode)
 

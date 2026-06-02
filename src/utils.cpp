@@ -114,7 +114,7 @@ uint32_t nplex::crc32(const char* buf, size_t len, uint32_t crc0)
         crc0 = _mm_crc32_u8(crc0, static_cast<unsigned char>(*buf++));
 
     for (; len >= 8; buf += 8, len -= 8)
-        crc0 = _mm_crc32_u64(crc0, *(const uint64_t*)buf);
+        crc0 =  static_cast<uint32_t>(_mm_crc32_u64(crc0, *(const uint64_t*)buf));
 
     for (; len; --len)
         crc0 = _mm_crc32_u8(crc0, static_cast<unsigned char>(*buf++));

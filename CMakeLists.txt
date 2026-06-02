@@ -20,12 +20,11 @@ endif()
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
 find_package(
-    Threads REQUIRED
+    PkgConfig REQUIRED
 )
 
-# Requires libuv >= 1.35
 find_package(
-    libuv REQUIRED
+    Threads REQUIRED
 )
 
 find_package(
@@ -41,6 +40,8 @@ find_package(
 )
 
 find_library(JEMALLOC_LIB jemalloc)
+
+pkg_check_modules(LIBUV REQUIRED libuv)
 
 # ---------------------------------------------------------------------------
 # FlatBuffers schema pipeline
@@ -393,6 +394,7 @@ target_compile_definitions(
 target_include_directories(
     nplex_lib
     PUBLIC
+    ${LIBUV_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}/deps
 )
 
@@ -432,7 +434,7 @@ target_link_libraries(
     PRIVATE
     ${JEMALLOC_LIB}
     Threads::Threads
-    libuv::uv
+    ${LIBUV_LIBRARIES}
     fmt::fmt
     flatbuffers::flatbuffers_shared
 )
