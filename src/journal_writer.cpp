@@ -148,7 +148,7 @@ void nplex::journal_writer::run()
                 if (!items_batch.empty() && items_batch.size() >= m_params.flush_max_entries)
                     break;
 
-                items_batch.push_back({m_queue.pop(), flatbuffers::DetachedBuffer()});
+                items_batch.emplace_back(m_queue.pop(), flatbuffers::DetachedBuffer());
 
                 bytes_batch += bytes;
             }

@@ -14,6 +14,14 @@ using namespace flatbuffers;
 // Internal (static) functions
 // ==========================================================
 
+static std::string create_string(const flatbuffers::String *str)
+{
+    if (!str)
+        return "";
+
+    return std::string{str->c_str(), str->size()};
+}
+
 static std::string create_string(const flatbuffers::Vector<std::uint8_t> *value)
 {
     if (!value)
@@ -206,7 +214,7 @@ bool nplex::update_crev(flatbuffers::DetachedBuffer &buf, rev_t crev)
 
 DetachedBuffer nplex::create_login_msg(std::size_t cid, LoginCode code, rev_t rev0, rev_t crev, const user_ptr &user)
 {
-    FlatBufferBuilder builder;
+    FlatBufferBuilder builder(1024);
     std::vector<Offset<Acl>> permissions;
 
     if (user) {
@@ -231,12 +239,13 @@ DetachedBuffer nplex::create_login_msg(std::size_t cid, LoginCode code, rev_t re
     );
 
     builder.Finish(msg);
+    assert(builder.GetSize() < 1024);
     return builder.Release();
 }
 
 flatbuffers::DetachedBuffer nplex::create_updates_msg(std::size_t cid, rev_t crev, rev_t rev0, bool accepted)
 {
-    FlatBufferBuilder builder;
+    FlatBufferBuilder builder(128);
 
     auto msg = CreateMessage(builder, 
         MsgContent::UPDATES_RESPONSE,
@@ -249,6 +258,7 @@ flatbuffers::DetachedBuffer nplex::create_updates_msg(std::size_t cid, rev_t cre
     );
 
     builder.Finish(msg);
+    assert(builder.GetSize() < 128);
     return builder.Release();
 }
 
@@ -256,7 +266,7 @@ flatbuffers::DetachedBuffer nplex::create_sessions_msg(std::size_t cid, rev_t cr
 {
     assert(session->user());
 
-    FlatBufferBuilder builder;
+    FlatBufferBuilder builder(512);
     ExitCode exit_code = ExitCode::CONNECTED;
 
     switch (session->error())
@@ -305,7 +315,7 @@ flatbuffers::DetachedBuffer nplex::create_sessions_msg(std::size_t cid, rev_t cr
 
 flatbuffers::DetachedBuffer nplex::create_keepalive_msg(rev_t crev)
 {
-    FlatBufferBuilder builder;
+    FlatBufferBuilder builder(128);
 
     auto msg = CreateMessage(builder, 
         MsgContent::KEEPALIVE_PUSH,
@@ -315,12 +325,13 @@ flatbuffers::DetachedBuffer nplex::create_keepalive_msg(rev_t crev)
     );
 
     builder.Finish(msg);
+    assert(builder.GetSize() < 128);
     return builder.Release();
 }
 
 flatbuffers::DetachedBuffer nplex::create_ping_msg(std::size_t cid, rev_t crev, const std::string &payload)
 {
-    FlatBufferBuilder builder;
+    FlatBufferBuilder builder(128);
 
     auto msg = CreateMessage(builder, 
         MsgContent::PING_RESPONSE,
@@ -332,12 +343,13 @@ flatbuffers::DetachedBuffer nplex::create_ping_msg(std::size_t cid, rev_t crev, 
     );
 
     builder.Finish(msg);
+    assert(builder.GetSize() < 128);
     return builder.Release();
 }
 
 flatbuffers::DetachedBuffer nplex::create_submit_msg(std::size_t cid, rev_t crev, SubmitCode code, rev_t erev)
 {
-    FlatBufferBuilder builder;
+    FlatBufferBuilder builder(128);
 
     auto msg = CreateMessage(builder, 
         MsgContent::SUBMIT_RESPONSE,
@@ -350,12 +362,13 @@ flatbuffers::DetachedBuffer nplex::create_submit_msg(std::size_t cid, rev_t crev
     );
 
     builder.Finish(msg);
+    assert(builder.GetSize() < 128);
     return builder.Release();
 }
 
 flatbuffers::DetachedBuffer nplex::create_snapshot_msg(std::size_t cid, rev_t crev, rev_t rev0, bool accepted, const store_t &store, const user_ptr &user)
 {
-    FlatBufferBuilder builder;
+    FlatBufferBuilder builder(32 * 1024);
 
     auto snapshot_offset = (accepted ? store.serialize(builder, user) : 0);
 
@@ -389,7 +402,7 @@ nplex::update_dto_t nplex::deserialize_update(const Update *upd, const user_ptr 
     update_dto_t update;
 
     update.rev = upd->rev();
-    update.user = upd->user()->c_str();
+    update.user = ::create_string(upd->user());
     update.timestamp = upd->timestamp();
     update.tx_type = upd->tx_type();
 
@@ -404,7 +417,7 @@ nplex::update_dto_t nplex::deserialize_update(const Update *upd, const user_ptr 
                 continue;
 
             update.upserts.push_back({
-                kv->key()->c_str(),
+                ::create_string(kv->key()),
                 ::create_string(kv->value())
             });
         }
@@ -420,7 +433,7 @@ nplex::update_dto_t nplex::deserialize_update(const Update *upd, const user_ptr 
             if (user && !user->is_authorized(CRUD_READ, key->c_str()))
                 continue;
 
-            update.deletes.push_back(key->c_str());
+            update.deletes.push_back(::create_string(key));
         }
     }
 

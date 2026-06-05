@@ -140,6 +140,12 @@ perf record -F 999 -g ./nplex -D test
 perf script | stackcollapse-perf.pl | flamegraph.pl > flamegraph.svg
 firefox flamegraph.svg
 
+# System calls
+cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+      -DCMAKE_CXX_FLAGS="-fno-omit-frame-pointer" \
+      -DCMAKE_C_FLAGS="-fno-omit-frame-pointer" ..
+strace -ff -T -k -o trace ./nplex -F -D test
+
 # Code coverage
 cmake -DENABLE_COVERAGE=ON ..
 make -j$(nproc)

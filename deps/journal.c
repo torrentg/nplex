@@ -23,6 +23,7 @@
 
 #define LDB_EXT_DAT             ".dat"
 #define LDB_EXT_IDX             ".idx"
+#define LDB_SUFFIX_TMP          "tmp"
 #define LDB_PATH_SEPARATOR      "/"
 #define LDB_NAME_MAX_LENGTH     32
 
@@ -164,8 +165,8 @@ static inline size_t ldb_padding(size_t value) {
 
 static inline bool ldb_is_valid_obj(ldb_impl_t *obj) {
     return (obj &&
-            obj->dat_fp && !feof(obj->dat_fp) && !ferror(obj->dat_fp) &&
-            obj->idx_fp && !feof(obj->idx_fp) && !ferror(obj->idx_fp));
+            obj->dat_fp && !ferror(obj->dat_fp) &&
+            obj->idx_fp && !ferror(obj->idx_fp));
 }
 
 static void ldb_reset_state(ldb_range_t *state) {
@@ -599,27 +600,27 @@ static int ldb_append_entry_dat(ldb_impl_t *obj, ldb_range_t *state, ldb_entry_t
     if (fwrite(&record, sizeof(ldb_record_dat_t), 1, obj->dat_fp) != 1)
         return LDB_ERR_WRITE_DAT;
 
+    obj->dat_end += sizeof(ldb_record_dat_t);
+
     if (record.data_len)
     {
         if (fwrite(entry->data, 1, record.data_len, obj->dat_fp) != record.data_len)
             return LDB_ERR_WRITE_DAT;
 
+        obj->dat_end += record.data_len;
+
         size_t padding = ldb_padding(entry->data_len);
 
         if (fwrite(zeros, 1, padding, obj->dat_fp) != padding)
             return LDB_ERR_WRITE_DAT;
+
+        obj->dat_end += padding;
     }
 
     if (state->min_seqnum == 0)
         state->min_seqnum = entry->seqnum;
 
     state->max_seqnum = entry->seqnum;
-
-    long pos = ftell(obj->dat_fp);
-    if (pos < 0)
-        return LDB_ERR_READ_DAT;
-
-    obj->dat_end = (size_t)pos;
 
     return LDB_OK;
 }
@@ -1333,7 +1334,7 @@ END_FUNCTION:
 
 #undef goto_zeroize
 
-int ldb_split(const char *path, const char *name, uint64_t seqnum, const char *name_a, const char *name_b)
+int ldb_split(const char *path, const char *name, uint64_t seqnum)
 {
     int ret = LDB_OK;
     ldb_impl_t obj = {0};
@@ -1355,24 +1356,30 @@ int ldb_split(const char *path, const char *name, uint64_t seqnum, const char *n
     size_t count_b = 0;
     size_t size_idx_b = 0;
     size_t dat_offset = 0;
+    char buf[128] = {0};
 
-    // Validate input parameters
-    if (!ldb_is_valid_name(name) || !ldb_is_valid_name(name_a) || !ldb_is_valid_name(name_b))
+    // Preparing part 1
+    snprintf(buf, sizeof(buf), "%s-%zu", name, (size_t)seqnum);
+
+    if (!ldb_is_valid_name(buf))
         exit_function(LDB_ERR_ARG);
 
-    if (strcmp(name, name_a) == 0 || strcmp(name, name_b) == 0 || strcmp(name_a, name_b) == 0)
-        exit_function(LDB_ERR_ARG); 
-
-    if ((filename_dat_a = ldb_create_filename(path, name_a, LDB_EXT_DAT)) == NULL)
+    if ((filename_dat_a = ldb_create_filename(path, buf, LDB_EXT_DAT)) == NULL)
         exit_function(LDB_ERR_MEM);
 
-    if ((filename_dat_b = ldb_create_filename(path, name_b, LDB_EXT_DAT)) == NULL)
+    if ((filename_idx_a = ldb_create_filename(path, buf, LDB_EXT_IDX)) == NULL)
         exit_function(LDB_ERR_MEM);
 
-    if ((filename_idx_a = ldb_create_filename(path, name_a, LDB_EXT_IDX)) == NULL)
+    // Preparing part 2
+    snprintf(buf, sizeof(buf), "%s-%s", name, LDB_SUFFIX_TMP);
+
+    if (!ldb_is_valid_name(buf))
+        exit_function(LDB_ERR_ARG);
+
+    if ((filename_dat_b = ldb_create_filename(path, buf, LDB_EXT_DAT)) == NULL)
         exit_function(LDB_ERR_MEM);
 
-    if ((filename_idx_b = ldb_create_filename(path, name_b, LDB_EXT_IDX)) == NULL)
+    if ((filename_idx_b = ldb_create_filename(path, buf, LDB_EXT_IDX)) == NULL)
         exit_function(LDB_ERR_MEM);
 
     // Open original journal
@@ -1466,9 +1473,14 @@ int ldb_split(const char *path, const char *name, uint64_t seqnum, const char *n
 
     fp_idx_b = NULL;
 
-    // Remove original journal (dat and idx)
-    remove(obj.dat_path);
-    remove(obj.idx_path);
+    // Rename ending part to original name
+    if (rename(filename_dat_b, obj.dat_path) != 0)
+        exit_function(LDB_ERR_WRITE_DAT);
+
+    if (rename(filename_idx_b, obj.idx_path) != 0)
+        exit_function(LDB_ERR_WRITE_IDX);
+
+    ldb_close(&obj);
 
     ret = LDB_OK;
 
@@ -1492,7 +1504,7 @@ END_FUNCTION:
     return ret;
 }
 
-int ldb_join(const char *path, const char *name1, const char *name2, const char *name)
+int ldb_join(const char *path, const char *name1, const char *name2)
 {
     int ret = LDB_OK;
     ldb_impl_t obj1 = {0};
@@ -1504,22 +1516,27 @@ int ldb_join(const char *path, const char *name1, const char *name2, const char 
     FILE *fp_dat_out = NULL;
     FILE *fp_idx_out = NULL;
     int dat_fd1 = -1;
+    char buf[128] = {0};
 
-    if (!path)
+    if (!path || !name1 || !name2)
         exit_function(LDB_ERR_ARG);
 
-    if (!ldb_is_valid_name(name1) || !ldb_is_valid_name(name2) || !ldb_is_valid_name(name))
+    if (strcmp(name1, name2) == 0)
         exit_function(LDB_ERR_ARG);
 
-    if (strcmp(name1, name2) == 0 || strcmp(name1, name) == 0 || strcmp(name2, name) == 0)
-        exit_function(LDB_ERR_ARG);
+    // Preparating output journal
+    snprintf(buf, sizeof(buf), "%s-%s", name2, LDB_SUFFIX_TMP);
 
-    if ((filename_dat_out = ldb_create_filename(path, name, LDB_EXT_DAT)) == NULL)
+    if (!ldb_is_valid_name(buf))
+        exit_function(LDB_ERR_NAME);
+
+    if ((filename_dat_out = ldb_create_filename(path, buf, LDB_EXT_DAT)) == NULL)
         exit_function(LDB_ERR_MEM);
 
-    if ((filename_idx_out = ldb_create_filename(path, name, LDB_EXT_IDX)) == NULL)
+    if ((filename_idx_out = ldb_create_filename(path, buf, LDB_EXT_IDX)) == NULL)
         exit_function(LDB_ERR_MEM);
 
+    // Open both journals
     if ((ret = ldb_open(&obj1, path, name1, 0)) != LDB_OK)
         exit_function(ret);
 
@@ -1623,11 +1640,20 @@ int ldb_join(const char *path, const char *name1, const char *name2, const char 
 
     fp_idx_out = NULL;
 
-    // Remove source journals
+    // Remove first part
     remove(obj1.dat_path);
     remove(obj1.idx_path);
-    remove(obj2.dat_path);
-    remove(obj2.idx_path);
+
+    ldb_close(&obj1);
+
+    // Rename second part original name
+    if (rename(filename_dat_out, obj2.dat_path) != 0)
+        exit_function(LDB_ERR_WRITE_DAT);
+
+    if (rename(filename_idx_out, obj2.idx_path) != 0)
+        exit_function(LDB_ERR_WRITE_IDX);
+
+    ldb_close(&obj2);
 
     ret = LDB_OK;
 
@@ -1734,12 +1760,12 @@ int ldb_append(ldb_impl_t *obj, ldb_entry_t *entries, size_t len, size_t *num)
     state = obj->state;
     pthread_mutex_unlock(&obj->mutex_state);
 
-    if (fseek(obj->dat_fp, (long)obj->dat_end, SEEK_SET) != 0)
-        return LDB_ERR_WRITE_DAT;
+    // if (fseek(obj->dat_fp, (long)obj->dat_end, SEEK_SET) != 0)
+    //     return LDB_ERR_WRITE_DAT;
 
-    size_t pos = ldb_get_pos_idx(&state, state.max_seqnum + 1);
-    if (fseek(obj->idx_fp, (long)pos, SEEK_SET) != 0)
-        return LDB_ERR_WRITE_IDX;
+    // size_t pos = ldb_get_pos_idx(&state, state.max_seqnum + 1);
+    // if (fseek(obj->idx_fp, (long)pos, SEEK_SET) != 0)
+    //     return LDB_ERR_WRITE_IDX;
 
     for (i = 0; i < len; i++)
     {

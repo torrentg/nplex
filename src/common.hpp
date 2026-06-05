@@ -81,6 +81,7 @@ class value_t
   public:
 
     value_t(const gto::cstring &data, std::shared_ptr<meta_t> meta) : m_data{data}, m_meta{std::move(meta)} {}
+    value_t(gto::cstring &&data, std::shared_ptr<meta_t> meta) : m_data{std::move(data)}, m_meta{std::move(meta)} {}
 
     const meta_ptr & meta() const { return m_meta; }
     const gto::cstring & data() const { return m_data; }

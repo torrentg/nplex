@@ -150,7 +150,7 @@ class store_t
      * 
      * @return The inserted metadata.
      */
-    meta_ptr create_meta(rev_t rev, const char *username, std::uint32_t type, millis_t timestamp);
+    meta_ptr create_meta(rev_t rev, const std::string_view &username, std::uint32_t type, millis_t timestamp);
 
     /**
      * Update a metadata object.
@@ -172,7 +172,6 @@ class store_t
      * 
      * @return true = change done, false = no change.
      */
-    bool upsert_entry(const char *key, const value_ptr &value);
     bool upsert_entry(const key_t &key, const value_ptr &value);
 
     /**

@@ -36,10 +36,8 @@ void nplex::store_t::config(const store_params_t &params) noexcept
     m_params = params;
 }
 
-nplex::meta_ptr nplex::store_t::create_meta(rev_t rev, const char *username, std::uint32_t type, millis_t timestamp)
+nplex::meta_ptr nplex::store_t::create_meta(rev_t rev, const std::string_view &username, std::uint32_t type, millis_t timestamp)
 {
-    assert(username);
-
     gto::cstring user;
     auto user_it = m_users.find(username);
 
@@ -54,7 +52,7 @@ nplex::meta_ptr nplex::store_t::create_meta(rev_t rev, const char *username, std
         user_it->second++;
     }
 
-    return std::make_shared<meta_t>(meta_t{rev, user, timestamp, type, {}});
+    return std::make_shared<meta_t>(meta_t{rev, std::move(user), timestamp, type, {}});
 }
 
 void nplex::store_t::update_meta(const meta_ptr &meta, const key_t &key, meta_e mode)
@@ -82,35 +80,6 @@ void nplex::store_t::update_meta(const meta_ptr &meta, const key_t &key, meta_e 
     }
 
     m_metas.erase(meta->rev);
-}
-
-bool nplex::store_t::upsert_entry(const char *key, const value_ptr &value)
-{
-    assert(key);
-    assert(value);
-    assert(value->m_meta);
-
-    if (!is_valid_key(key))
-        throw nplex_exception("Trying to upsert an invalid key: {}", key);
-
-    key_t ckey{};
-    auto it = m_data.find(key);
-
-    if (it != m_data.end())
-    {
-        ckey = it->first;
-        update_meta(it->second->m_meta, ckey, meta_e::SUBTRACT);
-        it->second = value;
-    }
-    else
-    {
-        ckey = key;
-        m_data[ckey] = value;
-    }
-
-    update_meta(value->m_meta, ckey, meta_e::APPEND);
-
-    return true;
 }
 
 bool nplex::store_t::upsert_entry(const key_t &key, const value_ptr &value)
@@ -267,15 +236,15 @@ nplex::update_t nplex::store_t::validate_update(const msgs::Update *msg, const u
     if (pending_upserts.empty() && pending_deletes.empty())
         return ret;
 
-    auto meta = create_meta(urev, msg->user()->c_str(), msg->tx_type(), millis_t{msg->timestamp()});
+    auto meta = create_meta(urev, msg->user()->string_view(), msg->tx_type(), millis_t{msg->timestamp()});
     ret.meta = meta;
 
     ret.upserts.reserve(pending_upserts.size());
 
     for (auto &pu : pending_upserts)
     {
-        auto value = std::make_shared<value_t>(pu.data, meta);
-        ret.upserts.emplace_back(pu.key, std::move(value));
+        auto value = std::make_shared<value_t>(std::move(pu.data), meta);
+        ret.upserts.emplace_back(std::move(pu.key), std::move(value));
     }
 
     ret.deletes = std::move(pending_deletes);
@@ -331,13 +300,13 @@ nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_t &user, cons
             if (!keyval || !keyval->value())
                 return msgs::SubmitCode::INVALID_MESSAGE;
 
-            if (!keyval->key() || !is_valid_key(keyval->key()->c_str()))
+            if (!keyval->key() || !is_valid_key(keyval->key()->string_view()))
                 return msgs::SubmitCode::ERROR_INVALID_KEY;
 
-            if (keys.contains(keyval->key()->c_str()))
+            if (keys.contains(keyval->key()->string_view()))
                 return msgs::SubmitCode::ERROR_DUPLICATE_KEY;
 
-            auto it = m_data.find(keyval->key()->c_str());
+            auto it = m_data.find(keyval->key()->string_view());
 
             if (it == m_data.end())
             {
@@ -361,11 +330,11 @@ nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_t &user, cons
                     return msgs::SubmitCode::REJECTED_INTEGRITY;
             }
 
-            key_t key = (it != m_data.end() ? it->first : key_t{keyval->key()->c_str()});
+            key_t key = (it != m_data.end() ? it->first : key_t{keyval->key()->string_view()});
             auto data = ::create_cstring(keyval->value());
 
             pending_upserts.push_back(pending_upsert_t{key, std::move(data)});
-            keys.insert(key);
+            keys.insert(std::move(key));
         }
     }
 
@@ -375,16 +344,16 @@ nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_t &user, cons
         {
             auto key = deletes->Get(i);
 
-            if (!key || !is_valid_key(key->c_str()))
+            if (!key || !is_valid_key(key->string_view()))
                 return msgs::SubmitCode::ERROR_INVALID_KEY;
 
             if (!user.is_authorized(CRUD_DELETE, key->c_str()))
                 return msgs::SubmitCode::REJECTED_PERMISSION;
 
-            if (keys.contains(key->c_str()))
+            if (keys.contains(key->string_view()))
                 return msgs::SubmitCode::ERROR_DUPLICATE_KEY;
 
-            auto it = m_data.find(key->c_str());
+            auto it = m_data.find(key->string_view());
 
             if (it == m_data.end())
                 continue;
@@ -441,7 +410,7 @@ nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_t &user, cons
     // Data validated - filling update
     using namespace std::chrono;
     millis_t timestamp = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
-    auto meta = create_meta(m_rev + 1, user.name.c_str(), msg->tx_type(), timestamp);
+    auto meta = create_meta(m_rev + 1, user.name, msg->tx_type(), timestamp);
 
     update.meta = meta;
     update.upserts.clear();
@@ -449,8 +418,8 @@ nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_t &user, cons
 
     for (auto &pu : pending_upserts)
     {
-        auto value = std::make_shared<value_t>(pu.data, meta);
-        update.upserts.emplace_back(pu.key, std::move(value));
+        auto value = std::make_shared<value_t>(std::move(pu.data), meta);
+        update.upserts.emplace_back(std::move(pu.key), std::move(value));
     }
 
     update.deletes = std::move(pending_deletes);
