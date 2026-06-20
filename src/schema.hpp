@@ -9,8 +9,8 @@
 // Ensure the included flatbuffers.h is the same version as when this file was
 // generated, otherwise it may not be compatible.
 static_assert(FLATBUFFERS_VERSION_MAJOR == 25 &&
-              FLATBUFFERS_VERSION_MINOR == 2 &&
-              FLATBUFFERS_VERSION_REVISION == 10,
+              FLATBUFFERS_VERSION_MINOR == 12 &&
+              FLATBUFFERS_VERSION_REVISION == 19,
              "Non-compatible flatbuffers version included");
 
 namespace nplex {
@@ -293,8 +293,10 @@ template<> struct MsgContentTraits<nplex::msgs::KeepAlivePush> {
   static const MsgContent enum_value = MsgContent::KEEPALIVE_PUSH;
 };
 
-bool VerifyMsgContent(::flatbuffers::Verifier &verifier, const void *obj, MsgContent type);
-bool VerifyMsgContentVector(::flatbuffers::Verifier &verifier, const ::flatbuffers::Vector<::flatbuffers::Offset<void>> *values, const ::flatbuffers::Vector<MsgContent> *types);
+template <bool B = false>
+bool VerifyMsgContent(::flatbuffers::VerifierTemplate<B> &verifier, const void *obj, MsgContent type);
+template <bool B = false>
+bool VerifyMsgContentVector(::flatbuffers::VerifierTemplate<B> &verifier, const ::flatbuffers::Vector<::flatbuffers::Offset<void>> *values, const ::flatbuffers::Vector<MsgContent> *types);
 
 enum class SubmitCode : int8_t {
   ACCEPTED = 0,
@@ -366,7 +368,8 @@ struct Acl FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   uint8_t mode() const {
     return GetField<uint8_t>(VT_MODE, 0);
   }
-  bool Verify(::flatbuffers::Verifier &verifier) const {
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffsetRequired(verifier, VT_PATTERN) &&
            verifier.VerifyString(pattern()) &&
@@ -432,7 +435,8 @@ struct KeepAlivePush FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   uint64_t crev() const {
     return GetField<uint64_t>(VT_CREV, 0);
   }
-  bool Verify(::flatbuffers::Verifier &verifier) const {
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint64_t>(verifier, VT_CREV, 8) &&
            verifier.EndTable();
@@ -483,7 +487,8 @@ struct KeyValue FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const ::flatbuffers::Vector<uint8_t> *value() const {
     return GetPointer<const ::flatbuffers::Vector<uint8_t> *>(VT_VALUE);
   }
-  bool Verify(::flatbuffers::Verifier &verifier) const {
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffsetRequired(verifier, VT_KEY) &&
            verifier.VerifyString(key()) &&
@@ -564,7 +569,8 @@ struct LoginRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const ::flatbuffers::String *password() const {
     return GetPointer<const ::flatbuffers::String *>(VT_PASSWORD);
   }
-  bool Verify(::flatbuffers::Verifier &verifier) const {
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint64_t>(verifier, VT_CID, 8) &&
            VerifyField<uint32_t>(verifier, VT_SCHEMA, 4) &&
@@ -677,7 +683,8 @@ struct LoginResponse FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const ::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::Acl>> *permissions() const {
     return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::Acl>> *>(VT_PERMISSIONS);
   }
-  bool Verify(::flatbuffers::Verifier &verifier) const {
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint64_t>(verifier, VT_CID, 8) &&
            VerifyField<int8_t>(verifier, VT_CODE, 1) &&
@@ -841,10 +848,11 @@ struct Message FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const nplex::msgs::KeepAlivePush *content_as_KEEPALIVE_PUSH() const {
     return content_type() == nplex::msgs::MsgContent::KEEPALIVE_PUSH ? static_cast<const nplex::msgs::KeepAlivePush *>(content()) : nullptr;
   }
-  bool Verify(::flatbuffers::Verifier &verifier) const {
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint8_t>(verifier, VT_CONTENT_TYPE, 1) &&
-           VerifyOffset(verifier, VT_CONTENT) &&
+           VerifyOffsetRequired(verifier, VT_CONTENT) &&
            VerifyMsgContent(verifier, content(), content_type()) &&
            verifier.EndTable();
   }
@@ -927,6 +935,7 @@ struct MessageBuilder {
   ::flatbuffers::Offset<Message> Finish() {
     const auto end = fbb_.EndTable(start_);
     auto o = ::flatbuffers::Offset<Message>(end);
+    fbb_.Required(o, Message::VT_CONTENT);
     return o;
   }
 };
@@ -959,7 +968,8 @@ struct PingRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const ::flatbuffers::String *payload() const {
     return GetPointer<const ::flatbuffers::String *>(VT_PAYLOAD);
   }
-  bool Verify(::flatbuffers::Verifier &verifier) const {
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint64_t>(verifier, VT_CID, 8) &&
            VerifyOffset(verifier, VT_PAYLOAD) &&
@@ -1032,7 +1042,8 @@ struct PingResponse FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const ::flatbuffers::String *payload() const {
     return GetPointer<const ::flatbuffers::String *>(VT_PAYLOAD);
   }
-  bool Verify(::flatbuffers::Verifier &verifier) const {
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint64_t>(verifier, VT_CID, 8) &&
            VerifyField<uint64_t>(verifier, VT_CREV, 8) &&
@@ -1121,7 +1132,8 @@ struct Session FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   uint64_t until() const {
     return GetField<uint64_t>(VT_UNTIL, 0);
   }
-  bool Verify(::flatbuffers::Verifier &verifier) const {
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffsetRequired(verifier, VT_USER) &&
            verifier.VerifyString(user()) &&
@@ -1222,7 +1234,8 @@ struct SessionsPush FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const nplex::msgs::Session *session() const {
     return GetPointer<const nplex::msgs::Session *>(VT_SESSION);
   }
-  bool Verify(::flatbuffers::Verifier &verifier) const {
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint64_t>(verifier, VT_CID, 8) &&
            VerifyField<uint64_t>(verifier, VT_CREV, 8) &&
@@ -1287,7 +1300,8 @@ struct SessionsRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   bool stream() const {
     return GetField<uint8_t>(VT_STREAM, 0) != 0;
   }
-  bool Verify(::flatbuffers::Verifier &verifier) const {
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint64_t>(verifier, VT_CID, 8) &&
            VerifyField<uint8_t>(verifier, VT_STREAM, 1) &&
@@ -1348,7 +1362,8 @@ struct SessionsResponse FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const ::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::Session>> *sessions() const {
     return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::Session>> *>(VT_SESSIONS);
   }
-  bool Verify(::flatbuffers::Verifier &verifier) const {
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint64_t>(verifier, VT_CID, 8) &&
            VerifyField<uint64_t>(verifier, VT_CREV, 8) &&
@@ -1426,7 +1441,8 @@ struct Snapshot FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const ::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::Update>> *updates() const {
     return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::Update>> *>(VT_UPDATES);
   }
-  bool Verify(::flatbuffers::Verifier &verifier) const {
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint64_t>(verifier, VT_REV, 8) &&
            VerifyOffset(verifier, VT_UPDATES) &&
@@ -1496,7 +1512,8 @@ struct SnapshotRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   uint64_t rev() const {
     return GetField<uint64_t>(VT_REV, 0);
   }
-  bool Verify(::flatbuffers::Verifier &verifier) const {
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint64_t>(verifier, VT_CID, 8) &&
            VerifyField<uint64_t>(verifier, VT_REV, 8) &&
@@ -1565,7 +1582,8 @@ struct SnapshotResponse FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const nplex::msgs::Snapshot *snapshot() const {
     return GetPointer<const nplex::msgs::Snapshot *>(VT_SNAPSHOT);
   }
-  bool Verify(::flatbuffers::Verifier &verifier) const {
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint64_t>(verifier, VT_CID, 8) &&
            VerifyField<uint64_t>(verifier, VT_CREV, 8) &&
@@ -1661,7 +1679,8 @@ struct SubmitRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   bool force() const {
     return GetField<uint8_t>(VT_FORCE, 0) != 0;
   }
-  bool Verify(::flatbuffers::Verifier &verifier) const {
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint64_t>(verifier, VT_CID, 8) &&
            VerifyField<uint64_t>(verifier, VT_CREV, 8) &&
@@ -1785,7 +1804,8 @@ struct SubmitResponse FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   uint64_t erev() const {
     return GetField<uint64_t>(VT_EREV, 0);
   }
-  bool Verify(::flatbuffers::Verifier &verifier) const {
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint64_t>(verifier, VT_CID, 8) &&
            VerifyField<uint64_t>(verifier, VT_CREV, 8) &&
@@ -1870,7 +1890,8 @@ struct Update FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const ::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>> *deletes() const {
     return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>> *>(VT_DELETES);
   }
-  bool Verify(::flatbuffers::Verifier &verifier) const {
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint64_t>(verifier, VT_REV, 8) &&
            VerifyOffsetRequired(verifier, VT_USER) &&
@@ -1982,7 +2003,8 @@ struct UpdatesPush FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const ::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::Update>> *updates() const {
     return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::Update>> *>(VT_UPDATES);
   }
-  bool Verify(::flatbuffers::Verifier &verifier) const {
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint64_t>(verifier, VT_CID, 8) &&
            VerifyField<uint64_t>(verifier, VT_CREV, 8) &&
@@ -2060,7 +2082,8 @@ struct UpdatesRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   uint64_t rev() const {
     return GetField<uint64_t>(VT_REV, 0);
   }
-  bool Verify(::flatbuffers::Verifier &verifier) const {
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint64_t>(verifier, VT_CID, 8) &&
            VerifyField<uint64_t>(verifier, VT_REV, 8) &&
@@ -2125,7 +2148,8 @@ struct UpdatesResponse FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   bool accepted() const {
     return GetField<uint8_t>(VT_ACCEPTED, 0) != 0;
   }
-  bool Verify(::flatbuffers::Verifier &verifier) const {
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint64_t>(verifier, VT_CID, 8) &&
            VerifyField<uint64_t>(verifier, VT_CREV, 8) &&
@@ -2181,7 +2205,8 @@ struct UpdatesResponse::Traits {
   static auto constexpr Create = CreateUpdatesResponse;
 };
 
-inline bool VerifyMsgContent(::flatbuffers::Verifier &verifier, const void *obj, MsgContent type) {
+template <bool B>
+inline bool VerifyMsgContent(::flatbuffers::VerifierTemplate<B> &verifier, const void *obj, MsgContent type) {
   switch (type) {
     case MsgContent::NONE: {
       return true;
@@ -2250,7 +2275,8 @@ inline bool VerifyMsgContent(::flatbuffers::Verifier &verifier, const void *obj,
   }
 }
 
-inline bool VerifyMsgContentVector(::flatbuffers::Verifier &verifier, const ::flatbuffers::Vector<::flatbuffers::Offset<void>> *values, const ::flatbuffers::Vector<MsgContent> *types) {
+template <bool B>
+inline bool VerifyMsgContentVector(::flatbuffers::VerifierTemplate<B> &verifier, const ::flatbuffers::Vector<::flatbuffers::Offset<void>> *values, const ::flatbuffers::Vector<MsgContent> *types) {
   if (!values || !types) return !values && !types;
   if (values->size() != types->size()) return false;
   for (::flatbuffers::uoffset_t i = 0; i < values->size(); ++i) {
@@ -2270,14 +2296,16 @@ inline const nplex::msgs::Message *GetSizePrefixedMessage(const void *buf) {
   return ::flatbuffers::GetSizePrefixedRoot<nplex::msgs::Message>(buf);
 }
 
+template <bool B = false>
 inline bool VerifyMessageBuffer(
-    ::flatbuffers::Verifier &verifier) {
-  return verifier.VerifyBuffer<nplex::msgs::Message>(nullptr);
+    ::flatbuffers::VerifierTemplate<B> &verifier) {
+  return verifier.template VerifyBuffer<nplex::msgs::Message>(nullptr);
 }
 
+template <bool B = false>
 inline bool VerifySizePrefixedMessageBuffer(
-    ::flatbuffers::Verifier &verifier) {
-  return verifier.VerifySizePrefixedBuffer<nplex::msgs::Message>(nullptr);
+    ::flatbuffers::VerifierTemplate<B> &verifier) {
+  return verifier.template VerifySizePrefixedBuffer<nplex::msgs::Message>(nullptr);
 }
 
 inline void FinishMessageBuffer(

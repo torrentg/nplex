@@ -4,6 +4,7 @@
 #include "params.hpp"
 #include <uv.h>
 #include <chrono>
+#include <span>
 
 // Forward declaration
 namespace flatbuffers {
@@ -13,6 +14,11 @@ namespace flatbuffers {
 using millis_t = std::chrono::milliseconds;
 
 namespace nplex {
+
+// Forward declarations
+namespace msgs {
+    struct Message;
+}
 
 // Forward declarations
 class session_t;
@@ -46,6 +52,7 @@ struct connection_s
     uv_timer_t *m_timer_keepalive = nullptr;        // keepalive timer
     char m_input_buffer[UINT16_MAX] = {0};          // input buffer used by read()
     std::string m_input_msg;                        // current incoming message
+    std::vector<const msgs::Message *> m_input_batch; // parsed msgs waiting to be processed
     connection_params_t m_params;                   // connection parameters
     connection_stats_t m_stats;                     // connection statistics
     int m_error = 0;                                // disconnection cause
@@ -61,6 +68,7 @@ struct connection_s
     void shutdown(int rc);
     void disconnect(int rc);
     void send(flatbuffers::DetachedBuffer &&buf);
+    void send(std::span<flatbuffers::DetachedBuffer> msgs);
     void report_peer_activity();
     void send_keepalive();
     void set_timer(uv_timer_t *&timer, std::uint32_t millis, uv_timer_cb timer_cb);
@@ -84,7 +92,7 @@ struct connection_s
  * - Handle disconnections
  * 
  * Callbacks to the session:
- * - session()->process_request()
+ * - session()->process_requests()
  * - session()->process_delivery()
  * - session()->send_keepalive()
  * - session()->release()

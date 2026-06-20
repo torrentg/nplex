@@ -61,6 +61,8 @@ void nplex::session_t::shutdown(int rc)
     if (is_closed())
         return;
 
+    flush_buffered_msgs();
+
     m_con.shutdown(rc);
 }
 
@@ -69,9 +71,7 @@ void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
     if (is_closed())
         return;
 
-    auto msg = flatbuffers::GetRoot<nplex::msgs::Message>(buf.data());
-    auto type = msg->content_type();
-    auto bytes = buf.size();
+    flush_buffered_msgs();
 
     if (m_con.is_blocked())
     {
@@ -80,12 +80,47 @@ void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
         return;
     }
 
-    m_con.send(std::move(buf));
+    trace_output_msg(buf);
 
-    if (type == msgs::MsgContent::KEEPALIVE_PUSH)
-        LOG_TRACE("Sent {} to {} ({})", msgs::EnumNameMsgContent(type), m_id, bytes_to_string(bytes));
-    else
-        LOG_DEBUG("Sent {} to {} ({})", msgs::EnumNameMsgContent(type), m_id, bytes_to_string(bytes));
+    m_con.send(std::move(buf));
+}
+
+void nplex::session_t::send_buffered_msg(flatbuffers::DetachedBuffer &&buf)
+{
+    if (is_closed())
+        return;
+
+    m_buffered_msgs.emplace_back(std::move(buf));
+
+    if (m_buffered_msgs.size() >= output_chunk_t::max_num_msgs())
+        flush_buffered_msgs();
+}
+
+void nplex::session_t::flush_buffered_msgs()
+{
+    if (is_closed() || m_buffered_msgs.empty())
+        return;
+
+    if (m_con.is_blocked())
+    {
+        LOG_INFO("{} exceeded output queue limits (shutdown)", m_id);
+        m_con.shutdown(ERR_UNACK);
+        return;
+    }
+
+    for (auto &buf : m_buffered_msgs)
+        trace_output_msg(buf);
+
+    m_con.send(m_buffered_msgs);
+
+    m_buffered_msgs.clear();
+
+    if (m_con.is_blocked())  // TODO: move shutdown to connection?
+    {
+        LOG_INFO("{} exceeded output queue limits (shutdown)", m_id);
+        m_con.shutdown(ERR_UNACK);
+        return;
+    }
 }
 
 void nplex::session_t::process_delivery([[maybe_unused]] const msgs::Message *msg)
@@ -95,6 +130,14 @@ void nplex::session_t::process_delivery([[maybe_unused]] const msgs::Message *ms
 
     if (m_updates_cid != 0 && m_lrev < m_context->last_persisted_rev() && !m_sync_in_progress)
         do_sync(m_updates_cid);
+}
+
+void nplex::session_t::process_requests(std::span<const msgs::Message *> msgs)
+{
+    for (const auto *msg : msgs)
+        process_request(msg);
+
+    flush_buffered_msgs();
 }
 
 void nplex::session_t::process_request(const msgs::Message *msg)
@@ -249,7 +292,7 @@ void nplex::session_t::process_snapshot_request(const msgs::SnapshotRequest *req
     // case: requested snapshot out of range
     if (rev < m_context->minimum_rev() || rev > m_context->last_persisted_rev())
     {
-        send(
+        send_buffered_msg(
             create_snapshot_msg(
                 cid,
                 m_context->last_persisted_rev(),
@@ -293,7 +336,7 @@ void nplex::session_t::process_updates_request(const msgs::UpdatesRequest *req)
     // case: requested updates out of range (reject)
     if (rev < m_context->minimum_rev())
     {
-        send(
+        send_buffered_msg(
             create_updates_msg(
                 cid,
                 m_context->last_persisted_rev(),
@@ -307,7 +350,7 @@ void nplex::session_t::process_updates_request(const msgs::UpdatesRequest *req)
 
     m_updates_cid = cid;
 
-    send(
+    send_buffered_msg(
         create_updates_msg(
             cid,
             m_context->last_persisted_rev(),
@@ -337,7 +380,7 @@ void nplex::session_t::process_sessions_request(const msgs::SessionsRequest *req
             builder.append(session);
     }
 
-    send(builder.finish(cid, crev));
+    send_buffered_msg(builder.finish(cid, crev));
 
     m_sessions_cid = ((m_user->params.can_monitor && req->stream()) ? cid : 0);
 }
@@ -352,7 +395,7 @@ void nplex::session_t::process_submit_request(const nplex::msgs::SubmitRequest *
 
     auto [rc, erev] = m_context->try_commit(req, *m_user);
 
-    send(
+    send_buffered_msg(
         create_submit_msg(
             req->cid(), 
             m_context->last_persisted_rev(),
@@ -364,7 +407,7 @@ void nplex::session_t::process_submit_request(const nplex::msgs::SubmitRequest *
 
 void nplex::session_t::process_ping_request(const nplex::msgs::PingRequest *req)
 {
-    send(
+    send_buffered_msg(
         create_ping_msg(
             req->cid(), 
             m_context->last_persisted_rev(),
@@ -447,7 +490,7 @@ void nplex::session_t::send_snapshot(std::size_t cid, const store_t &store, cons
     if (is_closed())
         return;
 
-    send(
+    send_buffered_msg(
         create_snapshot_msg(
             cid,
             m_context->last_persisted_rev(),
@@ -551,4 +594,20 @@ void nplex::session_t::push_session(const session_ptr &session)
             session
         )
     );
+}
+
+void nplex::session_t::trace_output_msg(const flatbuffers::DetachedBuffer &buf)
+{
+    auto bytes = buf.size();
+
+    if (bytes == 0)
+        return;
+
+    auto msg = flatbuffers::GetRoot<msgs::Message>(buf.data());
+    auto type = msg->content_type();
+
+    if (type == nplex::msgs::MsgContent::KEEPALIVE_PUSH)
+        LOG_TRACE("Sent {} to {} ({})", msgs::EnumNameMsgContent(type), m_id, bytes_to_string(bytes));
+    else
+        LOG_DEBUG("Sent {} to {} ({})", msgs::EnumNameMsgContent(type), m_id, bytes_to_string(bytes));
 }

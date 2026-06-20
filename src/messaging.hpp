@@ -18,34 +18,73 @@ using session_ptr = std::shared_ptr<session_t>;
 /**
  * Network message format:
  * 
- *  +--------------+--------------+-------------------+--------------+
- *  | length       | metadata     | content           | checksum     |
- *  +--------------+--------------+-------------------+--------------+
- *  | 4 bytes      | 4 bytes      | N bytes           | 4 bytes      |
- *  | big-endian   | big-endian   | flatbuffer        | big-endian   |
- *  +--------------+--------------+-------------------+--------------+
- *                                |<-- length - 12 -->|
+ *  +--------------+--------------+-------------------+--------------+--------------+
+ *  | length       | metadata     | content           | checksum     | delimiter    |
+ *  +--------------+--------------+-------------------+--------------+--------------+
+ *  | 4 bytes      | 4 bytes      | N bytes           | 4 bytes      | 4 bytes      |
+ *  | big-endian   | big-endian   | flatbuffer        | big-endian   | 0xFFFFFFFF   |
+ *  +--------------+--------------+-------------------+--------------+--------------+
+ *                                |<-- length - 16 -->|
  * 
- * - length: Total message size in bytes (including all 4 fields)
+ * - length: Total message size in bytes (including all 5 fields)
  * - metadata: Message properties (currently unused)
- * - content: FlatBuffer serialized data (content_length = msg_length - 12)
+ * - content: FlatBuffer serialized data (content_length = msg_length - 16)
  * - checksum: CRC32 of [length + metadata + content]
+ * - delimiter: 0xFFFFFFFF (used to align next msg to 8-bytes)
  */
-struct output_msg_t
+
+/**
+ * This class is designed to minimize the number of memory allocations 
+ * and copies when sending messages to the network. A single allocation covers:
+ *   - uv_write_t object
+ *   - array of uv_buf_t (required to pass multiple buffers to uv_write)
+ *   - array of flatbuffers::DetachedBuffer (for message content)
+ *   - array of lengths + metadatas and checksum (1 entry for message)
+ */
+class output_chunk_t
 {
-    uv_write_t req;
-    std::array<uv_buf_t, 4> buf;
-    flatbuffers::DetachedBuffer content;
-    std::uint32_t metadata;     // Message metadata (ex. compression alg) -currently unused- (big-endian)
-    std::uint32_t checksum;     // CRC32 of len + metadata + content (big-endian)
-    std::uint32_t len;          // Total message length (including len, metadata, content, checksum) (big-endian)
+  public:
 
-    output_msg_t(flatbuffers::DetachedBuffer &&msg);
-    std::uint32_t length() const { return ntohl(len); }
+  // Factory methods
+    static output_chunk_t * create(std::span<flatbuffers::DetachedBuffer> msgs);
+    static output_chunk_t * create(flatbuffers::DetachedBuffer &&msg){
+        flatbuffers::DetachedBuffer arr[1] = { std::move(msg) };
+        return create(arr);
+    }; 
+    static void destroy(output_chunk_t *obj);
 
-    static inline std::size_t length(const flatbuffers::DetachedBuffer &buf) noexcept {
-        return buf.size() + 3 * sizeof(std::uint32_t);
-    }
+    // Non-copiable
+    output_chunk_t(const output_chunk_t&) = delete;
+    output_chunk_t& operator=(const output_chunk_t&) = delete;
+
+    // Destructor
+    ~output_chunk_t();
+
+    constexpr static std::size_t max_num_msgs() { return 128; } // Max iovec supported by kernel is 1024, each msg is 5 iovecs
+    uv_write_t *get_req() { return &write_req; }
+    const uv_buf_t * get_bufs_ptr() const { return reinterpret_cast<const uv_buf_t *>(this + 1); }
+    unsigned int get_bufs_len() const { return (num_msgs * 5); }
+    size_t get_num_msgs() const { return num_msgs; }
+    size_t get_total_length() const { return total_length; }
+    const void * get_msg(size_t idx) const { return get_bufs_ptr()[idx * 5 + 2].base; }
+
+  private:
+
+    struct values_t {
+        std::uint32_t len;                      // Total message length (including len, metadata, content, checksum and delimiter) (big-endian)
+        std::uint32_t metadata;                 // Message metadata (ex. compression alg) -currently unused- (big-endian)
+        flatbuffers::DetachedBuffer content;    // Message content (flatbuffer serialized data, length is multiple of 8)
+        std::uint32_t checksum;                 // CRC32 of len + metadata + content (big-endian)
+        std::uint32_t delimiter;                // Delimiter between messages (big-endian)
+    };
+
+    uv_write_t write_req;                       // Write request object
+    std::uint32_t num_msgs = 0;                 // Number of messages in the batch
+    std::uint32_t total_length = 0;             // Total length (sum of serialized data)
+    // uv_buf_t[5 * num_msgs]                   // Memory allocated by create()
+    // values_t[num_msgs]                       // Memory allocated by create()
+
+    output_chunk_t() = default;
 };
 
 /**
@@ -60,15 +99,6 @@ struct output_msg_t
  *         nullptr on error.
  */
 const msgs::Message * parse_network_msg(const char *ptr, size_t len);
-
-/**
- * Set the crev value in a serialized message.
- * This is a hack to bypass the flatbuffers immutability.
- * 
- * @param[in] buf Flatbuffer serialized data.
- * @param[in] crev Current revision to set.
- */
-bool update_crev(flatbuffers::DetachedBuffer &buf, rev_t crev);
 
 /**
  * Builder to create a UpdatesPush message.

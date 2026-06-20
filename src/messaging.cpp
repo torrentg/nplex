@@ -119,30 +119,99 @@ static flatbuffers::Offset<nplex::msgs::Update> serialize_update(flatbuffers::Fl
 }
 
 // ==========================================================
+// output_chunk_t methods
+// ==========================================================
+
+nplex::output_chunk_t * nplex::output_chunk_t::create(std::span<flatbuffers::DetachedBuffer> msgs)
+{
+    if (msgs.empty() || msgs.size() > max_num_msgs())
+        throw std::invalid_argument("invalid number of messages");
+
+    size_t total_length = 0;
+    size_t num_msgs = msgs.size();
+    size_t allocation_size = sizeof(output_chunk_t) + num_msgs * (5 * sizeof(uv_buf_t) + sizeof(values_t));
+
+    char *ptr = static_cast<char *>(::operator new(allocation_size));
+
+    output_chunk_t *ret = new (ptr) output_chunk_t();
+    uv_buf_t *buf_ptr = reinterpret_cast<uv_buf_t *>(ptr + sizeof(output_chunk_t));
+    values_t *values_ptr = reinterpret_cast<values_t *>(ptr + sizeof(output_chunk_t) + num_msgs * 5 * sizeof(uv_buf_t));
+
+    for (size_t i = 0; i < num_msgs; ++i)
+    {
+        auto &content = msgs[i];
+        std::uint32_t checksum = 0;
+        std::size_t content_len = content.size();
+        auto msg_len = static_cast<std::uint32_t>(content_len + 4 * sizeof(std::uint32_t));
+
+        assert(msg_len % sizeof(std::uint64_t) == 0); // aligned to 8 bytes
+        values_ptr[i].len = htonl(msg_len);
+        total_length += msg_len;
+
+        values_ptr[i].metadata = htonl(0); // unused
+
+        new (&values_ptr[i].content) flatbuffers::DetachedBuffer();
+        values_ptr[i].content = std::move(content);
+
+        checksum = crc32(reinterpret_cast<const char *>(&values_ptr[i].len), sizeof(std::uint32_t));
+        checksum = crc32(reinterpret_cast<const char *>(&values_ptr[i].metadata), sizeof(std::uint32_t), checksum);
+        checksum = crc32(reinterpret_cast<const char *>(values_ptr[i].content.data()), content_len, checksum);
+        values_ptr[i].checksum = htonl(checksum);
+
+        values_ptr[i].delimiter = htonl(0xFFFFFFFF);
+
+        buf_ptr[5 * i + 0] = uv_buf_t{.base = reinterpret_cast<char *>(&values_ptr[i].len), .len = sizeof(uint32_t)};
+        buf_ptr[5 * i + 1] = uv_buf_t{.base = reinterpret_cast<char *>(&values_ptr[i].metadata), .len = sizeof(uint32_t)};
+        buf_ptr[5 * i + 2] = uv_buf_t{.base = reinterpret_cast<char *>(values_ptr[i].content.data()), .len = content_len};
+        buf_ptr[5 * i + 3] = uv_buf_t{.base = reinterpret_cast<char *>(&values_ptr[i].checksum), .len = sizeof(uint32_t)};
+        buf_ptr[5 * i + 4] = uv_buf_t{.base = reinterpret_cast<char *>(&values_ptr[i].delimiter), .len = sizeof(uint32_t)};
+    }
+
+    ret->num_msgs = static_cast<std::uint32_t>(num_msgs);
+
+    if (total_length > 0xFFFFFFFF) {
+        destroy(ret);
+        throw std::overflow_error("Total message length exceeds maximum allowed size");
+    }
+
+    ret->total_length = static_cast<std::uint32_t>(total_length);
+
+    return ret;
+}
+
+nplex::output_chunk_t::~output_chunk_t()
+{
+    if (num_msgs == 0)
+        return;
+
+    char *ptr = reinterpret_cast<char *>(this);
+    uv_buf_t *buf_ptr = reinterpret_cast<uv_buf_t *>(ptr + sizeof(output_chunk_t));
+    values_t *values_ptr = reinterpret_cast<values_t *>(ptr + sizeof(output_chunk_t) + num_msgs * 5 * sizeof(uv_buf_t));
+
+    for (size_t i = 0; i < 5 * num_msgs; ++i)
+        buf_ptr[i].~uv_buf_t();
+
+    for (size_t i = 0; i < num_msgs; ++i)
+        values_ptr[i].~values_t();
+}
+
+void nplex::output_chunk_t::destroy(output_chunk_t *obj)
+{
+    if (obj == nullptr)
+        return;
+
+    auto ptr = static_cast<void *>(obj);
+    obj->~output_chunk_t();
+    ::operator delete(ptr);
+}
+
+// ==========================================================
 // nplex functions
 // ==========================================================
 
-nplex::output_msg_t::output_msg_t(DetachedBuffer &&msg) : content(std::move(msg))
-{
-    len = (std::uint32_t)(content.size() + sizeof(len) + sizeof(metadata) + sizeof(checksum));
-    len = htonl(len);
-
-    metadata = htonl(0); // not-compressed
-
-    checksum = crc32(reinterpret_cast<const char *>(&len), sizeof(len));
-    checksum = crc32(reinterpret_cast<const char *>(&metadata), sizeof(metadata), checksum);
-    checksum = crc32(reinterpret_cast<const char *>(content.data()), content.size(), checksum);
-    checksum = htonl(checksum);
-
-    buf[0] = uv_buf_init(reinterpret_cast<char *>(&len), sizeof(len));
-    buf[1] = uv_buf_init(reinterpret_cast<char *>(&metadata), sizeof(metadata));
-    buf[2] = uv_buf_init(reinterpret_cast<char *>(content.data()), static_cast<unsigned int>(content.size()));
-    buf[3] = uv_buf_init(reinterpret_cast<char *>(&checksum), sizeof(checksum));
-}
-
 const nplex::msgs::Message * nplex::parse_network_msg(const char *ptr, size_t len)
 {
-    if (len <= 3 * sizeof(std::uint32_t))
+    if (len <= 4 * sizeof(std::uint32_t) || len % sizeof(std::uint64_t) != 0)
         return nullptr;
 
     if (len != ntohl_ptr(ptr))
@@ -151,13 +220,13 @@ const nplex::msgs::Message * nplex::parse_network_msg(const char *ptr, size_t le
     std::uint32_t metadata = ntohl_ptr(ptr + sizeof(std::uint32_t));
     UNUSED(metadata);
 
-    std::uint32_t checksum = ntohl_ptr(ptr + len - sizeof(std::uint32_t));
+    std::uint32_t checksum = ntohl_ptr(ptr + len - 2 * sizeof(std::uint32_t));
 
-    if (checksum != crc32(ptr, len - sizeof(std::uint32_t)))
+    if (checksum != crc32(ptr, len - 2 * sizeof(std::uint32_t)))
         return nullptr;
 
     ptr += 2 * sizeof(std::uint32_t);
-    len -= 3 * sizeof(std::uint32_t);
+    len -= 4 * sizeof(std::uint32_t);
 
     auto verifier = flatbuffers::Verifier(reinterpret_cast<const std::uint8_t *>(ptr), len);
 
@@ -165,51 +234,6 @@ const nplex::msgs::Message * nplex::parse_network_msg(const char *ptr, size_t le
         return nullptr;
 
     return flatbuffers::GetRoot<Message>(ptr);
-}
-
-bool nplex::update_crev(flatbuffers::DetachedBuffer &buf, rev_t crev)
-{
-    using namespace msgs;
-    using namespace flatbuffers;
-
-    auto msg = GetRoot<Message>(buf.data());
-    if (!msg)
-        return false;
-
-    auto content = const_cast<void *>(msg->content());
-    if (!content)
-        return false;
-
-    auto table = static_cast<Table *>(content);
-
-    switch(msg->content_type())
-    {
-        case msgs::MsgContent::PING_RESPONSE:
-            table->SetField<uint64_t>(PingResponse::VT_CREV, crev);
-            return true;
-        case msgs::MsgContent::LOGIN_RESPONSE:
-            table->SetField<uint64_t>(LoginResponse::VT_CREV, crev);
-            return true;
-        case msgs::MsgContent::SNAPSHOT_RESPONSE:
-            table->SetField<uint64_t>(SnapshotResponse::VT_CREV, crev);
-            return true;
-        case msgs::MsgContent::UPDATES_RESPONSE:
-            table->SetField<uint64_t>(UpdatesResponse::VT_CREV, crev);
-            return true;
-        [[likely]]
-        case msgs::MsgContent::UPDATES_PUSH:
-            table->SetField<uint64_t>(UpdatesPush::VT_CREV, crev);
-            return true;
-        case msgs::MsgContent::SUBMIT_RESPONSE: 
-            table->SetField<uint64_t>(SubmitResponse::VT_CREV, crev);
-            return true;
-        [[likely]]
-        case msgs::MsgContent::KEEPALIVE_PUSH:
-            table->SetField<uint64_t>(KeepAlivePush::VT_CREV, crev);
-            return true;
-        default:
-            return false;
-    }
 }
 
 DetachedBuffer nplex::create_login_msg(std::size_t cid, LoginCode code, rev_t rev0, rev_t crev, const user_ptr &user)

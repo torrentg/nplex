@@ -199,7 +199,7 @@ union MsgContent {
 }
 
 table Message {
-    content: MsgContent;            // Message content
+    content: MsgContent (required); // Message content
 }
 
 root_type Message;

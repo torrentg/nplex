@@ -45,7 +45,7 @@ class session_t : public std::enable_shared_from_this<session_t>
     // rest of methods
     void shutdown(int rc);
     void disconnect(int rc);
-    void process_request(const msgs::Message *msg);
+    void process_requests(std::span<const msgs::Message *> msgs);
     void process_delivery(const msgs::Message *msg);
     void send_snapshot(std::size_t cid, const store_t &store, const user_ptr &user = nullptr);
     void send_updates(std::size_t cid, rev_t from_rev, rev_t to_rev, const std::span<const update_dto_t> &updates);
@@ -57,6 +57,8 @@ class session_t : public std::enable_shared_from_this<session_t>
 
   private:
 
+    using fdb_t = flatbuffers::DetachedBuffer;
+
     user_ptr m_user;                            // session user
     context_ptr m_context;                      // server context
     connection_t m_con;                         // connection object
@@ -65,8 +67,14 @@ class session_t : public std::enable_shared_from_this<session_t>
     std::size_t m_updates_cid = 0;              // updates correlation id (0 means no push)
     std::size_t m_sessions_cid = 0;             // sessions correlation id (0 means no push)
     bool m_sync_in_progress = false;            // there is a sync task operation in progress
+    std::vector<fdb_t> m_buffered_msgs;         // messages waiting to be sent
 
-    void send(flatbuffers::DetachedBuffer &&buf);
+    void send(fdb_t &&buf);
+    void send_buffered_msg(fdb_t &&buf);
+    void trace_output_msg(const fdb_t &buf);
+    void flush_buffered_msgs();
+
+    void process_request(const msgs::Message *msg);
     void process_login_request(const nplex::msgs::LoginRequest *req);
     void process_snapshot_request(const nplex::msgs::SnapshotRequest *req);
     void process_updates_request(const nplex::msgs::UpdatesRequest *req);

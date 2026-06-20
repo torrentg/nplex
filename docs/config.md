@@ -1,6 +1,6 @@
 # Configuration
 
-The configuration file (`nplex.ini`) uses the INI format.
+The configuration file ([`nplex.ini`](../conf/nplex.ini)) uses the INI format.
 
 Below is a complete reference of all parameters.
 
@@ -39,8 +39,8 @@ Default values applied to all users unless overridden in their individual sectio
 | `max-connections` | `5` | Maximum simultaneous connections for this user. |
 | `keepalive-millis` | `1000` | Interval (ms) between keepalive messages. `0` = disabled. |
 | `timeout-factor` | `3.0` | Connection timeout = `keepalive-millis × timeout-factor`. |
-| `max-unack-msg` | `1000` | Maximum unacknowledged outbound messages before backpressure. |
-| `max-unack-bytes` | `100MB` | Maximum unacknowledged outbound bytes before backpressure. |
+| `max-unack-msg` | `1000` | Maximum unacknowledged outbound messages. |
+| `max-unack-bytes` | `100MB` | Maximum unacknowledged outbound bytes. |
 
 ## User Sections (e.g. `[admin]`, `[jdoe]`)
 
