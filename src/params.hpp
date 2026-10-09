@@ -41,6 +41,8 @@ struct journal_params_t
     std::uint32_t write_queue_max_bytes = 0;        // Maximum bytes pending to be written (0 = unlimited).
     std::uint32_t flush_max_entries = 0;            // Maximum entries per batch write (0 = unlimited).
     std::uint32_t flush_max_bytes = 0;              // Maximum bytes per batch write (0 = unlimited).
+    std::uint32_t rotate_journal_max_entries = 0;   // Maximum entries in a journal before rotating (0 = unlimited).
+    std::uint32_t rotate_journal_max_bytes = 0;     // Maximum bytes in a journal before rotating (0 = unlimited).
 };
 
 struct store_params_t

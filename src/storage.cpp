@@ -335,16 +335,35 @@ nplex::journal_ptr nplex::open_journal(const fs::path &file, int flags)
 // storage_t methods
 // ==========================================================
 
-nplex::storage_t::storage_t(const fs::path &path, bool check, bool fsync) : m_path{path}
+nplex::storage_t::storage_t(const fs::path &path, bool check) : m_path{path}
 {
     fs::path filename = path / JOURNAL_NAME ".dat";
-    int flags = LDB_OPEN_CREATE | (fsync ? LDB_OPEN_FSYNC : 0);
+    int flags = LDB_OPEN_READONLY;
 
     m_journal = open_journal(filename, flags);
 
     if (check) {
         m_journal->check(true);
         m_check = check;
+    }
+
+    rebuild_map_archives();
+    rebuild_map_snapshots();
+}
+
+void nplex::storage_t::refresh_journals()
+{
+    fs::path filename = m_path / JOURNAL_NAME ".dat";
+    int flags = LDB_OPEN_READONLY;
+
+    auto journal = open_journal(filename, flags);
+
+    if (m_check)
+        journal->check(true);
+
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_journal = std::move(journal);
     }
 
     rebuild_map_archives();
@@ -531,6 +550,8 @@ std::size_t nplex::storage_t::read_entries(rev_t rev, const std::function<bool(c
 
     LOG_TRACE("Journal read completed, num_entries={}, total_bytes={}, elapsed={}μs",
         count, bytes_to_string(bytes), (uv_hrtime() - start_time) / 1000);
+    UNUSED(start_time);
+    UNUSED(bytes);
 
     return count;
 }

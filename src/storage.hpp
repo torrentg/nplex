@@ -49,7 +49,7 @@ class storage_t
      * @param[in] path Storage path.
      * @param[in] flags Journal flags.
      */
-    storage_t(const std::filesystem::path &path, bool check, bool fsync);
+    storage_t(const std::filesystem::path &path, bool check);
     ~storage_t() = default;
 
     /**
@@ -64,6 +64,11 @@ class storage_t
      * @return Reference to the journal.
      */
     ldb::journal_t & get_journal() { return *m_journal; }
+
+    /**
+     * Refresh the available journals after a rotation.
+     */
+    void refresh_journals();
 
     /**
      * Get the minimum revision constructible.

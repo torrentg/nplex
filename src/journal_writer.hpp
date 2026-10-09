@@ -4,9 +4,11 @@
 #include "params.hpp"
 #include "cqueue.hpp"
 #include <flatbuffers/flatbuffers.h>
+#include <filesystem>
 #include <condition_variable>
 #include <functional>
 #include <atomic>
+#include <memory>
 #include <thread>
 #include <vector>
 #include <mutex>
@@ -53,7 +55,12 @@ class journal_writer
      */
     using error_callback_t = std::function<void(std::exception_ptr)>;
 
-    journal_writer(ldb::journal_t &journal, const journal_params_t &params);
+    /**
+     * Callback type invoked after the journal rotates.
+     */
+    using rotate_callback_t = std::function<void()>;
+
+    journal_writer(const std::filesystem::path &path, std::shared_ptr<ldb::journal_t> journal, const journal_params_t &params);
     ~journal_writer();
 
     journal_writer(const journal_writer&) = delete;
@@ -75,7 +82,7 @@ class journal_writer
      * @param[in] result_cb The callback function that will be called on every write completion.
      * @param[in] error_cb The callback function that will be called when an exception occurs.
      */
-    void start(result_callback_t &&result_cb, error_callback_t &&error_cb);
+    void start(result_callback_t &&result_cb, error_callback_t &&error_cb, rotate_callback_t &&rotate_cb = {});
 
     /**
      * Enqueues an update to be written to the journal.
@@ -105,11 +112,12 @@ class journal_writer
 
   private:
 
-    ldb::journal_t &m_journal;                      // Reference to the journal object
-    journal_params_t m_params;                      // Journal parameters
+    std::filesystem::path m_path;                  // Journal path.
+    std::shared_ptr<ldb::journal_t> m_journal;     // Journal object.
+    journal_params_t m_params;                     // Journal parameters
 
     gto::cqueue<update_t> m_queue;                  // Queue of pending writes
-    std::atomic<std::size_t> m_queue_size = 0;     // Number of entries in the queue
+    std::atomic<std::size_t> m_queue_size = 0;      // Number of entries in the queue
     std::atomic<std::size_t> m_bytes_in_queue = 0;  // Total bytes in the queue
 
     std::thread m_thread;                           // Writer thread
@@ -119,6 +127,7 @@ class journal_writer
 
     result_callback_t m_result_cb;                  // Callback invoked on each write completion
     error_callback_t m_error_cb;                    // Callback invoked on exception
+    rotate_callback_t m_rotate_cb;                  // Callback invoked after rotation
 
     /**
      * Main function executed by the writer thread.
@@ -128,6 +137,8 @@ class journal_writer
      * new updates to be enqueued if the queue is empty.
      */
     void run();
+
+    bool rotate_if_needed();
 };
 
 } // namespace nplex

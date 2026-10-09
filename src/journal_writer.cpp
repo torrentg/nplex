@@ -5,22 +5,17 @@
 #include "logger.hpp"
 #include "utils.hpp"
 #include "journal.h"
+#include <fmt/core.h>
 #include <cassert>
-
-// ==========================================================
-// Internal (static) variables and functions
-// ==========================================================
-
-static inline std::uint32_t get_param(std::uint32_t value) {
-    return (value == 0 ? UINT32_MAX : value);
-}
 
 // ==========================================================
 // journal_writer methods
 // ==========================================================
 
-nplex::journal_writer::journal_writer(ldb::journal_t &journal, const journal_params_t &params) : m_journal(journal), m_params(params)
+nplex::journal_writer::journal_writer(const std::filesystem::path &path, std::shared_ptr<ldb::journal_t> journal, const journal_params_t &params)
+    : m_path(path), m_journal(std::move(journal)), m_params(params)
 {
+    assert(m_journal);
     assert(m_params.write_queue_max_entries > 0);
     assert(m_params.write_queue_max_bytes > 0);
     assert(m_params.flush_max_entries > 0);
@@ -43,10 +38,11 @@ bool nplex::journal_writer::is_blocked() const
     return false;
 }
 
-void nplex::journal_writer::start(result_callback_t &&result_cb, error_callback_t &&error_cb)
+void nplex::journal_writer::start(result_callback_t &&result_cb, error_callback_t &&error_cb, rotate_callback_t &&rotate_cb)
 {
     m_result_cb = std::move(result_cb);
     m_error_cb = std::move(error_cb);
+    m_rotate_cb = std::move(rotate_cb);
 
     bool expected = false;
     if (m_running.compare_exchange_strong(expected, true)) {
@@ -61,6 +57,52 @@ void nplex::journal_writer::start(result_callback_t &&result_cb, error_callback_
             }
         });
     }
+}
+
+bool nplex::journal_writer::rotate_if_needed()
+{
+    if (!m_journal)
+        return false;
+
+    if (m_params.rotate_journal_max_entries == 0 && m_params.rotate_journal_max_bytes == 0)
+        return false;
+
+    auto [min_rev, max_rev] = m_journal->get_range();
+
+    if (max_rev == 0)
+        return false;
+
+    bool rotate = false;
+
+    if (m_params.rotate_journal_max_entries > 0)
+    {
+        std::uint64_t current_entries = max_rev - min_rev + 1;
+        if (current_entries >= m_params.rotate_journal_max_entries)
+            rotate = true;
+    }
+
+    if (m_params.rotate_journal_max_bytes > 0 && m_journal->get_size() >= m_params.rotate_journal_max_bytes)
+        rotate = true;
+
+    if (!rotate)
+        return false;
+
+    auto last_rev = max_rev;
+
+    m_journal.reset();
+
+    int rc = ldb::rename(m_path, JOURNAL_NAME, fmt::format("{}-{}", JOURNAL_NAME, last_rev));
+    if (rc != LDB_OK)
+        throw nplex_exception("Failed to rotate journal: {}", ldb_strerror(rc));
+
+    int flags = LDB_OPEN_CREATE | (m_params.fsync ? LDB_OPEN_FSYNC : 0);
+    m_journal = std::make_shared<ldb::journal_t>(m_path, JOURNAL_NAME, flags);
+
+    if (m_rotate_cb)
+        m_rotate_cb();
+
+    LOG_INFO("Rotated journal at r{}", last_rev);
+    return true;
 }
 
 void nplex::journal_writer::stop()
@@ -125,6 +167,25 @@ void nplex::journal_writer::run()
 
     while (m_running.load() || !m_queue.empty())
     {
+        if (rotate_if_needed())
+            continue;
+
+        std::uint64_t remaining_entries = 0;
+        std::uint64_t remaining_bytes = 0;
+
+        if (m_params.rotate_journal_max_entries > 0)
+        {
+            auto [min_rev, max_rev] = m_journal->get_range();
+            std::uint64_t current_entries = (max_rev >= min_rev && min_rev != 0 ? (max_rev - min_rev + 1) : 0);
+            remaining_entries = (current_entries >= m_params.rotate_journal_max_entries ? 0 : m_params.rotate_journal_max_entries - current_entries);
+        }
+
+        if (m_params.rotate_journal_max_bytes > 0)
+        {
+            std::uint64_t current_size = m_journal->get_size();
+            remaining_bytes = (current_size >= m_params.rotate_journal_max_bytes ? 0 : m_params.rotate_journal_max_bytes - current_size);
+        }
+
         // Step1: Get data from queue
         {
             std::unique_lock<std::mutex> lock(m_mutex);
@@ -141,6 +202,12 @@ void nplex::journal_writer::run()
             while (!m_queue.empty())
             {
                 size_t bytes = estimate_bytes(m_queue.front());
+
+                if (remaining_entries > 0 && !items_batch.empty() && items_batch.size() >= remaining_entries)
+                    break;
+
+                if (remaining_bytes > 0 && !items_batch.empty() && bytes_batch + bytes > remaining_bytes)
+                    break;
 
                 if (!items_batch.empty() && bytes_batch + bytes > m_params.flush_max_bytes)
                     break;
@@ -176,10 +243,11 @@ void nplex::journal_writer::run()
         // Step3: Write batch to journal
         start_time = uv_hrtime();
 
-        ldb_rc = m_journal.append(entries_batch.data(), entries_batch.size(), &num_writes);
+        ldb_rc = m_journal->append(entries_batch.data(), entries_batch.size(), &num_writes);
 
         LOG_TRACE("journal_writer wrote {}/{} entries ({} bytes) in {}μs", 
             num_writes, entries_batch.size(), bytes_to_string(bytes_batch), (uv_hrtime() - start_time) / 1000);
+        UNUSED(start_time);
 
         if (ldb_rc != LDB_OK)
             LOG_ERROR("journal_writer append failed: {}", ldb_strerror(ldb_rc));

@@ -32,6 +32,8 @@ static constexpr const char *WRITE_QUEUE_MAX_LENGTH                     = "write
 static constexpr const char *WRITE_QUEUE_MAX_BYTES                      = "write-queue-max-bytes";
 static constexpr const char *FLUSH_MAX_ENTRIES                          = "flush-max-entries";
 static constexpr const char *FLUSH_MAX_BYTES                            = "flush-max-bytes";
+static constexpr const char *ROTATE_JOURNAL_MAX_ENTRIES                 = "rotate-journal-max-entries";
+static constexpr const char *ROTATE_JOURNAL_MAX_BYTES                   = "rotate-journal-max-bytes";
 static constexpr const char *MAX_UPDATES_BETWEEN_SNAPSHOTS              = "max-updates-between-snapshots";
 static constexpr const char *MAX_BYTES_BETWEEN_SNAPSHOTS                = "max-bytes-between-snapshots";
 static constexpr const char *TOMBSTONE_RETENTION_MAX                    = "tombstone-retention-max";
@@ -184,6 +186,10 @@ static void parse_section_main(nplex::config_t *cfg, const char *name, const cha
         cfg->journal.flush_max_entries = parse_uint32(value);
     } else if (strcmp(name, FLUSH_MAX_BYTES) == 0) {
         cfg->journal.flush_max_bytes = parse_bytes(value);
+    } else if (strcmp(name, ROTATE_JOURNAL_MAX_ENTRIES) == 0) {
+        cfg->journal.rotate_journal_max_entries = parse_uint32(value);
+    } else if (strcmp(name, ROTATE_JOURNAL_MAX_BYTES) == 0) {
+        cfg->journal.rotate_journal_max_bytes = parse_bytes(value);
     } else if (strcmp(name, MAX_UPDATES_BETWEEN_SNAPSHOTS) == 0) {
         cfg->context.snapshot_max_entries = parse_uint32(value);
     } else if (strcmp(name, MAX_BYTES_BETWEEN_SNAPSHOTS) == 0) {

@@ -95,7 +95,7 @@ and compile some examples.
 
 ```bash
 # Example: run the functional tests
-./testfunc -u admin -p s3cr3t -s localhost:14022
+./functests -u admin -p s3cr3t -s localhost:14022
 
 # Example: run the stress test (flooder)
 ./flooder -u admin -p s3cr3t -s localhost:14022 -n 50000 -m 30

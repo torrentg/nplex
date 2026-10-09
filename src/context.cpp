@@ -89,6 +89,7 @@ static void cb_task_after(uv_work_t *req, int status)
     uint64_t duration_us = (uv_hrtime() - task->start_time) / 1000;
 
     LOG_TRACE("Task {}: duration = {} μs", task->name(), duration_us);
+    UNUSED(duration_us);
 
     if (status == UV_ECANCELED) {
         LOG_DEBUG("Task {} cancelled", task->name());
@@ -150,8 +151,13 @@ nplex::context_t::context_t(uv_loop_t *loop, const config_t &config) : m_loop(lo
 
     auto path = std::filesystem::current_path();
 
-    m_storage = std::make_shared<storage_t>(path, config.journal.check, config.journal.fsync);
-    m_journal_writer = std::make_unique<journal_writer>(m_storage->get_journal(), config.journal);
+    auto writer_journal = open_journal(path / (std::string{JOURNAL_NAME} + ".dat"), LDB_OPEN_CREATE | (config.journal.fsync ? LDB_OPEN_FSYNC : 0));
+
+    if (config.journal.check)
+        writer_journal->check(true);
+
+    m_storage = std::make_shared<storage_t>(path, config.journal.check);
+    m_journal_writer = std::make_unique<journal_writer>(path, std::move(writer_journal), config.journal);
 
     m_rev_0 = m_storage->get_min_rev();
     m_rev_w = m_storage->get_max_rev();
@@ -183,6 +189,9 @@ nplex::context_t::context_t(uv_loop_t *loop, const config_t &config) : m_loop(lo
                 LOG_ERROR("Exception in journal writer: {}", e.what());
             }
             stop();
+        },
+        [this]() {
+            m_storage->refresh_journals();
         }
     );
 }

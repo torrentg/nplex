@@ -2,6 +2,9 @@
   "files.watcherExclude": {
     "**/build/**": true
   },
+  "search.exclude": {
+    "**/build/**": true
+  },
   "files.associations": {
     "memory": "cpp",
     "cctype": "cpp",
