@@ -12,9 +12,23 @@
 #define HOSTNAME_PATTERN "^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9])\\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\\-]{0,61}[A-Za-z0-9])$"
 
 namespace {
-    const std::regex ipv4_regex{IPV4_PATTERN, std::regex::extended | std::regex::nosubs};
-    const std::regex ipv6_regex{IPV6_PATTERN, std::regex::extended | std::regex::nosubs};
-    const std::regex hostname_regex{HOSTNAME_PATTERN, std::regex::extended | std::regex::nosubs};
+    const std::regex &ipv4_regex()
+    {
+        static const std::regex regex{IPV4_PATTERN, std::regex::extended | std::regex::nosubs};
+        return regex;
+    }
+
+    const std::regex &ipv6_regex()
+    {
+        static const std::regex regex{IPV6_PATTERN, std::regex::extended | std::regex::nosubs};
+        return regex;
+    }
+
+    const std::regex &hostname_regex()
+    {
+        static const std::regex regex{HOSTNAME_PATTERN, std::regex::extended | std::regex::nosubs};
+        return regex;
+    }
 }
 
 nplex::addr_t::addr_t(const std::string_view &str)
@@ -43,16 +57,16 @@ nplex::addr_t::addr_t(const std::string_view &str)
     {
         m_host = m_host.substr(1, m_host.size() - 2);
 
-        if (!std::regex_match(m_host, ipv6_regex))
+        if (!std::regex_match(m_host, ipv6_regex()))
             throw std::invalid_argument(fmt::format("'{}' is an invalid IP6 address", str));
 
         m_family = AF_INET6;
     }
-    else if (std::regex_match(m_host, ipv4_regex))
+    else if (std::regex_match(m_host, ipv4_regex()))
     {
         m_family = AF_INET;
     }
-    else if (std::regex_match(m_host, hostname_regex))
+    else if (std::regex_match(m_host, hostname_regex()))
     {
         m_family = AF_UNSPEC;
     }

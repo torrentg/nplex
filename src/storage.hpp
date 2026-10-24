@@ -2,189 +2,134 @@
 
 #include "common.hpp"
 #include "schema.hpp"
+#include "params.hpp"
 #include "store.hpp"
 #include "user.hpp"
-#include "journal.h"
-#include <filesystem>
-#include <string>
-#include <memory>
-#include <mutex>
-#include <map>
+#include "persister.hpp"
+#include "writer_thread.hpp"
 
 namespace nplex {
 
-using journal_ptr = std::shared_ptr<ldb::journal_t>;
-
-struct snapshot_item_t
-{
-    rev_t rev = 0;
-    std::string filename{};
-    bool checked = false;
-};
-
-struct journal_item_t
-{
-    rev_t from_rev = 0;
-    rev_t to_rev = 0;
-    std::string filename{};
-    journal_ptr journal{};
-    bool checked = false;
-};
-
-/** 
- * Persistent storage (disk).
- * 
- * All methods are blocking.
- * This object is accessed by multiple threads (tasks).
- * 
- * @see journal_writer
+/**
+ * Methods used by the nplex server to interact with the storage backend.
  */
 class storage_t
 {
   public:
 
-    /**
-     * Constructor.
-     * 
-     * @param[in] path Storage path.
-     * @param[in] flags Journal flags.
-     */
-    storage_t(const std::filesystem::path &path, bool check);
+    using result_callback_f = writer_thread_t::result_callback_f;
+    using error_callback_f = writer_thread_t::error_callback_f;
+
+    storage_t(const journal_params_t &params);
     ~storage_t() = default;
 
-    /**
-     * Non-copyable class
-     */
-    storage_t(const storage_t &) = delete;
-    storage_t & operator=(const storage_t &) = delete;
+    void set_updates_persister(const std::shared_ptr<updates_persister_t> &persister);
+    void set_snapshot_persister(const std::shared_ptr<snapshot_persister_t> &persister);
+
+    void start(result_callback_f &&result_cb, error_callback_f &&error_cb);
+    void stop();
 
     /**
-     * Get the journal object.
-     * 
-     * @return Reference to the journal.
+     * Returns the minimum revision that can be reconstructed.
+     *
+     * Execution model:
+     * - Synchronous
+     * - Non-blocking (expected to return cached metadata)
      */
-    ldb::journal_t & get_journal() { return *m_journal; }
+    rev_t min_rev();
 
     /**
-     * Refresh the available journals after a rotation.
+     * Returns the maximum revision currently available.
+     *
+     * Execution model:
+     * - Synchronous
+     * - Non-blocking (expected to return cached metadata)
      */
-    void refresh_journals();
+    rev_t max_rev();
 
     /**
-     * Get the minimum revision constructible.
-     * 
-     * @return Minimum revision.
+     * Reads updates starting at the given revision and invokes a callback per entry.
+     *
+     * The callback should return true to continue and false to stop early.
+     *
+     * Execution model:
+     * - Synchronous
+     * - Blocking (may perform storage I/O)
+     *
+     * @param[in] from_rev First revision to read (included).
+     * @param[in] on_entry Callback invoked for each read update.
+     * @param[in] max_entries Maximum number of entries to read.
      */
-    rev_t get_min_rev();
+    void read_updates(
+        rev_t from_rev,
+        const std::function<bool(const msgs::Update *)> &on_entry,
+        std::size_t max_entries = UINT64_MAX);
 
     /**
-     * Get the maximum revision constructible.
+     * Reconstructs the store at a given revision.
+     *
+     * If a user is provided, the result should be filtered by user visibility.
+     *
+     * Execution model:
+     * - Synchronous
+     * - Blocking (may perform storage I/O and replay)
+     *
+     * @param[in] rev Target revision.
+     * @param[in] user Optional user filter.
+     *
+     * @return Store content at the requested revision.
      * 
-     * @return Maximum revision.
+     * @throws nplex_exception if the store cannot be reconstructed at the requested revision.
      */
-    rev_t get_max_rev();
+    store_t rebuild_store_at(rev_t rev, const user_ptr &user = nullptr);
 
     /**
-     * Reads entries from rev until func returns false or last entry read.
-     * 
-     * This is a blocking method.
-     * 
-     * @param[in] rev Initial revision (included).
-     * @param[in] func Function to execute on every entry.
-     * @param[in] num Number of entries to read.
-     * 
-     * @return Number of entries read.
-     * 
-     * @exception nplex_exception Error reading entries.
+     * Reports whether the writer can currently accept more updates.
+     *
+     * When false, callers should apply backpressure and avoid submitting more writes.
+     *
+     * Execution model:
+     * - Synchronous
+     * - Non-blocking
      */
-    std::size_t read_entries(rev_t rev, const std::function<bool(const msgs::Update *)> &func, std::size_t num = UINT64_MAX);
+    bool can_accept_writes() const;
 
     /**
-     * Reads a snapshot from disk.
+     * Submits one update for asynchronous persistence.
+     *
+     * Completion (success/failure) is reported through the result callback.
+     *
+     * Execution model:
+     * - Asynchronous
+     * - Non-blocking
+     *
+     * @param[in] upd Update to persist (ownership is transferred).
      * 
-     * Returns the latest snapshot available having revision less-than or 
-     * equals-to the given revision.
-     * 
-     * This is a blocking method.
-     * 
+     * @return True if the update was successfully queued for persistence, false otherwise.
+     */
+    bool write_update_async(update_t &&upd);
+
+    /**
+     * Writes a snapshot payload.
+     *
+     * If a snapshot for the same revision already exists, implementations may overwrite it.
+     *
+     * Execution model:
+     * - Synchronous
+     * - Blocking (may perform storage I/O)
+     *
      * @param[in] rev Snapshot revision.
-     * 
-     * @return Snapshot binary data (empty if not available).
-     * 
-     * @exception nplex_exception If the file cannot be read or the content is invalid.
+     * @param[in] data Serialized snapshot payload.
      */
-    std::string read_snapshot(rev_t rev);
+    void write_snapshot(rev_t rev, const std::string_view &data);
 
-    /**
-     * Writes a snapshot to disk.
-     * 
-     * If the snapshot already exists, it will be overwritten.
-     * 
-     * This is a blocking method.
-     * 
-     * @param[in] data Data to save to disk.
-     * 
-     * @return Revision of the persisted snapshot
-     * 
-     * @exception nplex_exception Invalid snapshot data, error writing file or invalid buffer.
-     */
-    rev_t write_snapshot(const std::string_view &data);
+  private:
 
-    /**
-     * Recreates the store content at a given revision.
-     * 
-     * This method is blocking.
-     * 
-     * @param[in] rev Revision.
-     * @param[in] user User used to filter store content (empty means no filter).
-     * 
-     * @return Store content adapted to user visibility.
-     * 
-     * @exception nplex_exception Error reading entries.
-     */
-    store_t get_store(rev_t rev, const user_ptr &user = nullptr);
-
-  private:  // members
-
-    mutable std::mutex m_mutex;                     // Protects m_snapshots and m_archives.
-    const std::filesystem::path m_path;             // Storage path.
-    journal_ptr m_journal;                          // Current journal.
-    std::map<rev_t, snapshot_item_t> m_snapshots;   // Map of available snapshots.
-    std::map<rev_t, journal_item_t> m_archives;     // Map of archived journals.
-    bool m_check = false;                           // Whether to check snapshots and journals.
-
-  private:  // methods
-
-    std::string get_snapshot_filename(rev_t rev) const;
-    void rebuild_map_snapshots();
-    void rebuild_map_archives();
-    journal_ptr get_archive(rev_t rev);
+    std::shared_ptr<updates_persister_t> m_updates_persister;
+    std::shared_ptr<snapshot_persister_t> m_snapshot_persister;
+    writer_thread_t m_writer_thread;
 };
 
 using storage_ptr = std::shared_ptr<storage_t>;
-
-/**
- * Read and parse a snapshot file.
- * 
- * @param[in] file Snapshot file path (with dat extension).
- * @param[in] check Whether to check the snapshot content (validity and schema).
- * 
- * @return Snapshot binary data (a valid msgs::Snapshot)
- * 
- * @exception nplex_exception If the file cannot be read or the content is invalid.
- */
-std::string read_snapshot(const std::filesystem::path &file, bool check = false);
-
-/**
- * Open a journal file.
- * 
- * @param[in] file Journal file path (with dat or idx extension).
- * @param[in] flags Journal open flags (LDB_OPEN_*).
- * 
- * @return The opened journal object.
- * 
- * @exception nplex_exception If the journal cannot be opened or the metadata is invalid.
- */
-journal_ptr open_journal(const std::filesystem::path &file, int flags);
 
 } // namespace nplex

@@ -3,7 +3,7 @@
 #include "utils.hpp"
 #include "addr.hpp"
 #include "server.hpp"
-#include "readme_template.h"
+#include "readme_template.hpp"
 #include "logger.hpp"
 #include <string>
 #include <filesystem>

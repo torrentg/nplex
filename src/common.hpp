@@ -15,11 +15,6 @@
 #define CONFIG_FILENAME         "nplex.ini"
 #define LOG_FILENAME            "nplex.log"
 #define README_FILENAME         "README.md"
-#define JOURNAL_NAME            "journal"
-#define SNAPSHOT_FILENAME       "snapshot-{}.dat"
-#define JOURNAL_MAGIC           "NPLEXLOG"
-#define SNAPSHOT_MAGIC          "NPLEXSNP"
-#define MAGIC_LEN               8
 
 #define CRUD_CREATE             0x01
 #define CRUD_READ               0x02
@@ -57,10 +52,10 @@ using millis_t = std::chrono::milliseconds;
 //! Transaction metadata.
 struct meta_t
 {
-    rev_t rev;                      //!< Revision at transaction creation.
+    rev_t rev = 0;                  //!< Revision at transaction creation.
     gto::cstring user;              //!< Transaction creator.
     millis_t timestamp;             //!< Creation timestamp (milliseconds since Unix epoch, UTC).
-    std::uint32_t tx_type;          //!< Transaction type (user-defined).
+    std::uint32_t tx_type = 0;      //!< Transaction type (user-defined).
     std::set<key_t> refs;           //!< Set of keys modified by the transaction.
 };
 
@@ -69,15 +64,6 @@ using meta_ptr = std::shared_ptr<meta_t>;
 //! Database value.
 class value_t
 {
-    friend class store_t;
-    static const gto::cstring REMOVED;
-    static const gto::cstring EMPTY;
-
-  private:
-
-    gto::cstring m_data;
-    meta_ptr m_meta;
-
   public:
 
     value_t(const gto::cstring &data, std::shared_ptr<meta_t> meta) : m_data{data}, m_meta{std::move(meta)} {}
@@ -87,12 +73,31 @@ class value_t
     const gto::cstring & data() const { return m_data; }
 
     rev_t rev() const { return (m_meta ? m_meta->rev : 0); }
-    const gto::cstring & user() const { return (m_meta ? m_meta->user : EMPTY); }
+    const gto::cstring & user() const { return (m_meta ? m_meta->user : empty_value()); }
     millis_t timestamp() const { return (m_meta ? m_meta->timestamp : millis_t{0}); }
     std::uint32_t tx_type() const { return (m_meta ? m_meta->tx_type : 0); }
 
-    void set_removed() { m_data = REMOVED; }
-    bool is_removed() const { return (m_data.c_str() == REMOVED.c_str()); }
+    void set_removed() { m_data = removed_value(); }
+    bool is_removed() const { return (m_data.c_str() == removed_value().c_str()); }
+
+  private:
+
+    friend class store_t;
+
+    gto::cstring m_data;
+    meta_ptr m_meta;
+
+    static const gto::cstring &empty_value()
+    {
+        static const gto::cstring value = "";
+        return value;
+    }
+
+    static const gto::cstring &removed_value()
+    {
+        static const gto::cstring value = "<REMOVED>";
+        return value;
+    }
 };
 
 using value_ptr = std::shared_ptr<value_t>;

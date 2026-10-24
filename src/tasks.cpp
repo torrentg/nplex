@@ -15,7 +15,7 @@ void nplex::snapshot_task_t::run()
 {
     auto storage = m_session->context()->storage();
 
-    m_store = storage->get_store(m_rev, m_session->user());
+    m_store = storage->rebuild_store_at(m_rev, m_session->user());
 }
 
 void nplex::snapshot_task_t::after()
@@ -31,7 +31,7 @@ void nplex::sync_task_t::run()
 {
     auto storage = m_session->context()->storage();
 
-    storage->read_entries(m_rev + 1, [this](const msgs::Update *update) -> bool {
+    storage->read_updates(m_rev + 1, [this](const msgs::Update *update) -> bool {
 
         auto upd = deserialize_update(update, m_session->user());
         auto bytes = estimate_bytes(upd);
@@ -65,6 +65,6 @@ void nplex::sync_task_t::after()
 // ==========================================================
 void nplex::write_snapshot_task_t::run()
 {
-    m_storage->write_snapshot(std::string_view{
+    m_storage->write_snapshot(m_rev, std::string_view{
         reinterpret_cast<const char *>(m_buf.data()), m_buf.size() });
 }

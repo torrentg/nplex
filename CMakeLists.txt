@@ -173,31 +173,31 @@ add_custom_command(
     COMMENT "Copying schema.hpp to src directory"
 )
 
-# Generate readme_template.h from src/readme_template.md
+# Generate readme_template.cpp from src/readme_template.md
 add_custom_command(
-    OUTPUT "${CMAKE_BINARY_DIR}/readme_template.h"
+    OUTPUT "${CMAKE_BINARY_DIR}/readme_template.cpp"
     COMMAND ${XXD_EXECUTABLE} -i -n readme_content
         "${PROJECT_SOURCE_DIR}/src/readme_template.md"
-        "${CMAKE_BINARY_DIR}/readme_template.h"
+        "${CMAKE_BINARY_DIR}/readme_template.cpp"
     DEPENDS "${PROJECT_SOURCE_DIR}/src/readme_template.md"
-    COMMENT "Generating readme_template.h from src/readme_template.md"
+    COMMENT "Generating readme_template.cpp from src/readme_template.md"
 )
 
 add_custom_target(
     GENERATE_readme_template ALL
-    DEPENDS "${CMAKE_BINARY_DIR}/readme_template.h"
+    DEPENDS "${CMAKE_BINARY_DIR}/readme_template.cpp"
 )
 
-# Copy readme_template.h to src/readme_template.h
+# Copy readme_template.cpp to src/readme_template.cpp
 add_custom_command(
-    OUTPUT "${PROJECT_SOURCE_DIR}/src/readme_template.h"
+    OUTPUT "${PROJECT_SOURCE_DIR}/src/readme_template.cpp"
     COMMAND ${CMAKE_COMMAND} -E copy
-        "${CMAKE_BINARY_DIR}/readme_template.h"
-        "${PROJECT_SOURCE_DIR}/src/readme_template.h"
+        "${CMAKE_BINARY_DIR}/readme_template.cpp"
+        "${PROJECT_SOURCE_DIR}/src/readme_template.cpp"
     DEPENDS
         GENERATE_readme_template
-        "${CMAKE_BINARY_DIR}/readme_template.h"
-    COMMENT "Copying readme_template.h to src directory"
+        "${CMAKE_BINARY_DIR}/readme_template.cpp"
+    COMMENT "Copying readme_template.cpp to src directory"
 )
 
 # Copy generated files to src/ directory
@@ -205,7 +205,7 @@ add_custom_target(
     copy_generated
     ALL
     DEPENDS
-        "${PROJECT_SOURCE_DIR}/src/readme_template.h"
+        "${PROJECT_SOURCE_DIR}/src/readme_template.cpp"
         "${PROJECT_SOURCE_DIR}/src/buildinfo.hpp"
         "${PROJECT_SOURCE_DIR}/src/schema.hpp"
 )
@@ -336,7 +336,6 @@ target_sources(
     ${CMAKE_CURRENT_LIST_DIR}/src/addr.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/addr.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/buildinfo.hpp
-    ${CMAKE_CURRENT_LIST_DIR}/src/common.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/common.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/config.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/config.hpp
@@ -345,8 +344,10 @@ target_sources(
     ${CMAKE_CURRENT_LIST_DIR}/src/context.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/context.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/exception.hpp
-    ${CMAKE_CURRENT_LIST_DIR}/src/journal_writer.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/src/journal_writer.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/filesystem_snapshot_persister.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/filesystem_snapshot_persister.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/journal_updates_persister.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/journal_updates_persister.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/json.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/json.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/logger.cpp
@@ -354,6 +355,9 @@ target_sources(
     ${CMAKE_CURRENT_LIST_DIR}/src/messaging.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/messaging.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/params.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/persister.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/readme_template.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/readme_template.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/schema.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/schema1.fbs
     ${CMAKE_CURRENT_LIST_DIR}/src/schema2.fbs
@@ -372,6 +376,8 @@ target_sources(
     ${CMAKE_CURRENT_LIST_DIR}/src/user.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/utils.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/utils.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/writer_thread.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/writer_thread.hpp
 )
 
 add_executable(

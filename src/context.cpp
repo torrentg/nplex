@@ -1,5 +1,4 @@
 #include "context.hpp"
-#include "journal_writer.hpp"
 #include "exception.hpp"
 #include "storage.hpp"
 #include "session.hpp"
@@ -7,9 +6,11 @@
 #include "logger.hpp"
 #include "tasks.hpp"
 #include "user.hpp"
-#include "journal.h"
+#include "journal_updates_persister.hpp"
+#include "filesystem_snapshot_persister.hpp"
 #include <fmt/core.h>
 #include <fmt/ranges.h>
+#include <filesystem>
 #include <cassert>
 #include <cstring>
 
@@ -150,21 +151,19 @@ nplex::context_t::context_t(uv_loop_t *loop, const config_t &config) : m_loop(lo
     assert(m_params.cache_max_bytes);
 
     auto path = std::filesystem::current_path();
+    auto updates_persister = std::make_shared<journal_updates_persister_t>(path);
+    auto snapshot_persister = std::make_shared<filesystem_snapshot_persister_t>(path);
 
-    auto writer_journal = open_journal(path / (std::string{JOURNAL_NAME} + ".dat"), LDB_OPEN_CREATE | (config.journal.fsync ? LDB_OPEN_FSYNC : 0));
+    m_storage = std::make_shared<storage_t>(config.journal);
+    m_storage->set_updates_persister(updates_persister);
+    m_storage->set_snapshot_persister(snapshot_persister);
 
-    if (config.journal.check)
-        writer_journal->check(true);
-
-    m_storage = std::make_shared<storage_t>(path, config.journal.check);
-    m_journal_writer = std::make_unique<journal_writer>(path, std::move(writer_journal), config.journal);
-
-    m_rev_0 = m_storage->get_min_rev();
-    m_rev_w = m_storage->get_max_rev();
+    m_rev_0 = m_storage->min_rev();
+    m_rev_w = m_storage->max_rev();
     LOG_INFO("Data range: [r{}, r{}]", m_rev_0, m_rev_w);
 
     // set store content
-    m_store = m_storage->get_store(m_rev_w);
+    m_store = m_storage->rebuild_store_at(m_rev_w);
     m_store.config(config.store);
 
     // async handle to stop the loop
@@ -178,9 +177,9 @@ nplex::context_t::context_t(uv_loop_t *loop, const config_t &config) : m_loop(lo
     uv_async_init(m_loop, m_async_updates_written.get(), cb_async_updates_result);
 
     // start journal writing thread
-    m_journal_writer->start(
-        [this](bool success, std::vector<update_t> &&updates) {
-            on_updates_written_1(success, std::move(updates));
+    m_storage->start(
+        [this](bool success, const std::span<update_t> &updates) {
+            on_updates_written_1(success, updates);
         },
         [this](const std::exception_ptr &ex) {
             try {
@@ -189,9 +188,6 @@ nplex::context_t::context_t(uv_loop_t *loop, const config_t &config) : m_loop(lo
                 LOG_ERROR("Exception in journal writer: {}", e.what());
             }
             stop();
-        },
-        [this]() {
-            m_storage->refresh_journals();
         }
     );
 }
@@ -216,8 +212,8 @@ void nplex::context_t::close()
         session->disconnect(ERR_CLOSED_BY_LOCAL);
 
     // stopping the journal writing thread
-    if (m_journal_writer)
-        m_journal_writer->stop();
+    if (m_storage)
+        m_storage->stop();
 
     // release libuv resources
     if (m_async_updates_written)
@@ -238,8 +234,8 @@ void nplex::context_t::persist(update_t &&upd)
     if (!m_running)
         return;
 
-    if (m_journal_writer)
-        m_journal_writer->write(std::move(upd));
+    assert(m_storage);
+    m_storage->write_update_async(std::move(upd));
 }
 
 void nplex::context_t::submit_task(task_t *task)
@@ -317,7 +313,7 @@ void nplex::context_t::release_session(session_t *session)
         uv_stop(m_loop);
 }
 
-void nplex::context_t::on_updates_written_1(bool success, std::vector<update_t> &&updates)
+void nplex::context_t::on_updates_written_1(bool success, const std::span<update_t> &updates)
 {
     if (!success) {
         auto min_rev = updates.empty() ? 0 : updates.front().meta->rev;
@@ -393,7 +389,7 @@ nplex::user_ptr nplex::context_t::get_user(const std::string &name) const
 
 std::tuple<nplex::msgs::SubmitCode, nplex::rev_t> nplex::context_t::try_commit(const msgs::SubmitRequest *msg, const user_t &user)
 {
-    if (m_journal_writer->is_blocked())
+    if (!m_storage->can_accept_writes())
         return { msgs::SubmitCode::TRY_LATER, 0 };
 
     update_t update;

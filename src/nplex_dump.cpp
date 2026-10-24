@@ -2,6 +2,8 @@
 #include "exception.hpp"
 #include "storage.hpp"
 #include "json.hpp"
+#include "journal_updates_persister.hpp"
+#include "filesystem_snapshot_persister.hpp"
 #include "journal.h"
 #include <fmt/core.h>
 #include <filesystem>
@@ -14,6 +16,7 @@
 
 #define APP_NAME "nplex_dump"
 
+static constexpr std::string_view SNAPSHOT_MAGIC = "NPLEXSNP";
 static constexpr std::size_t BATCH_SIZE    = 10'000;
 static constexpr std::size_t BATCH_BYTES   = 1 * 1024 * 1024;
 static constexpr std::size_t BATCH_FACTOR  = 2;
@@ -38,7 +41,7 @@ static file_type_e detect_file_type(const fs::path &path)
     if (!ifs.read(header, sizeof(header)))
         return file_type_e::UNKNOWN;
 
-    if (std::memcmp(header, SNAPSHOT_MAGIC, MAGIC_LEN) == 0)
+    if (std::memcmp(header, SNAPSHOT_MAGIC.data(), sizeof(header)) == 0)
         return file_type_e::SNAPSHOT;
 
     if (*reinterpret_cast<uint64_t *>(header) == LDB_DAT_MAGIC_NUMBER)
@@ -53,7 +56,7 @@ static file_type_e detect_file_type(const fs::path &path)
 
 static void dump_snapshot(const fs::path &path)
 {
-    auto content = nplex::read_snapshot(path);
+    auto content = nplex::filesystem_snapshot_persister_t::read_snapshot_file(path);
     auto json = nplex::snapshot_to_json(content.data(), content.size());
     printf("%s\n", json.c_str());
 }
@@ -61,8 +64,8 @@ static void dump_snapshot(const fs::path &path)
 static void dump_journal(const fs::path &path)
 {
     int rc = 0;
-    auto journal = nplex::open_journal(path, LDB_OPEN_READONLY);
-        auto range = journal->get_range();
+    auto journal = nplex::journal_updates_persister_t::open_journal_file(path, LDB_OPEN_READONLY);
+    auto range = journal->get_range();
 
     if (range.first == 0)
         return;

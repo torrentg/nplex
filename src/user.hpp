@@ -7,7 +7,7 @@ namespace nplex {
 
 struct acl_t
 {
-    std::uint8_t mode;                      // Attributes (1=CREATE, 2=READ, 4=UPDATE, 8=DELETE).
+    std::uint8_t mode = 0;                  // Attributes (1=CREATE, 2=READ, 4=UPDATE, 8=DELETE).
     std::string pattern;                    // Glob pattern (ex: "foo?", "**/logs/*.txt").
 };
 

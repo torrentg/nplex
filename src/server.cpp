@@ -8,7 +8,6 @@
 #include <cstring>
 #include <cassert>
 #include <stdexcept>
-#include <filesystem>
 #include <sys/socket.h>
 
 static constexpr std::size_t MAX_QUEUED_CONNECTIONS = 128;
@@ -120,6 +119,18 @@ static void cb_close_handle(uv_handle_t *handle, void *arg)
     }
 }
 
+static void cleanup_event_loop(uv_loop_t *loop)
+{
+    if (!loop)
+        return;
+
+    uv_walk(loop, ::cb_close_handle, nullptr);
+    while (uv_run(loop, UV_RUN_NOWAIT))
+        ;
+
+    uv_loop_close(loop);
+}
+
 static void cb_tcp_connection(uv_stream_t *stream, int status)
 {
     if (status < 0) {
@@ -147,6 +158,7 @@ void nplex::server_t::init(const config_t &config)
         init_signals(config);
         init_network(config);
     } catch (...) {
+        cleanup_event_loop(m_loop.get());
         m_loop.reset();
         m_context.reset();
         m_sigint.reset();
@@ -238,9 +250,7 @@ void nplex::server_t::run() noexcept
         uv_run(m_loop.get(), UV_RUN_DEFAULT);
 
     // closing remaining objects
-    uv_walk(m_loop.get(), ::cb_close_handle, nullptr);
-    while (uv_run(m_loop.get(), UV_RUN_NOWAIT));
-    uv_loop_close(m_loop.get());
+    cleanup_event_loop(m_loop.get());
 
     // free resources
     m_context.reset();

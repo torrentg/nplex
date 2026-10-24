@@ -155,6 +155,10 @@ cmake ..
 make -j$(nproc)
 valgrind --tool=memcheck --leak-check=yes ./nplex -D test -l debug
 
+# Clang compiler instead of gcc
+cmake -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ ..
+make -j"$(nproc)"
+
 # clang-tidy (uncomment CMAKE_CXX_CLANG_TIDY in CMakeLists.txt)
 cmake ..
 make -j$(nproc)

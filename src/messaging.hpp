@@ -45,7 +45,7 @@ class output_chunk_t
 {
   public:
 
-  // Factory methods
+    // Factory methods
     static output_chunk_t * create(std::span<flatbuffers::DetachedBuffer> msgs);
     static output_chunk_t * create(flatbuffers::DetachedBuffer &&msg){
         flatbuffers::DetachedBuffer arr[1] = { std::move(msg) };
@@ -71,11 +71,11 @@ class output_chunk_t
   private:
 
     struct values_t {
-        std::uint32_t len;                      // Total message length (including len, metadata, content, checksum and delimiter) (big-endian)
-        std::uint32_t metadata;                 // Message metadata (ex. compression alg) -currently unused- (big-endian)
+        std::uint32_t len = 0;                  // Total message length (including len, metadata, content, checksum and delimiter) (big-endian)
+        std::uint32_t metadata = 0;             // Message metadata (ex. compression alg) -currently unused- (big-endian)
         flatbuffers::DetachedBuffer content;    // Message content (flatbuffer serialized data, length is multiple of 8)
-        std::uint32_t checksum;                 // CRC32 of len + metadata + content (big-endian)
-        std::uint32_t delimiter;                // Delimiter between messages (big-endian)
+        std::uint32_t checksum = 0;             // CRC32 of len + metadata + content (big-endian)
+        std::uint32_t delimiter = 0;            // Delimiter between messages (big-endian)
     };
 
     uv_write_t write_req;                       // Write request object

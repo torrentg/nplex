@@ -4,7 +4,6 @@
 #include "store.hpp"
 #include "session.hpp"
 #include "exception.hpp"
-#include "journal.h"
 #include <cassert>
 
 using namespace nplex::msgs;

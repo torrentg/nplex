@@ -228,14 +228,12 @@ std::size_t nplex::estimate_bytes(const update_t &update)
     bytes += sizeof(std::uint32_t);             // num deletes
     bytes += sizeof(std::uint32_t);             // user length
     bytes += update.meta->user.size();          // user
-    bytes += sizeof(std::uint32_t);             // num upserts
-    bytes += sizeof(std::uint32_t);             // num deletes
 
     for (const auto &pair : update.upserts)
     {
         bytes += sizeof(std::uint32_t);         // key length
-        bytes += pair.first.size();             // key data
         bytes += sizeof(std::uint32_t);         // value length
+        bytes += pair.first.size();             // key data
         bytes += pair.second->data().size();    // value data
     }
 
