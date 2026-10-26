@@ -151,7 +151,7 @@ nplex::context_t::context_t(uv_loop_t *loop, const config_t &config) : m_loop(lo
     assert(m_params.cache_max_bytes);
 
     auto path = std::filesystem::current_path();
-    auto updates_persister = std::make_shared<journal_updates_persister_t>(path);
+    auto updates_persister = std::make_shared<journal_updates_persister_t>(path, config.journal.fsync);
     auto snapshot_persister = std::make_shared<filesystem_snapshot_persister_t>(path);
 
     m_storage = std::make_shared<storage_t>(config.journal);

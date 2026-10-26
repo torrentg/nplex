@@ -29,7 +29,7 @@ struct args_t
     log_level_e         log_level = log_level_e::NONE;
     bool                check     = false;
     bool                daemonize = false;
-    std::optional<bool> fsync_off;
+    std::optional<bool> fsync_on;
 };
 
 static void help()
@@ -38,27 +38,27 @@ static void help()
         "Nplex is a key-value stream database.\n"
         "\n"
         "Usage:\n"
-        "  nplex -D datadir [OPTION]...\n"
+        "  nplex -D DATADIR [OPTION]...\n"
         "\n"
         "Options:\n"
-        "  -D DATADIR       Database directory.\n"
-        "  -a HOST:PORT     Address to listen on (ex: localhost:14022).\n"
-        "  -l LOGLEVEL      Log level (trace, debug, info, warning, error).\n"
-        "  -c               Check journal file at startup.\n"
-        "  -d               Run the program as a daemon.\n"
-        "  -F               Turn fsync off.\n"
-        "  -V, --version    Output version information, then exit.\n"
-        "  -h, --help       Show this help, then exit.\n"
+        "  -D, --datadir DATADIR  Database directory.\n"
+        "  -a, --addr HOST:PORT   Address to listen on (ex: localhost:14022).\n"
+        "  -l, --log LOGLEVEL     Log level (trace, debug, info, warning, error).\n"
+        "  -F, --fsync[=on|off]   Set fsync mode (on/off).\n"
+        "  -c, --check            Check journal file at startup.\n"
+        "  -d, --daemon           Run the program as a daemon.\n"
+        "  -V, --version          Output version information, then exit.\n"
+        "  -h, --help             Show this help, then exit.\n"
         "\n"
         "Signals:\n"
-        "  SIGHUP           Recreate log file (when daemonized).\n"
-        "  SIGINT           Graceful shutdown.\n"
-        "  SIGTERM          Graceful shutdown.\n"
-        "  SIGPIPE          Ignored.\n"
+        "  SIGHUP                 Recreate log file (when daemonized).\n"
+        "  SIGINT                 Graceful shutdown.\n"
+        "  SIGTERM                Graceful shutdown.\n"
+        "  SIGPIPE                Ignored.\n"
         "\n"
         "Exit status:\n"
-        "  0   finished without errors\n"
-        "  1   finished with errors\n"
+        "  0                      Finished without errors.\n"
+        "  1                      Finished with errors.\n"
         "\n"
         "Nplex home page: <" PROJECT_URL ">.\n");
 }
@@ -108,9 +108,15 @@ static args_t parse_args(int argc, char *argv[])
 
     // long options (name + has_arg + flag + val)
     const struct option options2[] = {
-        { "help",    0, nullptr, 'h' },
-        { "version", 0, nullptr, 'V' },
-        { nullptr,   0, nullptr,  0  }
+        { "datadir",  required_argument, nullptr, 'D' },
+        { "addr",     required_argument, nullptr, 'a' },
+        { "log",      required_argument, nullptr, 'l' },
+        { "fsync",    optional_argument, nullptr, 'F' },
+        { "check",    no_argument,       nullptr, 'c' },
+        { "daemon",   no_argument,       nullptr, 'd' },
+        { "help",     no_argument,       nullptr, 'h' },
+        { "version",  no_argument,       nullptr, 'V' },
+        { nullptr,    0,                 nullptr,  0  }
     };
 
     if (argc <= 1) {
@@ -168,8 +174,17 @@ static args_t parse_args(int argc, char *argv[])
                 args.daemonize = true;
                 break;
 
-            case 'F': // -F (turn fsync off)
-                args.fsync_off = true;
+            case 'F': // --fsync or --fsync=on|off
+                if (optarg == nullptr)
+                    args.fsync_on = true;
+                else if (std::string{optarg} == "on")
+                    args.fsync_on = true;
+                else if (std::string{optarg} == "off")
+                    args.fsync_on = false;
+                else {
+                    fprintf(stderr, "Error: Invalid fsync value (%s). Use --fsync, --fsync=on, or --fsync=off.\n", optarg);
+                    std::exit(EXIT_FAILURE);
+                }
                 break;
 
             default: // '?' (unexpected argument)
@@ -186,7 +201,7 @@ static args_t parse_args(int argc, char *argv[])
     }
 
     if (args.datadir.empty()) {
-        fprintf(stderr, "Error: Missing required argument -D <datadir>.\n");
+        fprintf(stderr, "Error: Missing required argument -D <datadir> or --datadir <datadir>.\n");
         std::exit(EXIT_FAILURE);
     }
 
@@ -230,8 +245,8 @@ static config_t init_config(const args_t &args)
             if (args.log_level != log_level_e::NONE)
                 config.log_level = args.log_level;
 
-            if (args.fsync_off.has_value())
-                config.journal.fsync = !args.fsync_off.value();
+            if (args.fsync_on.has_value())
+                config.journal.fsync = args.fsync_on.value();
 
             config.save(config_file);
         }
@@ -244,8 +259,8 @@ static config_t init_config(const args_t &args)
         if (args.log_level != log_level_e::NONE)
             config.log_level = args.log_level;
 
-        if (args.fsync_off.has_value())
-            config.journal.fsync = !args.fsync_off.value();
+        if (args.fsync_on.has_value())
+            config.journal.fsync = args.fsync_on.value();
 
         config.journal.check = args.check;
     }

@@ -68,7 +68,7 @@ void check_journal_metadata(const std::shared_ptr<ldb::journal_t> &journal)
 // journal_updates_persister_t methods
 // ==========================================================
 
-nplex::journal_updates_persister_t::journal_updates_persister_t(const fs::path &path) : m_path(path)
+nplex::journal_updates_persister_t::journal_updates_persister_t(const fs::path &path, bool fsync) : m_path(path)
 {
     std::error_code ec;
     const auto status = fs::status(m_path, ec);
@@ -92,7 +92,7 @@ nplex::journal_updates_persister_t::journal_updates_persister_t(const fs::path &
         throw nplex_exception("journal directory is not writable: {}", m_path.string());
     }
 
-    m_journal = open_journal_file(m_path, std::string{FILENAME_PREFIX}, LDB_OPEN_CREATE);
+    m_journal = open_journal_file(m_path, std::string{FILENAME_PREFIX}, LDB_OPEN_CREATE | (fsync ? LDB_OPEN_FSYNC : 0));
 }
 
 std::pair<nplex::rev_t, nplex::rev_t> nplex::journal_updates_persister_t::get_updates_range()

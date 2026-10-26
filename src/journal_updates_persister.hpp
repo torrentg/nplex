@@ -21,7 +21,7 @@ class journal_updates_persister_t : public updates_persister_t
 
     using journal_ptr = std::shared_ptr<ldb::journal_t>;
 
-    journal_updates_persister_t(const std::filesystem::path &path);
+    journal_updates_persister_t(const std::filesystem::path &path, bool fsync);
     ~journal_updates_persister_t() override = default;
 
     journal_updates_persister_t(const journal_updates_persister_t &) = delete;

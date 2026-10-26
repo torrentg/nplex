@@ -39,27 +39,27 @@ This produces two binaries in the `build/` directory:
 Nplex is a key-value stream database.
 
 Usage:
-  nplex -D datadir [OPTION]...
+  nplex -D DATADIR [OPTION]...
 
 Options:
-  -D DATADIR       Database directory.
-  -a HOST:PORT     Address to listen on (ex: localhost:14022).
-  -l LOGLEVEL      Log level (trace, debug, info, warning, error).
-  -c               Check journal file at startup.
-  -d               Run the program as a daemon.
-  -F               Turn fsync off.
-  -V, --version    Output version information, then exit.
-  -h, --help       Show this help, then exit.
+  -D, --datadir DATADIR  Database directory.
+  -a, --addr HOST:PORT   Address to listen on (ex: localhost:14022).
+  -l, --log LOGLEVEL     Log level (trace, debug, info, warning, error).
+  -F, --fsync[=on|off]   Set fsync mode (on/off).
+  -c, --check            Check journal file at startup.
+  -d, --daemon           Run the program as a daemon.
+  -V, --version          Output version information, then exit.
+  -h, --help             Show this help, then exit.
 
 Signals:
-  SIGHUP           Recreate log file (when daemonized).
-  SIGINT           Graceful shutdown.
-  SIGTERM          Graceful shutdown.
-  SIGPIPE          Ignored.
+  SIGHUP                 Recreate log file (when daemonized).
+  SIGINT                 Graceful shutdown.
+  SIGTERM                Graceful shutdown.
+  SIGPIPE                Ignored.
 
 Exit status:
-  0   finished without errors
-  1   finished with errors
+  0                      Finished without errors.
+  1                      Finished with errors.
 
 Nplex home page: <https://github.com/torrentg/nplex>.
 ```
@@ -144,7 +144,7 @@ firefox flamegraph.svg
 cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo \
       -DCMAKE_CXX_FLAGS="-fno-omit-frame-pointer" \
       -DCMAKE_C_FLAGS="-fno-omit-frame-pointer" ..
-strace -ff -T -k -o trace ./nplex -F -D test
+strace -ff -T -k -o trace ./nplex --fsync=off -D test
 
 # Code coverage
 cmake -DENABLE_COVERAGE=ON ..

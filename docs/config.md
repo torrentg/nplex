@@ -10,7 +10,7 @@ Below is a complete reference of all parameters.
 |-----------|---------|-------------|
 | `addr` | `localhost:14022` | Address and port to listen on. |
 | `log-level` | `info` | Log verbosity: `trace`, `debug`, `info`, `warning`, `error`. |
-| `disable-fsync` | `false` | Disable `fsync` after journal writes. Faster but risks data loss on crash. |
+| `fsync` | `false` | Call `fsync` after journal writes (slow). |
 | `max-sessions` | `64` | Maximum simultaneous client connections. |
 | `max-msg-bytes` | `2MB` | Maximum size of a single outbound message. |
 | `write-queue-max-length` | `1000` | Maximum number of updates queued for disk write. |

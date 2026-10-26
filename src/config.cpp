@@ -14,7 +14,7 @@ using namespace std::literals;
     // INI keys
 static constexpr const char *SECTION_USER_DEFAULTS                      = "user-defaults";
 static constexpr const char *LOG_LEVEL                                  = "log-level";
-static constexpr const char *DISABLE_FSYNC                              = "disable-fsync";
+static constexpr const char *FSYNC                                      = "fsync";
 static constexpr const char *NETWORK_ADDR                               = "addr";
 static constexpr const char *MAX_SESSIONS                               = "max-sessions";
 static constexpr const char *USER_PASSWORD                              = "password";
@@ -45,7 +45,7 @@ static constexpr const char *CACHE_MAX_ENTRIES                          = "cache
 // Defaults
 static constexpr bool          DEFAULT_CHECK_JOURNAL                    = false;
 static constexpr nplex::log_level_e DEFAULT_LOG_LEVEL                   = nplex::log_level_e::INFO;
-static constexpr bool          DEFAULT_DISABLE_FSYNC                    = false;
+static constexpr bool          DEFAULT_FSYNC                            = false;
 static constexpr const char   *DEFAULT_NETWORK_ADDR                     = "localhost:14022";
 static constexpr std::uint32_t DEFAULT_MAX_SESSIONS                     = 64;
 static constexpr std::uint32_t DEFAULT_MAX_MSG_BYTES                    = 2 * 1024 * 1024;
@@ -174,8 +174,8 @@ static void parse_section_main(nplex::config_t *cfg, const char *name, const cha
         cfg->log_level = nplex::parse_log_level(value);
     } else if (strcmp(name, MAX_SESSIONS) == 0) {
         cfg->context.max_sessions = parse_uint32(value);
-    } else if (strcmp(name, DISABLE_FSYNC) == 0) {
-        cfg->journal.fsync = !parse_bool(value);
+    } else if (strcmp(name, FSYNC) == 0) {
+        cfg->journal.fsync = parse_bool(value);
     } else if (strcmp(name, MAX_MSG_BYTES) == 0) {
         cfg->context.max_msg_bytes = parse_bytes(value);
     } else if (strcmp(name, WRITE_QUEUE_MAX_LENGTH) == 0) {
@@ -316,7 +316,7 @@ static void set_defaults(nplex::config_t &cfg)
 
     // Journal defaults
     cfg.journal.check = DEFAULT_CHECK_JOURNAL;
-    cfg.journal.fsync = !DEFAULT_DISABLE_FSYNC;
+    cfg.journal.fsync = DEFAULT_FSYNC;
     cfg.journal.write_queue_max_entries = DEFAULT_QUEUE_MAX_LENGTH;
     cfg.journal.write_queue_max_bytes = DEFAULT_QUEUE_MAX_BYTES;
     cfg.journal.flush_max_entries = DEFAULT_FLUSH_MAX_ENTRIES;
@@ -420,7 +420,7 @@ void nplex::config_t::save(const fs::path &filepath) const
 
     ofs << NETWORK_ADDR << " = " << context.addr.str() << std::endl;
     ofs << LOG_LEVEL << " = " << to_string(log_level) << std::endl;
-    ofs << DISABLE_FSYNC << " = " << fmt::format("{}", !journal.fsync) << std::endl;
+    ofs << FSYNC << " = " << fmt::format("{}", journal.fsync) << std::endl;
     ofs << std::endl;
 
     ofs << MAX_SESSIONS << " = " << context.max_sessions << std::endl;
