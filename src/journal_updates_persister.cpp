@@ -92,7 +92,7 @@ nplex::journal_updates_persister_t::journal_updates_persister_t(const fs::path &
         throw nplex_exception("journal directory is not writable: {}", m_path.string());
     }
 
-    m_journal = open_journal_file(m_path, std::string{FILENAME_PREFIX}, LDB_OPEN_CREATE | (fsync ? LDB_OPEN_FSYNC : 0));
+    m_journal = open_journal_file(m_path, std::string{FILENAME_PREFIX}, LDB_CREATE | LDB_CHECK |(fsync ? LDB_FSYNC : 0));
 }
 
 std::pair<nplex::rev_t, nplex::rev_t> nplex::journal_updates_persister_t::get_updates_range()

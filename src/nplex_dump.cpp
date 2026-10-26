@@ -64,7 +64,7 @@ static void dump_snapshot(const fs::path &path)
 static void dump_journal(const fs::path &path)
 {
     int rc = 0;
-    auto journal = nplex::journal_updates_persister_t::open_journal_file(path, LDB_OPEN_READONLY);
+    auto journal = nplex::journal_updates_persister_t::open_journal_file(path, LDB_READONLY | LDB_CHECK);
     auto range = journal->get_range();
 
     if (range.first == 0)

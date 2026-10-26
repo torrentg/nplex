@@ -46,7 +46,6 @@ Options:
   -a, --addr HOST:PORT   Address to listen on (ex: localhost:14022).
   -l, --log LOGLEVEL     Log level (trace, debug, info, warning, error).
   -F, --fsync[=on|off]   Set fsync mode (on/off).
-  -c, --check            Check journal file at startup.
   -d, --daemon           Run the program as a daemon.
   -V, --version          Output version information, then exit.
   -h, --help             Show this help, then exit.

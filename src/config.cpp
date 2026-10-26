@@ -43,7 +43,6 @@ static constexpr const char *CACHE_MAX_BYTES                            = "cache
 static constexpr const char *CACHE_MAX_ENTRIES                          = "cache-max-entries";
 
 // Defaults
-static constexpr bool          DEFAULT_CHECK_JOURNAL                    = false;
 static constexpr nplex::log_level_e DEFAULT_LOG_LEVEL                   = nplex::log_level_e::INFO;
 static constexpr bool          DEFAULT_FSYNC                            = false;
 static constexpr const char   *DEFAULT_NETWORK_ADDR                     = "localhost:14022";
@@ -315,7 +314,6 @@ static void set_defaults(nplex::config_t &cfg)
     cfg.context.max_msg_bytes = DEFAULT_MAX_MSG_BYTES;
 
     // Journal defaults
-    cfg.journal.check = DEFAULT_CHECK_JOURNAL;
     cfg.journal.fsync = DEFAULT_FSYNC;
     cfg.journal.write_queue_max_entries = DEFAULT_QUEUE_MAX_LENGTH;
     cfg.journal.write_queue_max_bytes = DEFAULT_QUEUE_MAX_BYTES;

@@ -62,7 +62,15 @@ void nplex::storage_t::read_updates(
     std::size_t max_entries)
 {
     auto on_raw_entry = [&on_entry](const updates_persister_t::update_entry_t &raw_entry) -> bool {
+        auto verifier = flatbuffers::Verifier(
+            reinterpret_cast<const std::uint8_t *>(raw_entry.data),
+            raw_entry.data_len);
+
+        if (!verifier.VerifyBuffer<msgs::Update>(nullptr))
+            throw nplex_exception("invalid update payload");
+
         auto update = flatbuffers::GetRoot<msgs::Update>(raw_entry.data);
+
         return on_entry(update);
     };
 
@@ -86,14 +94,13 @@ nplex::store_t nplex::storage_t::rebuild_store_at(rev_t rev, const user_ptr &use
         return store;
 
     // step2: define a function to update the repo with the journal updates
-    auto func = [&store, rev, user](const updates_persister_t::update_entry_t &entry) -> bool {
-        auto update = flatbuffers::GetRoot<msgs::Update>(entry.data);
+    auto func = [&store, rev, user](const msgs::Update *update) -> bool {
         store.update(update, user);
         return (store.rev() < rev);
     };
 
     // step3: apply updates until m_rev
-    m_updates_persister->read_updates(store.rev() + 1, func);
+    read_updates(store.rev() + 1, func);
 
     if (store.rev() != rev)
         throw nplex_exception("Failed to load store at revision {}", rev);

@@ -27,7 +27,6 @@ struct args_t
     fs::path            datadir;
     addr_t              addr;
     log_level_e         log_level = log_level_e::NONE;
-    bool                check     = false;
     bool                daemonize = false;
     std::optional<bool> fsync_on;
 };
@@ -45,7 +44,6 @@ static void help()
         "  -a, --addr HOST:PORT   Address to listen on (ex: localhost:14022).\n"
         "  -l, --log LOGLEVEL     Log level (trace, debug, info, warning, error).\n"
         "  -F, --fsync[=on|off]   Set fsync mode (on/off).\n"
-        "  -c, --check            Check journal file at startup.\n"
         "  -d, --daemon           Run the program as a daemon.\n"
         "  -V, --version          Output version information, then exit.\n"
         "  -h, --help             Show this help, then exit.\n"
@@ -104,7 +102,7 @@ static args_t parse_args(int argc, char *argv[])
     args_t args;
 
     // short options
-    const char* const options1 = "cdVhFD:l:a:";
+    const char* const options1 = "dVhFD:l:a:";
 
     // long options (name + has_arg + flag + val)
     const struct option options2[] = {
@@ -112,7 +110,6 @@ static args_t parse_args(int argc, char *argv[])
         { "addr",     required_argument, nullptr, 'a' },
         { "log",      required_argument, nullptr, 'l' },
         { "fsync",    optional_argument, nullptr, 'F' },
-        { "check",    no_argument,       nullptr, 'c' },
         { "daemon",   no_argument,       nullptr, 'd' },
         { "help",     no_argument,       nullptr, 'h' },
         { "version",  no_argument,       nullptr, 'V' },
@@ -164,10 +161,6 @@ static args_t parse_args(int argc, char *argv[])
                     fprintf(stderr, "Error: %s\n", e.what());
                     std::exit(EXIT_FAILURE);
                 }
-                break;
-
-            case 'c': // -c (check journal at startup)
-                args.check = true;
                 break;
 
             case 'd': // -d (run as daemon)
@@ -261,8 +254,6 @@ static config_t init_config(const args_t &args)
 
         if (args.fsync_on.has_value())
             config.journal.fsync = args.fsync_on.value();
-
-        config.journal.check = args.check;
     }
     catch (const std::exception &e) {
         throw std::runtime_error(std::string("Error accessing ") + CONFIG_FILENAME + ": " + e.what());
