@@ -25,14 +25,14 @@ static auto get_stream(T* obj) -> decltype(reinterpret_cast<std::conditional_t<s
     return reinterpret_cast<std::conditional_t<std::is_const<T>::value, const uv_stream_t*, uv_stream_t*>>(obj);
 }
 
-struct chunk_deleter
+struct outgoing_network_frames_deleter
 {
-    nplex::output_chunk_t* chunk;
+    nplex::outgoing_network_frames_t *chunk;
 
-    explicit chunk_deleter(nplex::output_chunk_t* c) : chunk(c) {}
-    ~chunk_deleter() { nplex::output_chunk_t::destroy(chunk); }
-    chunk_deleter(const chunk_deleter&) = delete;
-    chunk_deleter& operator=(const chunk_deleter&) = delete;
+    explicit outgoing_network_frames_deleter(nplex::outgoing_network_frames_t* c) : chunk(c) {}
+    ~outgoing_network_frames_deleter() { nplex::outgoing_network_frames_t::destroy(chunk); }
+    outgoing_network_frames_deleter(const outgoing_network_frames_deleter &) = delete;
+    outgoing_network_frames_deleter & operator=(const outgoing_network_frames_deleter &) = delete;
 };
 
 static int get_peeraddr(const uv_tcp_t *con, char *str, size_t len)
@@ -109,20 +109,21 @@ static void cb_tcp_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
 
         obj->m_input_batch.clear();
 
-        while (consumed + sizeof(std::uint32_t) < bytes_available)
+        while (consumed + sizeof(std::uint32_t) <= bytes_available)
         {
             const char *ptr = obj->m_input_msg.data() + consumed;
-            std::uint32_t len = ntohl_ptr(ptr);
+            std::uint32_t content_len = ntohl_ptr(ptr);
+            std::size_t frame_len = content_len + 2 * sizeof(std::uint32_t);
 
-            if (len > max_len) {
+            if (content_len > max_len) {
                 obj->disconnect(ERR_MSG_SIZE);
                 return;
             }
 
-            if ((bytes_available - consumed) < len)
+            if ((bytes_available - consumed) < frame_len)
                 break;
 
-            auto msg = parse_network_msg(ptr, len);
+            auto msg = parse_network_frame(ptr, frame_len);
 
             if (!msg) {
                 obj->disconnect(ERR_MSG_ERROR);
@@ -130,14 +131,14 @@ static void cb_tcp_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
             }
 
             obj->m_stats.recv_msgs++;
-            obj->m_stats.recv_bytes += len;
+            obj->m_stats.recv_bytes += frame_len;
             obj->m_input_batch.push_back(msg);
-            consumed += len;
+            consumed += frame_len;
 
             if (!has_user)
                 break;
 
-            if (obj->m_input_batch.size() >= output_chunk_t::max_num_msgs())
+            if (obj->m_input_batch.size() >= outgoing_network_frames_t::max_num_msgs())
                 break;
         }
 
@@ -156,10 +157,10 @@ static void cb_tcp_write(uv_write_t *req, int status)
 {
     using namespace nplex;
 
-    auto chunk = static_cast<output_chunk_t *>(req->data);
+    auto chunk = static_cast<outgoing_network_frames_t *>(req->data);
     auto obj = reinterpret_cast<connection_s *>(req->handle);
 
-    chunk_deleter guard(chunk);
+    outgoing_network_frames_deleter guard(chunk);
 
     assert(chunk);
     assert(obj->m_stats.unack_msgs >= chunk->get_num_msgs());
@@ -382,13 +383,13 @@ void nplex::connection_s::send(std::span<flatbuffers::DetachedBuffer> msgs)
 {
     int rc = 0;
 
-    auto chunk = output_chunk_t::create(msgs);
+    auto chunk = outgoing_network_frames_t::create(msgs);
 
     auto req = chunk->get_req();
     req->data = chunk;
 
     if ((rc = uv_write(req, get_stream(&m_tcp), chunk->get_bufs_ptr(), chunk->get_bufs_len(), ::cb_tcp_write)) != 0) {
-        output_chunk_t::destroy(chunk);
+        outgoing_network_frames_t::destroy(chunk);
         disconnect(rc);
         return;
     }

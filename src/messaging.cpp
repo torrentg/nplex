@@ -118,52 +118,47 @@ static flatbuffers::Offset<nplex::msgs::Update> serialize_update(flatbuffers::Fl
 }
 
 // ==========================================================
-// output_chunk_t methods
+// outgoing_network_frames_t methods
 // ==========================================================
 
-nplex::output_chunk_t * nplex::output_chunk_t::create(std::span<flatbuffers::DetachedBuffer> msgs)
+nplex::outgoing_network_frames_t * nplex::outgoing_network_frames_t::create(std::span<flatbuffers::DetachedBuffer> msgs)
 {
     if (msgs.empty() || msgs.size() > max_num_msgs())
         throw std::invalid_argument("invalid number of messages");
 
     size_t total_length = 0;
     size_t num_msgs = msgs.size();
-    size_t allocation_size = sizeof(output_chunk_t) + num_msgs * (5 * sizeof(uv_buf_t) + sizeof(values_t));
+    size_t allocation_size = sizeof(outgoing_network_frames_t) + num_msgs * (2 * sizeof(uv_buf_t) + sizeof(values_t));
 
     char *ptr = static_cast<char *>(::operator new(allocation_size));
 
-    output_chunk_t *ret = new (ptr) output_chunk_t();
-    uv_buf_t *buf_ptr = reinterpret_cast<uv_buf_t *>(ptr + sizeof(output_chunk_t));
-    values_t *values_ptr = reinterpret_cast<values_t *>(ptr + sizeof(output_chunk_t) + num_msgs * 5 * sizeof(uv_buf_t));
+    outgoing_network_frames_t *ret = new (ptr) outgoing_network_frames_t();
+    uv_buf_t *buf_ptr = reinterpret_cast<uv_buf_t *>(ptr + sizeof(outgoing_network_frames_t));
+    values_t *values_ptr = reinterpret_cast<values_t *>(ptr + sizeof(outgoing_network_frames_t) + num_msgs * 2 * sizeof(uv_buf_t));
 
     for (size_t i = 0; i < num_msgs; ++i)
     {
         auto &content = msgs[i];
+        if (content.size() > UINT32_MAX) {
+            destroy(ret);
+            throw std::overflow_error("Message content exceeds maximum allowed size");
+        }
+
+        std::uint32_t content_len = static_cast<std::uint32_t>(content.size());
+        std::uint32_t frame_len = content_len + 2 * sizeof(std::uint32_t);
         std::uint32_t checksum = 0;
-        std::size_t content_len = content.size();
-        auto msg_len = static_cast<std::uint32_t>(content_len + 4 * sizeof(std::uint32_t));
 
-        assert(msg_len % sizeof(std::uint64_t) == 0); // aligned to 8 bytes
-        values_ptr[i].len = htonl(msg_len);
-        total_length += msg_len;
-
-        values_ptr[i].metadata = htonl(0); // unused
+        values_ptr[i].len = htonl(content_len);
+        total_length += frame_len;
 
         new (&values_ptr[i].content) flatbuffers::DetachedBuffer();
         values_ptr[i].content = std::move(content);
 
-        checksum = crc32(reinterpret_cast<const char *>(&values_ptr[i].len), sizeof(std::uint32_t));
-        checksum = crc32(reinterpret_cast<const char *>(&values_ptr[i].metadata), sizeof(std::uint32_t), checksum);
-        checksum = crc32(reinterpret_cast<const char *>(values_ptr[i].content.data()), content_len, checksum);
+        checksum = crc32(reinterpret_cast<const char *>(values_ptr[i].content.data()), content_len);
         values_ptr[i].checksum = htonl(checksum);
 
-        values_ptr[i].delimiter = htonl(0xFFFFFFFF);
-
-        buf_ptr[5 * i + 0] = uv_buf_t{.base = reinterpret_cast<char *>(&values_ptr[i].len), .len = sizeof(uint32_t)};
-        buf_ptr[5 * i + 1] = uv_buf_t{.base = reinterpret_cast<char *>(&values_ptr[i].metadata), .len = sizeof(uint32_t)};
-        buf_ptr[5 * i + 2] = uv_buf_t{.base = reinterpret_cast<char *>(values_ptr[i].content.data()), .len = content_len};
-        buf_ptr[5 * i + 3] = uv_buf_t{.base = reinterpret_cast<char *>(&values_ptr[i].checksum), .len = sizeof(uint32_t)};
-        buf_ptr[5 * i + 4] = uv_buf_t{.base = reinterpret_cast<char *>(&values_ptr[i].delimiter), .len = sizeof(uint32_t)};
+        buf_ptr[2 * i + 0] = uv_buf_t{.base = reinterpret_cast<char *>(&values_ptr[i].len), .len = 2 * sizeof(std::uint32_t)};
+        buf_ptr[2 * i + 1] = uv_buf_t{.base = reinterpret_cast<char *>(values_ptr[i].content.data()), .len = content_len};
     }
 
     ret->num_msgs = static_cast<std::uint32_t>(num_msgs);
@@ -178,29 +173,29 @@ nplex::output_chunk_t * nplex::output_chunk_t::create(std::span<flatbuffers::Det
     return ret;
 }
 
-nplex::output_chunk_t::~output_chunk_t()
+nplex::outgoing_network_frames_t::~outgoing_network_frames_t()
 {
     if (num_msgs == 0)
         return;
 
     char *ptr = reinterpret_cast<char *>(this);
-    uv_buf_t *buf_ptr = reinterpret_cast<uv_buf_t *>(ptr + sizeof(output_chunk_t));
-    values_t *values_ptr = reinterpret_cast<values_t *>(ptr + sizeof(output_chunk_t) + num_msgs * 5 * sizeof(uv_buf_t));
+    uv_buf_t *buf_ptr = reinterpret_cast<uv_buf_t *>(ptr + sizeof(outgoing_network_frames_t));
+    values_t *values_ptr = reinterpret_cast<values_t *>(ptr + sizeof(outgoing_network_frames_t) + num_msgs * 2 * sizeof(uv_buf_t));
 
-    for (size_t i = 0; i < 5 * num_msgs; ++i)
+    for (size_t i = 0; i < 2 * num_msgs; ++i)
         buf_ptr[i].~uv_buf_t();
 
     for (size_t i = 0; i < num_msgs; ++i)
         values_ptr[i].~values_t();
 }
 
-void nplex::output_chunk_t::destroy(output_chunk_t *obj)
+void nplex::outgoing_network_frames_t::destroy(outgoing_network_frames_t *obj)
 {
     if (obj == nullptr)
         return;
 
     auto ptr = static_cast<void *>(obj);
-    obj->~output_chunk_t();
+    obj->~outgoing_network_frames_t();
     ::operator delete(ptr);
 }
 
@@ -208,24 +203,23 @@ void nplex::output_chunk_t::destroy(output_chunk_t *obj)
 // nplex functions
 // ==========================================================
 
-const nplex::msgs::Message * nplex::parse_network_msg(const char *ptr, size_t len)
+const nplex::msgs::Message * nplex::parse_network_frame(const char *ptr, size_t len)
 {
-    if (len <= 4 * sizeof(std::uint32_t) || len % sizeof(std::uint64_t) != 0)
+    if (len <= 2 * sizeof(std::uint32_t))
         return nullptr;
 
-    if (len != ntohl_ptr(ptr))
+    std::uint32_t content_len = ntohl_ptr(ptr);
+
+    if (len != (2 * sizeof(std::uint32_t) + content_len))
         return nullptr;
 
-    std::uint32_t metadata = ntohl_ptr(ptr + sizeof(std::uint32_t));
-    UNUSED(metadata);
-
-    std::uint32_t checksum = ntohl_ptr(ptr + len - 2 * sizeof(std::uint32_t));
-
-    if (checksum != crc32(ptr, len - 2 * sizeof(std::uint32_t)))
-        return nullptr;
+    std::uint32_t checksum = ntohl_ptr(ptr + sizeof(std::uint32_t));
 
     ptr += 2 * sizeof(std::uint32_t);
-    len -= 4 * sizeof(std::uint32_t);
+    len -= 2 * sizeof(std::uint32_t);
+
+    if (checksum != crc32(ptr, len))
+        return nullptr;
 
     auto verifier = flatbuffers::Verifier(reinterpret_cast<const std::uint8_t *>(ptr), len);
 
@@ -235,7 +229,7 @@ const nplex::msgs::Message * nplex::parse_network_msg(const char *ptr, size_t le
     return flatbuffers::GetRoot<Message>(ptr);
 }
 
-DetachedBuffer nplex::create_login_msg(std::size_t cid, LoginCode code, rev_t rev0, rev_t crev, const user_ptr &user)
+DetachedBuffer nplex::create_login_response(std::size_t cid, LoginCode code, rev_t rev0, rev_t crev, const user_ptr &user)
 {
     FlatBufferBuilder builder(1024);
     std::vector<Offset<Acl>> permissions;
@@ -266,7 +260,7 @@ DetachedBuffer nplex::create_login_msg(std::size_t cid, LoginCode code, rev_t re
     return builder.Release();
 }
 
-flatbuffers::DetachedBuffer nplex::create_updates_msg(std::size_t cid, rev_t crev, rev_t rev0, bool accepted)
+flatbuffers::DetachedBuffer nplex::create_updates_response(std::size_t cid, rev_t crev, rev_t rev0, bool accepted)
 {
     FlatBufferBuilder builder(128);
 
@@ -285,7 +279,7 @@ flatbuffers::DetachedBuffer nplex::create_updates_msg(std::size_t cid, rev_t cre
     return builder.Release();
 }
 
-flatbuffers::DetachedBuffer nplex::create_sessions_msg(std::size_t cid, rev_t crev, const session_ptr &session)
+flatbuffers::DetachedBuffer nplex::create_sessions_push(std::size_t cid, rev_t crev, const session_ptr &session)
 {
     assert(session->user());
 
@@ -336,7 +330,7 @@ flatbuffers::DetachedBuffer nplex::create_sessions_msg(std::size_t cid, rev_t cr
     return builder.Release();
 }
 
-flatbuffers::DetachedBuffer nplex::create_keepalive_msg(rev_t crev)
+flatbuffers::DetachedBuffer nplex::create_keepalive_push(rev_t crev)
 {
     FlatBufferBuilder builder(128);
 
@@ -352,7 +346,7 @@ flatbuffers::DetachedBuffer nplex::create_keepalive_msg(rev_t crev)
     return builder.Release();
 }
 
-flatbuffers::DetachedBuffer nplex::create_ping_msg(std::size_t cid, rev_t crev, const std::string &payload)
+flatbuffers::DetachedBuffer nplex::create_ping_response(std::size_t cid, rev_t crev, const std::string &payload)
 {
     FlatBufferBuilder builder(128);
 
@@ -370,7 +364,7 @@ flatbuffers::DetachedBuffer nplex::create_ping_msg(std::size_t cid, rev_t crev, 
     return builder.Release();
 }
 
-flatbuffers::DetachedBuffer nplex::create_submit_msg(std::size_t cid, rev_t crev, SubmitCode code, rev_t erev)
+flatbuffers::DetachedBuffer nplex::create_submit_response(std::size_t cid, rev_t crev, SubmitCode code, rev_t erev)
 {
     FlatBufferBuilder builder(128);
 
@@ -389,7 +383,7 @@ flatbuffers::DetachedBuffer nplex::create_submit_msg(std::size_t cid, rev_t crev
     return builder.Release();
 }
 
-flatbuffers::DetachedBuffer nplex::create_snapshot_msg(std::size_t cid, rev_t crev, rev_t rev0, bool accepted, const store_t &store, const user_ptr &user)
+flatbuffers::DetachedBuffer nplex::create_snapshot_response(std::size_t cid, rev_t crev, rev_t rev0, bool accepted, const store_t &store, const user_ptr &user)
 {
     FlatBufferBuilder builder(32 * 1024);
 
@@ -464,10 +458,10 @@ nplex::update_dto_t nplex::deserialize_update(const Update *upd, const user_ptr 
 }
 
 // ==========================================================
-// updates_builder_t methods
+// updates_push_builder_t methods
 // ==========================================================
 
-bool nplex::updates_builder_t::append(const update_t &update, const user_ptr &user, bool force)
+bool nplex::updates_push_builder_t::append(const update_t &update, const user_ptr &user, bool force)
 {
     auto off = ::serialize_update(m_builder, update, user, force);
 
@@ -479,7 +473,7 @@ bool nplex::updates_builder_t::append(const update_t &update, const user_ptr &us
     return false;
 }
 
-bool nplex::updates_builder_t::append(const update_dto_t &update, const user_ptr &user, bool force)
+bool nplex::updates_push_builder_t::append(const update_dto_t &update, const user_ptr &user, bool force)
 {
     auto off = ::serialize_update(m_builder, update, user, force);
 
@@ -491,7 +485,7 @@ bool nplex::updates_builder_t::append(const update_dto_t &update, const user_ptr
     return false;
 }
 
-flatbuffers::DetachedBuffer nplex::updates_builder_t::finish(uint64_t cid, rev_t crev)
+flatbuffers::DetachedBuffer nplex::updates_push_builder_t::finish(uint64_t cid, rev_t crev)
 {
     auto msg = CreateMessage(m_builder, 
         MsgContent::UPDATES_PUSH,
@@ -512,10 +506,10 @@ flatbuffers::DetachedBuffer nplex::updates_builder_t::finish(uint64_t cid, rev_t
 }
 
 // ==========================================================
-// sessions_builder_t methods
+// sessions_response_builder_t methods
 // ==========================================================
 
-bool nplex::sessions_builder_t::append(const session_ptr &session)
+bool nplex::sessions_response_builder_t::append(const session_ptr &session)
 {
     if (!session || !session->is_logged())
         return false;
@@ -537,7 +531,7 @@ bool nplex::sessions_builder_t::append(const session_ptr &session)
     return true;
 }
 
-flatbuffers::DetachedBuffer nplex::sessions_builder_t::finish(uint64_t cid, rev_t crev)
+flatbuffers::DetachedBuffer nplex::sessions_response_builder_t::finish(uint64_t cid, rev_t crev)
 {
     auto msg = CreateMessage(m_builder, 
         MsgContent::SESSIONS_RESPONSE,

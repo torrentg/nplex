@@ -92,7 +92,7 @@ void nplex::session_t::send_buffered_msg(flatbuffers::DetachedBuffer &&buf)
 
     m_buffered_msgs.emplace_back(std::move(buf));
 
-    if (m_buffered_msgs.size() >= output_chunk_t::max_num_msgs())
+    if (m_buffered_msgs.size() >= outgoing_network_frames_t::max_num_msgs())
         flush_buffered_msgs();
 }
 
@@ -197,7 +197,7 @@ void nplex::session_t::process_login_request(const msgs::LoginRequest *req)
 
     if (req->schema() != SCHEMA3_HASH) {
         send(
-            create_login_msg(
+            create_login_response(
                 req->cid(), 
                 msgs::LoginCode::UNSUPPORTED_SCHEMA
             ) 
@@ -208,7 +208,7 @@ void nplex::session_t::process_login_request(const msgs::LoginRequest *req)
 
     if (!req->user() || !req->password()) {
         send(
-            create_login_msg(
+            create_login_response(
                 req->cid(), 
                 msgs::LoginCode::INVALID_CREDENTIALS
             ) 
@@ -220,7 +220,7 @@ void nplex::session_t::process_login_request(const msgs::LoginRequest *req)
     auto usr = m_context->get_user(req->user()->str());
     if (!usr) {
         send(
-            create_login_msg(
+            create_login_response(
                 req->cid(), 
                 msgs::LoginCode::INVALID_CREDENTIALS
             ) 
@@ -231,7 +231,7 @@ void nplex::session_t::process_login_request(const msgs::LoginRequest *req)
 
     if (usr->password != req->password()->str()) {
         send(
-            create_login_msg(
+            create_login_response(
                 req->cid(), 
                 msgs::LoginCode::INVALID_CREDENTIALS
             ) 
@@ -242,7 +242,7 @@ void nplex::session_t::process_login_request(const msgs::LoginRequest *req)
 
     if (usr->params.max_connections && usr->num_connections >= usr->params.max_connections) {
         send(
-            create_login_msg(
+            create_login_response(
                 req->cid(), 
                 msgs::LoginCode::TOO_MANY_CONNECTIONS
             ) 
@@ -262,7 +262,7 @@ void nplex::session_t::process_login_request(const msgs::LoginRequest *req)
     LOG_INFO("New session: {}", m_id);
 
     send(
-        create_login_msg(
+        create_login_response(
             req->cid(), 
             msgs::LoginCode::AUTHORIZED,
             m_context->minimum_rev(),
@@ -293,7 +293,7 @@ void nplex::session_t::process_snapshot_request(const msgs::SnapshotRequest *req
     if (rev < m_context->minimum_rev() || rev > m_context->last_persisted_rev())
     {
         send_buffered_msg(
-            create_snapshot_msg(
+            create_snapshot_response(
                 cid,
                 m_context->last_persisted_rev(),
                 m_context->minimum_rev(),
@@ -337,7 +337,7 @@ void nplex::session_t::process_updates_request(const msgs::UpdatesRequest *req)
     if (rev < m_context->minimum_rev())
     {
         send_buffered_msg(
-            create_updates_msg(
+            create_updates_response(
                 cid,
                 m_context->last_persisted_rev(),
                 m_context->minimum_rev(),
@@ -351,7 +351,7 @@ void nplex::session_t::process_updates_request(const msgs::UpdatesRequest *req)
     m_updates_cid = cid;
 
     send_buffered_msg(
-        create_updates_msg(
+        create_updates_response(
             cid,
             m_context->last_persisted_rev(),
             m_context->minimum_rev(),
@@ -372,7 +372,7 @@ void nplex::session_t::process_sessions_request(const msgs::SessionsRequest *req
 
     rev_t crev = m_context->last_persisted_rev();
     std::uint64_t cid = req->cid();
-    sessions_builder_t builder;
+    sessions_response_builder_t builder;
 
     if (m_user->params.can_monitor)
     {
@@ -396,7 +396,7 @@ void nplex::session_t::process_submit_request(const nplex::msgs::SubmitRequest *
     auto [rc, erev] = m_context->try_commit(req, *m_user);
 
     send_buffered_msg(
-        create_submit_msg(
+        create_submit_response(
             req->cid(), 
             m_context->last_persisted_rev(),
             rc,
@@ -408,7 +408,7 @@ void nplex::session_t::process_submit_request(const nplex::msgs::SubmitRequest *
 void nplex::session_t::process_ping_request(const nplex::msgs::PingRequest *req)
 {
     send_buffered_msg(
-        create_ping_msg(
+        create_ping_response(
             req->cid(), 
             m_context->last_persisted_rev(),
             (req->payload() ? req->payload()->str() : "")
@@ -482,7 +482,7 @@ void nplex::session_t::send_keepalive()
         return;
 
     rev_t crev = m_context->last_persisted_rev();
-    send(create_keepalive_msg(crev));
+    send(create_keepalive_push(crev));
 }
 
 void nplex::session_t::send_snapshot(std::size_t cid, const store_t &store, const user_ptr &user)
@@ -491,7 +491,7 @@ void nplex::session_t::send_snapshot(std::size_t cid, const store_t &store, cons
         return;
 
     send_buffered_msg(
-        create_snapshot_msg(
+        create_snapshot_response(
             cid,
             m_context->last_persisted_rev(),
             m_context->minimum_rev(),
@@ -512,7 +512,7 @@ void nplex::session_t::send_updates(std::size_t cid, [[maybe_unused]] rev_t from
     assert(m_lrev == 0 || m_lrev + 1 == from_rev);
 
     rev_t crev = m_context->last_persisted_rev();
-    updates_builder_t builder;
+    updates_push_builder_t builder;
     auto it = updates.begin();
 
     while (it != updates.end())
@@ -557,7 +557,7 @@ void nplex::session_t::push_changes(const std::span<const update_t> &updates, bo
         return;
 
     rev_t crev = m_context->last_persisted_rev();
-    updates_builder_t builder;
+    updates_push_builder_t builder;
     auto it = updates.begin();
 
     while (it != updates.end())
@@ -588,7 +588,7 @@ void nplex::session_t::push_session(const session_ptr &session)
         return;
 
     send(
-        create_sessions_msg(
+        create_sessions_push(
             m_sessions_cid,
             m_context->last_persisted_rev(),
             session
