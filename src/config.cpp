@@ -174,21 +174,21 @@ static void parse_section_main(nplex::config_t *cfg, const char *name, const cha
     } else if (strcmp(name, MAX_SESSIONS) == 0) {
         cfg->context.max_sessions = parse_uint32(value);
     } else if (strcmp(name, FSYNC) == 0) {
-        cfg->journal.fsync = parse_bool(value);
+        cfg->storage.fsync = parse_bool(value);
     } else if (strcmp(name, MAX_MSG_BYTES) == 0) {
         cfg->context.max_msg_bytes = parse_bytes(value);
     } else if (strcmp(name, WRITE_QUEUE_MAX_LENGTH) == 0) {
-        cfg->journal.write_queue_max_entries = parse_uint32(value);
+        cfg->storage.write_queue_max_entries = parse_uint32(value);
     } else if (strcmp(name, WRITE_QUEUE_MAX_BYTES) == 0) {
-        cfg->journal.write_queue_max_bytes = parse_bytes(value);
+        cfg->storage.write_queue_max_bytes = parse_bytes(value);
     } else if (strcmp(name, FLUSH_MAX_ENTRIES) == 0) {
-        cfg->journal.flush_max_entries = parse_uint32(value);
+        cfg->storage.flush_max_entries = parse_uint32(value);
     } else if (strcmp(name, FLUSH_MAX_BYTES) == 0) {
-        cfg->journal.flush_max_bytes = parse_bytes(value);
+        cfg->storage.flush_max_bytes = parse_bytes(value);
     } else if (strcmp(name, ROTATE_JOURNAL_MAX_ENTRIES) == 0) {
-        cfg->journal.rotate_journal_max_entries = parse_uint32(value);
+        cfg->storage.rotate_journal_max_entries = parse_uint32(value);
     } else if (strcmp(name, ROTATE_JOURNAL_MAX_BYTES) == 0) {
-        cfg->journal.rotate_journal_max_bytes = parse_bytes(value);
+        cfg->storage.rotate_journal_max_bytes = parse_bytes(value);
     } else if (strcmp(name, MAX_UPDATES_BETWEEN_SNAPSHOTS) == 0) {
         cfg->context.snapshot_max_entries = parse_uint32(value);
     } else if (strcmp(name, MAX_BYTES_BETWEEN_SNAPSHOTS) == 0) {
@@ -313,12 +313,12 @@ static void set_defaults(nplex::config_t &cfg)
     cfg.context.max_sessions = DEFAULT_MAX_SESSIONS;
     cfg.context.max_msg_bytes = DEFAULT_MAX_MSG_BYTES;
 
-    // Journal defaults
-    cfg.journal.fsync = DEFAULT_FSYNC;
-    cfg.journal.write_queue_max_entries = DEFAULT_QUEUE_MAX_LENGTH;
-    cfg.journal.write_queue_max_bytes = DEFAULT_QUEUE_MAX_BYTES;
-    cfg.journal.flush_max_entries = DEFAULT_FLUSH_MAX_ENTRIES;
-    cfg.journal.flush_max_bytes = DEFAULT_FLUSH_MAX_BYTES;
+    // Storage defaults
+    cfg.storage.fsync = DEFAULT_FSYNC;
+    cfg.storage.write_queue_max_entries = DEFAULT_QUEUE_MAX_LENGTH;
+    cfg.storage.write_queue_max_bytes = DEFAULT_QUEUE_MAX_BYTES;
+    cfg.storage.flush_max_entries = DEFAULT_FLUSH_MAX_ENTRIES;
+    cfg.storage.flush_max_bytes = DEFAULT_FLUSH_MAX_BYTES;
 
     // Snapshot defaults
     cfg.context.snapshot_max_entries = DEFAULT_MAX_UPDATES_BETWEEN_SNAPSHOTS;
@@ -364,10 +364,10 @@ static void normalize(nplex::config_t &cfg)
     normalize_unlimited(cfg.context.snapshot_max_bytes);
     normalize_unlimited(cfg.context.cache_max_entries);
     normalize_unlimited(cfg.context.cache_max_bytes);
-    normalize_unlimited(cfg.journal.write_queue_max_entries);
-    normalize_unlimited(cfg.journal.write_queue_max_bytes);
-    normalize_unlimited(cfg.journal.flush_max_entries);
-    normalize_unlimited(cfg.journal.flush_max_bytes);
+    normalize_unlimited(cfg.storage.write_queue_max_entries);
+    normalize_unlimited(cfg.storage.write_queue_max_bytes);
+    normalize_unlimited(cfg.storage.flush_max_entries);
+    normalize_unlimited(cfg.storage.flush_max_bytes);
     normalize_unlimited(cfg.store.max_tombstones);
 
     for (auto &user : cfg.users)
@@ -418,15 +418,15 @@ void nplex::config_t::save(const fs::path &filepath) const
 
     ofs << NETWORK_ADDR << " = " << context.addr.str() << std::endl;
     ofs << LOG_LEVEL << " = " << to_string(log_level) << std::endl;
-    ofs << FSYNC << " = " << fmt::format("{}", journal.fsync) << std::endl;
+    ofs << FSYNC << " = " << fmt::format("{}", storage.fsync) << std::endl;
     ofs << std::endl;
 
     ofs << MAX_SESSIONS << " = " << context.max_sessions << std::endl;
     ofs << MAX_MSG_BYTES << " = " << bytes_to_string(context.max_msg_bytes) << std::endl;
-    ofs << WRITE_QUEUE_MAX_LENGTH << " = " << journal.write_queue_max_entries << std::endl;
-    ofs << WRITE_QUEUE_MAX_BYTES << " = " << bytes_to_string(journal.write_queue_max_bytes) << std::endl;
-    ofs << FLUSH_MAX_ENTRIES << " = " << journal.flush_max_entries << std::endl;
-    ofs << FLUSH_MAX_BYTES << " = " << bytes_to_string(journal.flush_max_bytes) << std::endl;
+    ofs << WRITE_QUEUE_MAX_LENGTH << " = " << storage.write_queue_max_entries << std::endl;
+    ofs << WRITE_QUEUE_MAX_BYTES << " = " << bytes_to_string(storage.write_queue_max_bytes) << std::endl;
+    ofs << FLUSH_MAX_ENTRIES << " = " << storage.flush_max_entries << std::endl;
+    ofs << FLUSH_MAX_BYTES << " = " << bytes_to_string(storage.flush_max_bytes) << std::endl;
     ofs << MAX_UPDATES_BETWEEN_SNAPSHOTS << " = " << context.snapshot_max_entries << std::endl;
     ofs << MAX_BYTES_BETWEEN_SNAPSHOTS << " = " << bytes_to_string(context.snapshot_max_bytes) << std::endl;
     ofs << TOMBSTONE_RETENTION_MAX << " = " << store.retention_max << std::endl;

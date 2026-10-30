@@ -239,7 +239,7 @@ static config_t init_config(const args_t &args)
                 config.log_level = args.log_level;
 
             if (args.fsync_on.has_value())
-                config.journal.fsync = args.fsync_on.value();
+                config.storage.fsync = args.fsync_on.value();
 
             config.save(config_file);
         }
@@ -253,7 +253,7 @@ static config_t init_config(const args_t &args)
             config.log_level = args.log_level;
 
         if (args.fsync_on.has_value())
-            config.journal.fsync = args.fsync_on.value();
+            config.storage.fsync = args.fsync_on.value();
     }
     catch (const std::exception &e) {
         throw std::runtime_error(std::string("Error accessing ") + CONFIG_FILENAME + ": " + e.what());

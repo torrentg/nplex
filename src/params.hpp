@@ -33,7 +33,7 @@ struct user_params_t
     connection_params_t connection;                 // Connection parameters.
 };
 
-struct journal_params_t
+struct storage_params_t
 {
     bool fsync = true;                              // Enable/disable fsync for write updates.
     std::uint32_t write_queue_max_entries = 0;      // Maximum entries pending to be written (0 = unlimited).

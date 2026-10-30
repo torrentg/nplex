@@ -17,7 +17,7 @@ struct config_t
     log_level_e log_level;          // Log level.
 
     context_params_t context;       // Context parameters (network + snapshot + cache).
-    journal_params_t journal;       // Journal parameters.
+    storage_params_t storage;       // Storage parameters.
     store_params_t store;           // Store parameters.
 
     user_t default_user;            // Default user parameters.

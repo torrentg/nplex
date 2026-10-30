@@ -151,10 +151,10 @@ nplex::context_t::context_t(uv_loop_t *loop, const config_t &config) : m_loop(lo
     assert(m_params.cache_max_bytes);
 
     auto path = std::filesystem::current_path();
-    auto updates_persister = std::make_shared<journal_updates_persister_t>(path, config.journal.fsync);
+    auto updates_persister = std::make_shared<journal_updates_persister_t>(path, config.storage.fsync);
     auto snapshot_persister = std::make_shared<filesystem_snapshot_persister_t>(path);
 
-    m_storage = std::make_shared<storage_t>(config.journal);
+    m_storage = std::make_shared<storage_t>(config.storage);
     m_storage->set_updates_persister(updates_persister);
     m_storage->set_snapshot_persister(snapshot_persister);
 
@@ -176,7 +176,7 @@ nplex::context_t::context_t(uv_loop_t *loop, const config_t &config) : m_loop(lo
     m_async_updates_written->data = this;
     uv_async_init(m_loop, m_async_updates_written.get(), cb_async_updates_result);
 
-    // start journal writing thread
+    // start the writer thread
     m_storage->start(
         [this](bool success, const std::span<update_t> &updates) {
             on_updates_written_1(success, updates);
@@ -185,7 +185,7 @@ nplex::context_t::context_t(uv_loop_t *loop, const config_t &config) : m_loop(lo
             try {
                 if (ex) std::rethrow_exception(ex);
             } catch (const std::exception &e) {
-                LOG_ERROR("Exception in journal writer: {}", e.what());
+                LOG_ERROR("Exception in writer thread: {}", e.what());
             }
             stop();
         }

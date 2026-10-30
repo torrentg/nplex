@@ -6,7 +6,7 @@
 // storage_t methods
 // ==========================================================
 
-nplex::storage_t::storage_t(const journal_params_t &params)
+nplex::storage_t::storage_t(const storage_params_t &params)
 {
     m_writer_thread.set_queue_limits(params.write_queue_max_entries, params.write_queue_max_bytes);
     m_writer_thread.set_flush_limits(params.flush_max_entries, params.flush_max_bytes);
@@ -93,7 +93,7 @@ nplex::store_t nplex::storage_t::rebuild_store_at(rev_t rev, const user_ptr &use
     if (store.rev() == rev)
         return store;
 
-    // step2: define a function to update the repo with the journal updates
+    // step2: define a function to update the repo
     auto func = [&store, rev, user](const msgs::Update *update) -> bool {
         store.update(update, user);
         return (store.rev() < rev);

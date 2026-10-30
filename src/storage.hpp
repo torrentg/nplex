@@ -20,7 +20,7 @@ class storage_t
     using result_callback_f = writer_thread_t::result_callback_f;
     using error_callback_f = writer_thread_t::error_callback_f;
 
-    storage_t(const journal_params_t &params);
+    storage_t(const storage_params_t &params);
     ~storage_t() = default;
 
     void set_updates_persister(const std::shared_ptr<updates_persister_t> &persister);

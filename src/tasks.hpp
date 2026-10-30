@@ -66,7 +66,7 @@ struct snapshot_task_t : public task_t
 
 /**
  * Synchronize the session with the store.
- *   - Read journal entries from disk
+ *   - Read updates from disk
  *   - Save non-empty user updates in a list
  *   - Sends these updates over the network
  */
