@@ -58,12 +58,8 @@ class storage_t
      *
      * @param[in] from_rev First revision to read (included).
      * @param[in] on_entry Callback invoked for each read update.
-     * @param[in] max_entries Maximum number of entries to read.
      */
-    void read_updates(
-        rev_t from_rev,
-        const std::function<bool(const msgs::Update *)> &on_entry,
-        std::size_t max_entries = UINT64_MAX);
+    void read_updates(rev_t from_rev, const std::function<bool(const msgs::Update *)> &on_entry);
 
     /**
      * Reconstructs the store at a given revision.

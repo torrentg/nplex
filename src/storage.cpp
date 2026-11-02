@@ -56,10 +56,7 @@ nplex::rev_t nplex::storage_t::max_rev()
     return m_updates_persister->get_updates_range().second;
 }
 
-void nplex::storage_t::read_updates(
-    rev_t from_rev,
-    const std::function<bool(const msgs::Update *)> &on_entry,
-    std::size_t max_entries)
+void nplex::storage_t::read_updates(rev_t from_rev, const std::function<bool(const msgs::Update *)> &on_entry)
 {
     auto on_raw_entry = [&on_entry](const updates_persister_t::update_entry_t &raw_entry) -> bool {
         auto verifier = flatbuffers::Verifier(
@@ -74,7 +71,7 @@ void nplex::storage_t::read_updates(
         return on_entry(update);
     };
 
-    m_updates_persister->read_updates(from_rev, on_raw_entry, max_entries);
+    m_updates_persister->read_updates(from_rev, on_raw_entry);
 }
 
 nplex::store_t nplex::storage_t::rebuild_store_at(rev_t rev, const user_ptr &user)

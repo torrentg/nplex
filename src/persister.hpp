@@ -48,11 +48,10 @@ class updates_persister_t
      *
      * @param[in] from_rev First revision to read (included).
      * @param[in] on_entry Callback invoked for each read update.
-     * @param[in] max_entries Maximum number of entries to read.
      *
      * @throw std::exception on read error.
      */
-    virtual void read_updates(rev_t from_rev, const read_callback_f &on_entry, std::size_t max_entries = UINT64_MAX) = 0;
+    virtual void read_updates(rev_t from_rev, const read_callback_f &on_entry) = 0;
 
     /**
      * Writes a batch of updates.

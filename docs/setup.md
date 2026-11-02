@@ -135,6 +135,7 @@ gprof ./nplex gmon.out
 cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo \
       -DCMAKE_CXX_FLAGS="-fno-omit-frame-pointer" \
       -DCMAKE_C_FLAGS="-fno-omit-frame-pointer" ..
+sudo sysctl -w kernel.perf_event_paranoid=1
 perf record -F 999 -g ./nplex -D test
 perf script | stackcollapse-perf.pl | flamegraph.pl > flamegraph.svg
 firefox flamegraph.svg
