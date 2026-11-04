@@ -11,7 +11,7 @@
 
 using namespace std::literals;
 
-    // INI keys
+// INI keys
 static constexpr const char *SECTION_USER_DEFAULTS                      = "user-defaults";
 static constexpr const char *LOG_LEVEL                                  = "log-level";
 static constexpr const char *FSYNC                                      = "fsync";
@@ -32,8 +32,8 @@ static constexpr const char *WRITE_QUEUE_MAX_LENGTH                     = "write
 static constexpr const char *WRITE_QUEUE_MAX_BYTES                      = "write-queue-max-bytes";
 static constexpr const char *FLUSH_MAX_ENTRIES                          = "flush-max-entries";
 static constexpr const char *FLUSH_MAX_BYTES                            = "flush-max-bytes";
-static constexpr const char *ROTATE_JOURNAL_MAX_ENTRIES                 = "rotate-journal-max-entries";
-static constexpr const char *ROTATE_JOURNAL_MAX_BYTES                   = "rotate-journal-max-bytes";
+static constexpr const char *ROTATE_MAX_ENTRIES                         = "rotate-max-entries";
+static constexpr const char *ROTATE_MAX_BYTES                           = "rotate-max-bytes";
 static constexpr const char *MAX_UPDATES_BETWEEN_SNAPSHOTS              = "max-updates-between-snapshots";
 static constexpr const char *MAX_BYTES_BETWEEN_SNAPSHOTS                = "max-bytes-between-snapshots";
 static constexpr const char *TOMBSTONE_RETENTION_MAX                    = "tombstone-retention-max";
@@ -67,6 +67,8 @@ static constexpr std::uint32_t DEFAULT_TOMBSTONE_RETENTION_MIN          = 5;
 static constexpr std::uint32_t DEFAULT_MAX_TOMBSTONES                   = 1500;
 static constexpr std::uint32_t DEFAULT_CACHE_MAX_ENTRIES                = 50000;
 static constexpr std::uint32_t DEFAULT_CACHE_MAX_BYTES                  = 500 * 1024 * 1024;
+static constexpr std::uint32_t DEFAULT_ROTATE_MAX_ENTRIES               = 0;
+static constexpr std::uint32_t DEFAULT_ROTATE_MAX_BYTES                 = 0;
 
 // ==========================================================
 // Internal (static) functions
@@ -185,9 +187,9 @@ static void parse_section_main(nplex::config_t *cfg, const char *name, const cha
         cfg->storage.flush_max_entries = parse_uint32(value);
     } else if (strcmp(name, FLUSH_MAX_BYTES) == 0) {
         cfg->storage.flush_max_bytes = parse_bytes(value);
-    } else if (strcmp(name, ROTATE_JOURNAL_MAX_ENTRIES) == 0) {
+    } else if (strcmp(name, ROTATE_MAX_ENTRIES) == 0) {
         cfg->storage.rotate_journal_max_entries = parse_uint32(value);
-    } else if (strcmp(name, ROTATE_JOURNAL_MAX_BYTES) == 0) {
+    } else if (strcmp(name, ROTATE_MAX_BYTES) == 0) {
         cfg->storage.rotate_journal_max_bytes = parse_bytes(value);
     } else if (strcmp(name, MAX_UPDATES_BETWEEN_SNAPSHOTS) == 0) {
         cfg->context.snapshot_max_entries = parse_uint32(value);
@@ -319,6 +321,8 @@ static void set_defaults(nplex::config_t &cfg)
     cfg.storage.write_queue_max_bytes = DEFAULT_QUEUE_MAX_BYTES;
     cfg.storage.flush_max_entries = DEFAULT_FLUSH_MAX_ENTRIES;
     cfg.storage.flush_max_bytes = DEFAULT_FLUSH_MAX_BYTES;
+    cfg.storage.rotate_journal_max_entries = DEFAULT_ROTATE_MAX_ENTRIES;
+    cfg.storage.rotate_journal_max_bytes = DEFAULT_ROTATE_MAX_BYTES;
 
     // Snapshot defaults
     cfg.context.snapshot_max_entries = DEFAULT_MAX_UPDATES_BETWEEN_SNAPSHOTS;
@@ -427,13 +431,15 @@ void nplex::config_t::save(const fs::path &filepath) const
     ofs << WRITE_QUEUE_MAX_BYTES << " = " << bytes_to_string(storage.write_queue_max_bytes) << std::endl;
     ofs << FLUSH_MAX_ENTRIES << " = " << storage.flush_max_entries << std::endl;
     ofs << FLUSH_MAX_BYTES << " = " << bytes_to_string(storage.flush_max_bytes) << std::endl;
-    ofs << MAX_UPDATES_BETWEEN_SNAPSHOTS << " = " << context.snapshot_max_entries << std::endl;
-    ofs << MAX_BYTES_BETWEEN_SNAPSHOTS << " = " << bytes_to_string(context.snapshot_max_bytes) << std::endl;
+    ofs << MAX_TOMBSTONES << " = " << store.max_tombstones << std::endl;
     ofs << TOMBSTONE_RETENTION_MAX << " = " << store.retention_max << std::endl;
     ofs << TOMBSTONE_RETENTION_MIN << " = " << store.retention_min << std::endl;
-    ofs << MAX_TOMBSTONES << " = " << store.max_tombstones << std::endl;
     ofs << CACHE_MAX_BYTES << " = " << bytes_to_string(context.cache_max_bytes) << std::endl;
     ofs << CACHE_MAX_ENTRIES << " = " << context.cache_max_entries << std::endl;
+    ofs << MAX_UPDATES_BETWEEN_SNAPSHOTS << " = " << context.snapshot_max_entries << std::endl;
+    ofs << MAX_BYTES_BETWEEN_SNAPSHOTS << " = " << bytes_to_string(context.snapshot_max_bytes) << std::endl;
+    ofs << ROTATE_MAX_ENTRIES << " = " << storage.rotate_journal_max_entries << std::endl;
+    ofs << ROTATE_MAX_BYTES << " = " << bytes_to_string(storage.rotate_journal_max_bytes) << std::endl;
     ofs << std::endl;
 
     ofs << "[" << SECTION_USER_DEFAULTS << "]" << std::endl;

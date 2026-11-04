@@ -153,7 +153,7 @@ make -j$(nproc)
 # Valgrind
 cmake ..
 make -j$(nproc)
-valgrind --tool=memcheck --leak-check=yes ./nplex -D test -l debug
+valgrind --tool=memcheck --leak-check=yes --track-fds=yes ./nplex -D test -l debug
 
 # Clang compiler instead of gcc
 cmake -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ ..

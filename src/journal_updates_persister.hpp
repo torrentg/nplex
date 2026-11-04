@@ -1,8 +1,10 @@
 #pragma once
 
 #include "persister.hpp"
+#include "params.hpp"
 #include <filesystem>
 #include <optional>
+#include <atomic>
 #include <mutex>
 #include <map>
 
@@ -50,7 +52,7 @@ class journal_updates_persister_t : public updates_persister_t
 {
   public:
 
-    journal_updates_persister_t(const std::filesystem::path &path, bool fsync);
+    journal_updates_persister_t(const std::filesystem::path &path, const storage_params_t &params);
     ~journal_updates_persister_t() override = default;
 
     journal_updates_persister_t(const journal_updates_persister_t &) = delete;
@@ -63,6 +65,7 @@ class journal_updates_persister_t : public updates_persister_t
     void write_updates(const std::span<update_entry_t> &entries, std::size_t &num_writes) override;
 
     void maintenance();
+    bool rotate_at(rev_t rev);
 
     static journal_ptr open_journal_file(const std::filesystem::path &path, const std::string &name, int flags);
     static journal_ptr open_journal_file(const std::filesystem::path &filepath, int flags);
@@ -81,17 +84,24 @@ class journal_updates_persister_t : public updates_persister_t
     std::filesystem::path m_path;
     journal_ptr m_journal;  // Current segment
     std::map<rev_t, journal_segment_t> m_catalog;
-    mutable std::mutex m_catalog_mutex;
     millis_t m_last_catalog_update = millis_t::zero();
-    static constexpr millis_t MAX_READ_IDLE_TIME = std::chrono::seconds(30);
-    static constexpr millis_t MIN_CATALOG_UPDATE_INTERVAL = std::chrono::minutes(5);
+    mutable std::mutex m_catalog_mutex;
+    mutable std::mutex m_journal_mutex;
+    std::size_t m_rotate_max_entries = 0;
+    std::size_t m_rotate_max_bytes = 0;
+    std::atomic<rev_t> m_rotate_rev = 0;
+    bool m_fsync = false;
 
     journal_ptr get_journal(rev_t rev);
     journal_ptr get_journal_with_retry(rev_t rev);
     std::optional<journal_segment_t> get_journal_segment(const std::filesystem::path &filepath);
     std::pair<rev_t, rev_t> get_catalog_range() const;
+    std::pair<rev_t, rev_t> get_journal_range() const;
     std::pair<rev_t, rev_t> normalize_catalog();
     bool update_catalog(bool force = false);
+    bool rotate(const std::string &name = {});
+    std::pair<std::span<update_entry_t>, bool> select_write_batch(std::span<update_entry_t> entries);
+    std::size_t write_batch(std::span<update_entry_t> entries, std::size_t &num_writes);
 };
 
 } // namespace nplex

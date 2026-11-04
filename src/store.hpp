@@ -118,7 +118,7 @@ class store_t
 
     struct removed_key_t {
         key_t key;                          // Removed key.
-        rev_t rev;                          // Revision when removed.
+        rev_t rev = 0;                      // Revision when removed.
     };
 
     using user_map_t = std::map<gto::cstring, std::uint32_t, gto::cstring_compare>;

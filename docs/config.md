@@ -17,6 +17,8 @@ Below is a complete reference of all parameters.
 | `write-queue-max-bytes` | `350MB` | Maximum bytes queued for disk write. |
 | `flush-max-entries` | `50` | Maximum updates per disk write batch. |
 | `flush-max-bytes` | `25MB` | Maximum bytes per disk write batch. |
+| `rotate-journal-max-entries` | `0` | Rotate journal after N entries. `0` = disabled. |
+| `rotate-journal-max-bytes` | `0` | Rotate journal after N bytes. `0` = disabled. |
 | `max-updates-between-snapshots` | `50000` | Trigger a new snapshot after this many updates. |
 | `max-bytes-between-snapshots` | `100MB` | Trigger a new snapshot after this many bytes of updates. |
 | `tombstone-retention-max` | `20000` | Maximum number of revisions to retain tombstones. |
