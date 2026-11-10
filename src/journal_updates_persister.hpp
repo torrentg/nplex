@@ -92,8 +92,8 @@ class journal_updates_persister_t : public updates_persister_t
     std::atomic<rev_t> m_rotate_rev = 0;
     bool m_fsync = false;
 
-    journal_ptr get_journal(rev_t rev);
-    journal_ptr get_journal_with_retry(rev_t rev);
+    journal_ptr get_journal_from_catalog(rev_t rev);
+    journal_ptr get_journal_from_catalog_with_retry(rev_t rev);
     std::optional<journal_segment_t> get_journal_segment(const std::filesystem::path &filepath);
     std::pair<rev_t, rev_t> get_catalog_range() const;
     std::pair<rev_t, rev_t> get_journal_range() const;

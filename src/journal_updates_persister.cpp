@@ -1,6 +1,7 @@
 #include "journal_updates_persister.hpp"
 #include "exception.hpp"
 #include "logger.hpp"
+#include "utils.hpp"
 #include "journal.h"
 #include <algorithm>
 #include <vector>
@@ -159,6 +160,8 @@ read_result_t read_updates(const nplex::journal_ptr &journal, nplex::rev_t from_
         }
     }
 
+    LOG_TRACE("read_updates(): range=[{}-{}], bytes={}", from_rev, seqnum - 1, nplex::bytes_to_string(total_bytes));
+
     return read_result_t{seqnum, num_entries, total_bytes, false};
 }
 
@@ -212,7 +215,7 @@ nplex::journal_updates_persister_t::journal_updates_persister_t(const fs::path &
     m_rotate_max_bytes = params.rotate_journal_max_bytes;
     m_rotate_max_entries = params.rotate_journal_max_entries;
 
-    m_journal = open_journal_file(m_path, CURRENT_SEGMENT, LDB_CREATE | LDB_CHECK | (m_fsync ? LDB_FSYNC : 0));
+    m_journal = open_journal_file(m_path, CURRENT_SEGMENT, LDB_CREATE | LDB_RECOVER | LDB_CHECK | (m_fsync ? LDB_FSYNC : 0));
 
     update_catalog();
 }
@@ -235,21 +238,25 @@ std::pair<nplex::rev_t, nplex::rev_t> nplex::journal_updates_persister_t::get_up
 
 void nplex::journal_updates_persister_t::read_updates(rev_t from_rev, const read_callback_f &on_entry)
 {
-    journal_ptr journal;
     read_buffers_t buffers;
     read_result_t result{from_rev, 0, 0, false};
 
+    // Read entries from catalog
     while (!result.stopped)
     {
-        journal = get_journal_with_retry(result.rev);
+        journal_ptr journal = get_journal_from_catalog(result.rev);
 
         if (!journal)
-            return;  // TODO: what to do in this case? throw exception ?
+            break;
 
         result = ::read_updates(journal, result.rev, on_entry, buffers);
     }
 
-    // TODO: trace debug info (elapsed time, count, bytes)
+    // Read entries from the current journal
+    if (!result.stopped)
+    {
+        result = ::read_updates(m_journal, result.rev, on_entry, buffers);
+    }
 }
 
 bool nplex::journal_updates_persister_t::rotate_at(rev_t rev)
@@ -351,9 +358,8 @@ void nplex::journal_updates_persister_t::write_updates(const std::span<update_en
 nplex::journal_ptr nplex::journal_updates_persister_t::open_journal_file(const fs::path &path, const std::string &name, int flags)
 {
     auto journal = std::make_shared<ldb::journal_t>(path, name, flags);
-
     ::check_journal_metadata(journal);
-
+    LOG_TRACE("Opened journal file: name={}", name + LDB_EXT_DAT);
     return journal;
 }
 
@@ -376,6 +382,7 @@ void nplex::journal_updates_persister_t::maintenance()
         if (item.second.journal && now > item.second.last_read_time + MAX_READ_IDLE_TIME) {
             item.second.last_read_time = millis_t::zero();
             item.second.journal = nullptr;
+            LOG_TRACE("Released idle journal: name={}", item.second.file_name);
         }
     }
 }
@@ -449,7 +456,8 @@ bool nplex::journal_updates_persister_t::update_catalog(bool force)
         }
 
         m_catalog[segment_opt->range.second] = *segment_opt;
-        LOG_DEBUG("Journal {} added to catalog", segment_opt->file_name);
+        LOG_DEBUG("Journal {} added to catalog, range=[{}-{}]", 
+            segment_opt->file_name, segment_opt->range.first, segment_opt->range.second);
     }
 
     auto catalog_range = normalize_catalog();
@@ -511,9 +519,9 @@ std::pair<nplex::rev_t, nplex::rev_t> nplex::journal_updates_persister_t::normal
     return catalog_range;
 }
 
-nplex::journal_ptr nplex::journal_updates_persister_t::get_journal_with_retry(rev_t rev)
+nplex::journal_ptr nplex::journal_updates_persister_t::get_journal_from_catalog_with_retry(rev_t rev)
 {
-    auto journal = get_journal(rev);
+    auto journal = get_journal_from_catalog(rev);
 
     if (journal)
         return journal;
@@ -521,24 +529,22 @@ nplex::journal_ptr nplex::journal_updates_persister_t::get_journal_with_retry(re
     if (!update_catalog())
         return nullptr;
 
-    return get_journal(rev);
+    journal = get_journal_from_catalog(rev);
+
+    if (!journal)
+        throw nplex_exception("Failed to get journal for rev {}", rev);
+
+    return journal;
 }
 
-nplex::journal_ptr nplex::journal_updates_persister_t::get_journal(rev_t rev)
+nplex::journal_ptr nplex::journal_updates_persister_t::get_journal_from_catalog(rev_t rev)
 {
     std::lock_guard lock1(m_catalog_mutex);
 
     auto it = m_catalog.lower_bound(rev);
 
     if (it == m_catalog.end())
-    {
-        std::lock_guard lock2(m_journal_mutex);
-
-        if (m_journal->contains(rev))
-            return m_journal;
-
         return nullptr;
-    }
 
     assert(it->first == it->second.range.second);
     assert(rev <= it->second.range.second);
@@ -550,7 +556,7 @@ nplex::journal_ptr nplex::journal_updates_persister_t::get_journal(rev_t rev)
     {
         try
         {
-            it->second.journal = open_journal_file(m_path / it->second.file_name, LDB_READONLY | LDB_CHECK);
+            it->second.journal = open_journal_file(m_path / it->second.file_name, LDB_READONLY | LDB_RECOVER | LDB_CHECK);
         }
         catch(const std::exception &e)
         {
@@ -562,6 +568,9 @@ nplex::journal_ptr nplex::journal_updates_persister_t::get_journal(rev_t rev)
     auto now = std::chrono::system_clock::now().time_since_epoch();
     it->second.last_read_time = std::chrono::duration_cast<millis_t>(now);
 
+    LOG_TRACE("get_journal(r{}): name={}, range=[{}-{}]", 
+        rev, it->second.file_name, it->second.range.first, it->second.range.second);
+    
     return it->second.journal;
 }
 
@@ -571,7 +580,7 @@ std::optional<nplex::journal_updates_persister_t::journal_segment_t> nplex::jour
 
     try
     {
-        segment.journal = open_journal_file(filepath, LDB_READONLY | LDB_CHECK);
+        segment.journal = open_journal_file(filepath, LDB_READONLY | LDB_RECOVER | LDB_CHECK);
     }
     catch(const std::exception &e)
     {
@@ -635,13 +644,14 @@ bool nplex::journal_updates_persister_t::rotate(const std::string &name)
     // Close the current journal
     assert(m_journal);
     m_journal = nullptr;
+    LOG_TRACE("Closed current journal: name={}", CURRENT_SEGMENT + std::string{LDB_EXT_DAT});
 
     // Rename the current journal file
     auto rc = ldb::rename(m_path, CURRENT_SEGMENT, segment_name);
     if (rc != LDB_OK)
     {
         LOG_ERROR("Failed to rename journal to {}: {}", segment_name, ldb_strerror(rc));
-        m_journal = open_journal_file(m_path / CURRENT_SEGMENT, LDB_CREATE | LDB_CHECK | (m_fsync ? LDB_FSYNC : 0));
+        m_journal = open_journal_file(m_path / CURRENT_SEGMENT, LDB_CREATE | LDB_RECOVER | LDB_CHECK | (m_fsync ? LDB_FSYNC : 0));
         return false;
     }
 
@@ -660,7 +670,7 @@ bool nplex::journal_updates_persister_t::rotate(const std::string &name)
     }
 
     // Open a new journal file for writing
-    m_journal = open_journal_file(m_path, CURRENT_SEGMENT, LDB_CREATE | LDB_CHECK | (m_fsync ? LDB_FSYNC : 0));
+    m_journal = open_journal_file(m_path, CURRENT_SEGMENT, LDB_CREATE | LDB_RECOVER | LDB_CHECK | (m_fsync ? LDB_FSYNC : 0));
 
     return true;
 }

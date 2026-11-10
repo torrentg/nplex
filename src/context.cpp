@@ -89,7 +89,7 @@ static void cb_task_after(uv_work_t *req, int status)
 
     uint64_t duration_us = (uv_hrtime() - task->start_time) / 1000;
 
-    LOG_TRACE("Task {}: duration = {} μs", task->name(), duration_us);
+    LOG_TRACE("Task {} completed: duration = {} μs", task->name(), duration_us);
     UNUSED(duration_us);
 
     if (status == UV_ECANCELED) {

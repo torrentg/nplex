@@ -6,14 +6,13 @@
 #include "context.hpp"
 #include "tasks.hpp"
 #include "logger.hpp"
+#include <algorithm>
 #include <cassert>
 
 // maximum time (in millis) for a not logged user
 static constexpr std::uint32_t TIMEOUT_NO_USER = 5000;
-// maximum (approx) bytes in an UpdatesPush message
-static constexpr std::uint32_t MAX_BYTES_IN_PUSH = 1 * 1024 * 1024;
-// maximum number of items in a sync batch
-static constexpr std::uint32_t MAX_ITEMS_IN_SYNC = 10000;
+// maximum number of bytes in a sync batch
+static constexpr std::uint32_t MAX_BYTES_IN_SYNC = 50 * 1024 * 1024;
 // maximum % occupancy in output queue to start a sync
 static constexpr std::uint32_t MAX_PCT_OCCUPANCY_OUTPUT_QUEUE = 66;
 
@@ -433,7 +432,13 @@ void nplex::session_t::do_sync(std::size_t cid)
         return;
     }
 
-    std::uint32_t max_bytes = static_cast<std::uint32_t>(params.max_unack_bytes - stats.unack_bytes);
+    std::uint32_t max_bytes = MAX_BYTES_IN_SYNC ;
+    std::uint32_t unack_budget = static_cast<std::uint32_t>(params.max_unack_bytes - stats.unack_bytes);
+
+    max_bytes = std::min(max_bytes, unack_budget);
+    if (max_bytes == 0)
+        return;
+
     rev_t from_rev = m_lrev + 1;
 
     // First, try to serve updates from the in-memory cache.
@@ -445,7 +450,7 @@ void nplex::session_t::do_sync(std::size_t cid)
     }
 
     // Fallback: launch async sync task which will read from storage.
-    sync_task_t *task = new sync_task_t(shared_from_this(), m_lrev, m_updates_cid, MAX_ITEMS_IN_SYNC, max_bytes);
+    sync_task_t *task = new sync_task_t(shared_from_this(), m_lrev, m_updates_cid, UINT32_MAX, max_bytes);
     m_context->submit_task(task);
     m_sync_in_progress = true;
 }
@@ -512,14 +517,38 @@ void nplex::session_t::send_updates(std::size_t cid, [[maybe_unused]] rev_t from
     assert(m_lrev == 0 || m_lrev + 1 == from_rev);
 
     rev_t crev = m_context->last_persisted_rev();
+
+    // TODO: use send_buffered_msg()
+    LOG_TRACE("send_updates(): cid={}, from_rev={}, to_rev={}", cid, from_rev, to_rev);
+
     updates_push_builder_t builder;
     auto it = updates.begin();
 
     while (it != updates.end())
     {
+        const auto &stats = m_con.stats();
+        const auto &params = m_con.params();
+
+        // Stop pushing when output queue occupancy is high; do_sync() will resume later.
+        if ((stats.unack_msgs  * 100) / params.max_unack_msgs  >= MAX_PCT_OCCUPANCY_OUTPUT_QUEUE ||
+            (stats.unack_bytes * 100) / params.max_unack_bytes >= MAX_PCT_OCCUPANCY_OUTPUT_QUEUE) {
+            break;
+        }
+
+        std::uint32_t max_msg_bytes = m_context->params().max_msg_bytes;
+        std::uint32_t unack_budget = (params.max_unack_bytes * MAX_PCT_OCCUPANCY_OUTPUT_QUEUE) / 100;
+
+        if (unack_budget > stats.unack_bytes)
+            max_msg_bytes = std::min(max_msg_bytes, static_cast<std::uint32_t>(unack_budget - stats.unack_bytes));
+        else
+            break;
+
+        if (max_msg_bytes == 0)
+            break;
+
         for (; it != updates.end(); ++it)
         {
-            if (builder.bytes() >= MAX_BYTES_IN_PUSH)
+            if (builder.bytes() >= max_msg_bytes)
                 break;
 
             assert(m_lrev < it->rev);
@@ -531,12 +560,12 @@ void nplex::session_t::send_updates(std::size_t cid, [[maybe_unused]] rev_t from
 
         if (!builder.empty())
             send(builder.finish(m_updates_cid, crev));
+        else
+            break;
     }
 
-    m_lrev = to_rev;
-
     // Case: synced and last update was not sent
-    if (m_lrev == crev && updates.back().rev != to_rev) {
+    if (it == updates.end() && m_lrev == crev && updates.back().rev != to_rev) {
         update_dto_t dto = {
             .rev = crev,
             .user = "admin"
@@ -559,6 +588,8 @@ void nplex::session_t::push_changes(const std::span<const update_t> &updates, bo
     rev_t crev = m_context->last_persisted_rev();
     updates_push_builder_t builder;
     auto it = updates.begin();
+
+    // TODO: use send_buffered_msg()
 
     while (it != updates.end())
     {

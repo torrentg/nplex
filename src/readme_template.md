@@ -4,7 +4,7 @@
 This directory is managed by [nplex](https://github.com/torrentg/nplex),
 a key-value stream database.
 
-The system is designed to let you maintain its files (copy, move, compress, rotate, etc.).
+The system is designed to let you maintain its files (copy, move, compress, rotate, etc).
 
 Please follow these rules:
 
@@ -32,13 +32,15 @@ Please follow these rules:
   This file is locked while the database is running.
   This file is rebuilt at startup if it does not exist or is corrupted.
 
-- `journal-N.dat` — Archived journal (N = max revision in the archive).
+- `journal-XXX.dat` — Archived journal.
+  Usually `XXX` is the max revision in the archive.
   These files are open in read-only mode and closed after use.
   You can move or delete these files as needed.
   Use `nplex_dump` to inspect the contents.
   Use `jtools` to manage these files.
 
-- `journal-N.idx` — Archived journal (N = max revision in the archive).
+- `journal-XXX.idx` — Archived journal.
+  Index file of `journal-XXX.dat`.
   These files are open in read-only mode and closed after use.
   These files are rebuilt at startup if they do not exist or are corrupted.
 

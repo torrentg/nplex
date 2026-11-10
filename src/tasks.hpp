@@ -59,7 +59,7 @@ struct snapshot_task_t : public task_t
     snapshot_task_t(const session_ptr &session, nplex::rev_t rev, std::size_t cid)
         : m_rev(rev), m_cid(cid), m_session(session) {}
 
-    const char * name() const override { return "snapshot_task"; }
+    const char * name() const override { return "build_snapshot_at_task"; }
     void run() override;
     void after() override;
 };
@@ -81,8 +81,7 @@ struct sync_task_t : public task_t
     std::size_t m_bytes = 0;                // cumulated bytes (filtered by user)
     rev_t m_last_rev = 0;                   // last revision read
 
-    sync_task_t(const session_ptr &session, nplex::rev_t rev, std::size_t cid, std::uint32_t max_items, std::uint32_t max_bytes)
-        : m_rev(rev), m_cid(cid), m_session(session), m_max_items(max_items), m_max_bytes(max_bytes) {}
+    sync_task_t(const session_ptr &session, rev_t rev, std::size_t cid, std::uint32_t max_items, std::uint32_t max_bytes);
 
     const char * name() const override { return "sync_task"; }
     void run() override;
@@ -101,7 +100,7 @@ struct write_snapshot_task_t : public task_t
     write_snapshot_task_t(nplex::rev_t rev, flatbuffers::DetachedBuffer &&buf, const storage_ptr &storage)
         : m_rev(rev), m_buf(std::move(buf)), m_storage(storage) {}
 
-    const char * name() const override { return "write_snapshot_task"; }
+    const char * name() const override { return "save_snapshot_task"; }
     void run() override;
     void after() override {}
 };

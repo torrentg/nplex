@@ -63,8 +63,7 @@ static void dump_snapshot(const fs::path &path)
 
 static void dump_journal(const fs::path &path)
 {
-    int rc = 0;
-    auto journal = nplex::journal_updates_persister_t::open_journal_file(path, LDB_READONLY | LDB_CHECK);
+    auto journal = nplex::journal_updates_persister_t::open_journal_file(path, LDB_READONLY | LDB_RECOVER | LDB_CHECK);
     auto range = journal->range();
 
     if (range.first == 0)
@@ -80,7 +79,7 @@ static void dump_journal(const fs::path &path)
         size_t want = std::min(BATCH_SIZE, static_cast<size_t>(to_seq - seq + 1ULL));
         size_t num = 0;
 
-        rc = journal->read(seq, entries, want, buf.data(), buf.size(), &num);
+        int rc = journal->read(seq, entries, want, buf.data(), buf.size(), &num);
 
         if (rc != LDB_OK && rc != LDB_ERR_NOT_FOUND)
             throw nplex::nplex_exception("error reading journal: {}", ldb_strerror(rc));

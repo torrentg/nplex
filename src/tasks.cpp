@@ -3,9 +3,8 @@
 #include "messaging.hpp"
 #include "session.hpp"
 #include "context.hpp"
+#include "logger.hpp"
 #include "utils.hpp"
-#include <cstddef>
-#include <cassert>
 
 // ==========================================================
 // snapshot_task_t methods
@@ -27,9 +26,17 @@ void nplex::snapshot_task_t::after()
 // sync_task_t methods
 // ==========================================================
 
+nplex::sync_task_t::sync_task_t(const session_ptr &session, nplex::rev_t rev, std::size_t cid, std::uint32_t max_items, std::uint32_t max_bytes)
+    : m_rev(rev), m_cid(cid), m_session(session), m_max_items(max_items), m_max_bytes(max_bytes)
+{
+    LOG_TRACE("Launching sync_task: rev={}, max_bytes={}", m_rev, bytes_to_string(max_bytes));
+}
+
 void nplex::sync_task_t::run()
 {
     auto storage = m_session->context()->storage();
+
+    // TODO: catch exceptions from read_updates (disconnect session)
 
     storage->read_updates(m_rev + 1, [this](const msgs::Update *update) -> bool {
 
@@ -56,6 +63,8 @@ void nplex::sync_task_t::run()
 
 void nplex::sync_task_t::after()
 {
+    LOG_TRACE("sync_task completed: range=[{}-{}], items={}, bytes={}", 
+        m_rev, m_last_rev, m_updates.size(), bytes_to_string(m_bytes));
     m_session->send_updates(m_cid, m_rev + 1, m_last_rev, m_updates);
     m_session->do_sync(m_cid);
 }
