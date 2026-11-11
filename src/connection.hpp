@@ -1,7 +1,8 @@
 #pragma once
 
-#include "addr.hpp"
+#include "common.hpp"
 #include "params.hpp"
+#include "addr.hpp"
 #include <uv.h>
 #include <chrono>
 #include <span>
@@ -67,8 +68,8 @@ struct connection_s
 
     void shutdown(int rc);
     void disconnect(int rc);
-    void send(flatbuffers::DetachedBuffer &&buf);
-    void send(std::span<flatbuffers::DetachedBuffer> msgs);
+    void send(DetachedBuffer &&buf);
+    void send(std::span<DetachedBuffer> msgs);
     void report_peer_activity();
     void send_keepalive();
     void set_timer(uv_timer_t *&timer, std::uint32_t millis, uv_timer_cb timer_cb);

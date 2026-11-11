@@ -107,7 +107,7 @@ class store_t
      * 
      * @return Serialized snapshot content.
      */
-    flatbuffers::Offset<msgs::Snapshot> serialize(flatbuffers::FlatBufferBuilder &builder, const user_ptr &user = nullptr) const;
+    fb::Offset<msgs::Snapshot> serialize(FlatBufferBuilder &builder, const user_ptr &user = nullptr) const;
 
   private: // types
 

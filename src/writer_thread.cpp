@@ -132,7 +132,7 @@ void nplex::writer_thread_t::run()
 
     std::size_t num_writes = 0;
     std::vector<update_t> updates_batch;
-    std::vector<flatbuffers::DetachedBuffer> buffers_batch;
+    std::vector<DetachedBuffer> buffers_batch;
     std::vector<entry_t> entries_batch;
     std::size_t bytes_batch = 0;
     std::uint64_t start_time = 0;

@@ -127,3 +127,23 @@ enum class log_level_e : std::uint8_t {
 };
 
 } // namespace nplex
+
+/**
+ * Flatbuffers library is used extensively in nplex
+ * to reduce memory usage and improve serialization performance.
+ * Some basic nplex types are flatbuffers types.
+ */
+
+// Forward declarations
+namespace flatbuffers {
+    class DetachedBuffer;
+    template<bool>
+    class FlatBufferBuilderImpl;
+}
+
+// Flatbuffers namespace alias for convenience.
+namespace fb = flatbuffers;
+
+//! Flatbuffers type aliases for convenience.
+using DetachedBuffer = flatbuffers::DetachedBuffer;
+using FlatBufferBuilder = flatbuffers::FlatBufferBuilderImpl<false>;

@@ -71,7 +71,7 @@ static void json_append_escaped_text(std::string_view text, std::string &out)
     out.push_back('"');
 }
 
-static void json_append_escaped_text(const flatbuffers::String *str, std::string &out)
+static void json_append_escaped_text(const fb::String *str, std::string &out)
 {
     if (!str) {
         out += "null";
@@ -217,7 +217,7 @@ static void to_json(const Snapshot *snp, std::string &out)
         auto updates = snp->updates();
         auto len = updates->size();
 
-        for (flatbuffers::uoffset_t i = 0; i < len; i++)
+        for (decltype(len) i = 0; i < len; i++)
         {
             to_json(updates->Get(i), out);
 
@@ -239,12 +239,12 @@ std::string nplex::update_to_json(const char *data, size_t len)
     if (!data || len == 0)
         return "<invalid update>";
 
-    auto verifier = flatbuffers::Verifier(reinterpret_cast<const std::uint8_t *>(data), len);
+    auto verifier = fb::Verifier(reinterpret_cast<const std::uint8_t *>(data), len);
 
     if (!verifier.VerifyBuffer<nplex::msgs::Update>(nullptr))
         return "<invalid update>";
 
-    auto update = flatbuffers::GetRoot<nplex::msgs::Update>(data);
+    auto update = fb::GetRoot<nplex::msgs::Update>(data);
     std::string str;
 
     str.reserve(len * 2);
@@ -261,12 +261,12 @@ std::string nplex::snapshot_to_json(const char *data, size_t len)
     if (!data || len == 0)
         return "<invalid snapshot>";
 
-    auto verifier = flatbuffers::Verifier(reinterpret_cast<const std::uint8_t *>(data), len);
+    auto verifier = fb::Verifier(reinterpret_cast<const std::uint8_t *>(data), len);
 
     if (!verifier.VerifyBuffer<nplex::msgs::Snapshot>(nullptr))
         return "<invalid snapshot>";
 
-    auto snapshot = flatbuffers::GetRoot<nplex::msgs::Snapshot>(data);
+    auto snapshot = fb::GetRoot<nplex::msgs::Snapshot>(data);
     std::string str;
 
     str.reserve(len * 2);

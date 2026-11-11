@@ -59,14 +59,14 @@ nplex::rev_t nplex::storage_t::max_rev()
 void nplex::storage_t::read_updates(rev_t from_rev, const std::function<bool(const msgs::Update *)> &on_entry)
 {
     auto on_raw_entry = [&on_entry](const updates_persister_t::update_entry_t &raw_entry) -> bool {
-        auto verifier = flatbuffers::Verifier(
+        auto verifier = fb::Verifier(
             reinterpret_cast<const std::uint8_t *>(raw_entry.data),
             raw_entry.data_len);
 
         if (!verifier.VerifyBuffer<msgs::Update>(nullptr))
             throw nplex_exception("invalid update payload");
 
-        auto update = flatbuffers::GetRoot<msgs::Update>(raw_entry.data);
+        auto update = fb::GetRoot<msgs::Update>(raw_entry.data);
 
         return on_entry(update);
     };
@@ -82,7 +82,7 @@ nplex::store_t nplex::storage_t::rebuild_store_at(rev_t rev, const user_ptr &use
     std::string str = m_snapshot_persister->read_snapshot(rev);
     if (!str.empty())
     {
-        auto snapshot = flatbuffers::GetRoot<msgs::Snapshot>(str.c_str());
+        auto snapshot = fb::GetRoot<msgs::Snapshot>(str.c_str());
         store.load(snapshot, user);
         std::string{}.swap(str);
     }

@@ -13,7 +13,7 @@ using namespace flatbuffers;
 // Internal (static) functions
 // ==========================================================
 
-static std::string create_string(const flatbuffers::String *str)
+static std::string create_string(const fb::String *str)
 {
     if (!str)
         return "";
@@ -21,7 +21,7 @@ static std::string create_string(const flatbuffers::String *str)
     return std::string{str->c_str(), str->size()};
 }
 
-static std::string create_string(const flatbuffers::Vector<std::uint8_t> *value)
+static std::string create_string(const fb::Vector<std::uint8_t> *value)
 {
     if (!value)
         return "";
@@ -29,7 +29,7 @@ static std::string create_string(const flatbuffers::Vector<std::uint8_t> *value)
     return std::string{reinterpret_cast<const char *>(value->data()), static_cast<std::size_t>(value->size())};
 }
 
-static flatbuffers::Offset<nplex::msgs::Update> serialize_update(flatbuffers::FlatBufferBuilder &builder, const nplex::update_t &update, const nplex::user_ptr &user, bool force)
+static fb::Offset<nplex::msgs::Update> serialize_update(fb::FlatBufferBuilder &builder, const nplex::update_t &update, const nplex::user_ptr &user, bool force)
 {
     std::vector<Offset<KeyValue>> upserts;
     std::vector<Offset<String>> deletes;
@@ -73,7 +73,7 @@ static flatbuffers::Offset<nplex::msgs::Update> serialize_update(flatbuffers::Fl
     );
 }
 
-static flatbuffers::Offset<nplex::msgs::Update> serialize_update(flatbuffers::FlatBufferBuilder &builder, const nplex::update_dto_t &update, const nplex::user_ptr &user, bool force)
+static fb::Offset<nplex::msgs::Update> serialize_update(fb::FlatBufferBuilder &builder, const nplex::update_dto_t &update, const nplex::user_ptr &user, bool force)
 {
     std::vector<Offset<KeyValue>> upserts;
     std::vector<Offset<String>> deletes;
@@ -121,7 +121,7 @@ static flatbuffers::Offset<nplex::msgs::Update> serialize_update(flatbuffers::Fl
 // outgoing_network_frames_t methods
 // ==========================================================
 
-nplex::outgoing_network_frames_t * nplex::outgoing_network_frames_t::create(std::span<flatbuffers::DetachedBuffer> msgs)
+nplex::outgoing_network_frames_t * nplex::outgoing_network_frames_t::create(std::span<DetachedBuffer> msgs)
 {
     if (msgs.empty() || msgs.size() > max_num_msgs())
         throw std::invalid_argument("invalid number of messages");
@@ -151,7 +151,7 @@ nplex::outgoing_network_frames_t * nplex::outgoing_network_frames_t::create(std:
         values_ptr[i].len = htonl(content_len);
         total_length += frame_len;
 
-        new (&values_ptr[i].content) flatbuffers::DetachedBuffer();
+        new (&values_ptr[i].content) DetachedBuffer();
         values_ptr[i].content = std::move(content);
 
         checksum = crc32(reinterpret_cast<const char *>(values_ptr[i].content.data()), content_len);
@@ -221,12 +221,12 @@ const nplex::msgs::Message * nplex::parse_network_frame(const char *ptr, size_t 
     if (checksum != crc32(ptr, len))
         return nullptr;
 
-    auto verifier = flatbuffers::Verifier(reinterpret_cast<const std::uint8_t *>(ptr), len);
+    auto verifier = fb::Verifier(reinterpret_cast<const std::uint8_t *>(ptr), len);
 
     if (!verifier.VerifyBuffer<Message>(nullptr))
         return nullptr;
 
-    return flatbuffers::GetRoot<Message>(ptr);
+    return fb::GetRoot<Message>(ptr);
 }
 
 DetachedBuffer nplex::create_login_response(std::size_t cid, LoginCode code, rev_t rev0, rev_t crev, const user_ptr &user)
@@ -260,7 +260,7 @@ DetachedBuffer nplex::create_login_response(std::size_t cid, LoginCode code, rev
     return builder.Release();
 }
 
-flatbuffers::DetachedBuffer nplex::create_updates_response(std::size_t cid, rev_t crev, rev_t rev0, bool accepted)
+fb::DetachedBuffer nplex::create_updates_response(std::size_t cid, rev_t crev, rev_t rev0, bool accepted)
 {
     FlatBufferBuilder builder(128);
 
@@ -279,7 +279,7 @@ flatbuffers::DetachedBuffer nplex::create_updates_response(std::size_t cid, rev_
     return builder.Release();
 }
 
-flatbuffers::DetachedBuffer nplex::create_sessions_push(std::size_t cid, rev_t crev, const session_ptr &session)
+fb::DetachedBuffer nplex::create_sessions_push(std::size_t cid, rev_t crev, const session_ptr &session)
 {
     assert(session->user());
 
@@ -330,7 +330,7 @@ flatbuffers::DetachedBuffer nplex::create_sessions_push(std::size_t cid, rev_t c
     return builder.Release();
 }
 
-flatbuffers::DetachedBuffer nplex::create_keepalive_push(rev_t crev)
+fb::DetachedBuffer nplex::create_keepalive_push(rev_t crev)
 {
     FlatBufferBuilder builder(128);
 
@@ -346,7 +346,7 @@ flatbuffers::DetachedBuffer nplex::create_keepalive_push(rev_t crev)
     return builder.Release();
 }
 
-flatbuffers::DetachedBuffer nplex::create_ping_response(std::size_t cid, rev_t crev, const std::string &payload)
+fb::DetachedBuffer nplex::create_ping_response(std::size_t cid, rev_t crev, const std::string &payload)
 {
     FlatBufferBuilder builder(128);
 
@@ -364,7 +364,7 @@ flatbuffers::DetachedBuffer nplex::create_ping_response(std::size_t cid, rev_t c
     return builder.Release();
 }
 
-flatbuffers::DetachedBuffer nplex::create_submit_response(std::size_t cid, rev_t crev, SubmitCode code, rev_t erev)
+fb::DetachedBuffer nplex::create_submit_response(std::size_t cid, rev_t crev, SubmitCode code, rev_t erev)
 {
     FlatBufferBuilder builder(128);
 
@@ -383,7 +383,7 @@ flatbuffers::DetachedBuffer nplex::create_submit_response(std::size_t cid, rev_t
     return builder.Release();
 }
 
-flatbuffers::DetachedBuffer nplex::create_snapshot_response(std::size_t cid, rev_t crev, rev_t rev0, bool accepted, const store_t &store, const user_ptr &user)
+fb::DetachedBuffer nplex::create_snapshot_response(std::size_t cid, rev_t crev, rev_t rev0, bool accepted, const store_t &store, const user_ptr &user)
 {
     FlatBufferBuilder builder(32 * 1024);
 
@@ -404,7 +404,7 @@ flatbuffers::DetachedBuffer nplex::create_snapshot_response(std::size_t cid, rev
     return builder.Release();
 }
 
-flatbuffers::DetachedBuffer nplex::serialize_update(const update_t &update)
+fb::DetachedBuffer nplex::serialize_update(const update_t &update)
 {
     FlatBufferBuilder builder;
 
@@ -485,7 +485,7 @@ bool nplex::updates_push_builder_t::append(const update_dto_t &update, const use
     return false;
 }
 
-flatbuffers::DetachedBuffer nplex::updates_push_builder_t::finish(uint64_t cid, rev_t crev)
+fb::DetachedBuffer nplex::updates_push_builder_t::finish(uint64_t cid, rev_t crev)
 {
     auto msg = CreateMessage(m_builder, 
         MsgContent::UPDATES_PUSH,
@@ -531,7 +531,7 @@ bool nplex::sessions_response_builder_t::append(const session_ptr &session)
     return true;
 }
 
-flatbuffers::DetachedBuffer nplex::sessions_response_builder_t::finish(uint64_t cid, rev_t crev)
+fb::DetachedBuffer nplex::sessions_response_builder_t::finish(uint64_t cid, rev_t crev)
 {
     auto msg = CreateMessage(m_builder, 
         MsgContent::SESSIONS_RESPONSE,

@@ -51,10 +51,10 @@ struct task_t
  */
 struct snapshot_task_t : public task_t
 {
-    rev_t m_rev;                        // snapshot revision
-    std::size_t m_cid;                  // correlation id
-    session_ptr m_session;              // session used to send messages
-    nplex::store_t m_store;             // user store at m_rev (result)
+    rev_t m_rev;                        // Snapshot revision
+    std::size_t m_cid;                  // Correlation id
+    session_ptr m_session;              // Session used to send messages
+    nplex::store_t m_store;             // User store at m_rev (result)
 
     snapshot_task_t(const session_ptr &session, nplex::rev_t rev, std::size_t cid)
         : m_rev(rev), m_cid(cid), m_session(session) {}
@@ -88,16 +88,45 @@ struct sync_task_t : public task_t
     void after() override;
 };
 
+// struct read_updates_task_t : public task_t
+// {
+//     namespace fb = flatbuffers;
+
+//     struct item {
+//         rev_t initial_rev;
+//         rev_t final_rev;
+//         fb::FlatBufferBuilder m_builder;
+//         fb::Offset<fb::Vector<fb::Offset<msgs::Update>>> m_offset_vector_updates;
+//     };
+
+//     Offset<Vector<T>> CreateVector()
+//     CreateUpdatesPush()
+
+//     rev_t m_rev;                            // Last revision sent to the session
+//     std::size_t m_cid;                      // Correlation id
+//     session_ptr m_session;                  // Users session
+//     std::uint32_t m_max_msg_bytes;          // Max bytes per message
+//     std::uint32_t m_max_total_bytes;        // Max cumulated bytes to be sent
+//     std::size_t m_bytes = 0;                // Cumulated bytes (filtered by user)
+//     std::vector<item> m_msgs;               // UpdatesPush messages partially built (filtered by user)
+
+//     read_updates_task_t(const session_ptr &session, rev_t rev, std::size_t cid, std::uint32_t max_msg_bytes, std::uint32_t max_total_bytes);
+
+//     const char * name() const override { return "read_updates_task"; }
+//     void run() override;
+//     void after() override;
+// };
+
 /**
  * Write a snapshot to disk.
  */
 struct write_snapshot_task_t : public task_t
 {
-    rev_t m_rev;                            // snapshot revision
-    flatbuffers::DetachedBuffer m_buf;      // serialized snapshot buffer
-    storage_ptr m_storage;                  // storage object
+    rev_t m_rev;                            // Snapshot revision
+    DetachedBuffer m_buf;                   // Serialized snapshot buffer
+    storage_ptr m_storage;                  // Storage object
 
-    write_snapshot_task_t(nplex::rev_t rev, flatbuffers::DetachedBuffer &&buf, const storage_ptr &storage)
+    write_snapshot_task_t(rev_t rev, DetachedBuffer &&buf, const storage_ptr &storage)
         : m_rev(rev), m_buf(std::move(buf)), m_storage(storage) {}
 
     const char * name() const override { return "save_snapshot_task"; }

@@ -49,15 +49,13 @@ class session_t : public std::enable_shared_from_this<session_t>
     void process_delivery(const msgs::Message *msg);
     void send_snapshot(std::size_t cid, const store_t &store, const user_ptr &user = nullptr);
     void send_updates(std::size_t cid, rev_t from_rev, rev_t to_rev, const std::span<const update_dto_t> &updates);
-    void push_changes(const std::span<const update_t> &updates, bool syncing = false);
+    void push_updates(std::span<const update_t> updates, bool syncing = false);
     void push_session(const std::shared_ptr<session_t> &session);
     void do_sync(std::size_t cid);
     void send_keepalive();
     void release();
 
   private:
-
-    using fdb_t = flatbuffers::DetachedBuffer;
 
     user_ptr m_user;                            // session user
     context_ptr m_context;                      // server context
@@ -67,20 +65,20 @@ class session_t : public std::enable_shared_from_this<session_t>
     std::size_t m_updates_cid = 0;              // updates correlation id (0 means no push)
     std::size_t m_sessions_cid = 0;             // sessions correlation id (0 means no push)
     bool m_sync_in_progress = false;            // there is a sync task operation in progress
-    std::vector<fdb_t> m_buffered_msgs;         // messages waiting to be sent
+    std::vector<DetachedBuffer> m_buffered_msgs;         // messages waiting to be sent
 
-    void send(fdb_t &&buf);
-    void send_buffered_msg(fdb_t &&buf);
-    void trace_output_msg(const fdb_t &buf);
+    void send(DetachedBuffer &&buf);
+    void send_buffered_msg(DetachedBuffer &&buf);
+    void trace_output_msg(const DetachedBuffer &buf);
     void flush_buffered_msgs();
 
     void process_request(const msgs::Message *msg);
-    void process_login_request(const nplex::msgs::LoginRequest *req);
-    void process_snapshot_request(const nplex::msgs::SnapshotRequest *req);
-    void process_updates_request(const nplex::msgs::UpdatesRequest *req);
-    void process_sessions_request(const nplex::msgs::SessionsRequest *req);
-    void process_submit_request(const nplex::msgs::SubmitRequest *req);
-    void process_ping_request(const nplex::msgs::PingRequest *req);
+    void process_login_request(const msgs::LoginRequest *req);
+    void process_snapshot_request(const msgs::SnapshotRequest *req);
+    void process_updates_request(const msgs::UpdatesRequest *req);
+    void process_sessions_request(const msgs::SessionsRequest *req);
+    void process_submit_request(const msgs::SubmitRequest *req);
+    void process_ping_request(const msgs::PingRequest *req);
 };
 
 using session_ptr = std::shared_ptr<session_t>;

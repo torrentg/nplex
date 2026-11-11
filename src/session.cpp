@@ -65,7 +65,7 @@ void nplex::session_t::shutdown(int rc)
     m_con.shutdown(rc);
 }
 
-void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
+void nplex::session_t::send(DetachedBuffer &&buf)
 {
     if (is_closed())
         return;
@@ -84,7 +84,7 @@ void nplex::session_t::send(flatbuffers::DetachedBuffer &&buf)
     m_con.send(std::move(buf));
 }
 
-void nplex::session_t::send_buffered_msg(flatbuffers::DetachedBuffer &&buf)
+void nplex::session_t::send_buffered_msg(DetachedBuffer &&buf)
 {
     if (is_closed())
         return;
@@ -445,7 +445,7 @@ void nplex::session_t::do_sync(std::size_t cid)
     auto updates = m_context->get_cached_updates(from_rev, max_bytes);
 
     if (!updates.empty()) {
-        push_changes(updates, true);
+        push_updates(updates, true);
         return;
     }
 
@@ -577,7 +577,7 @@ void nplex::session_t::send_updates(std::size_t cid, [[maybe_unused]] rev_t from
     m_sync_in_progress = false;
 }
 
-void nplex::session_t::push_changes(const std::span<const update_t> &updates, bool syncing)
+void nplex::session_t::push_updates(std::span<const update_t> updates, bool syncing)
 {
     if (is_closed() || m_updates_cid == 0 || updates.empty())
         return;
@@ -627,14 +627,14 @@ void nplex::session_t::push_session(const session_ptr &session)
     );
 }
 
-void nplex::session_t::trace_output_msg(const flatbuffers::DetachedBuffer &buf)
+void nplex::session_t::trace_output_msg(const DetachedBuffer &buf)
 {
     auto bytes = buf.size();
 
     if (bytes == 0)
         return;
 
-    auto msg = flatbuffers::GetRoot<msgs::Message>(buf.data());
+    auto msg = fb::GetRoot<msgs::Message>(buf.data());
     auto type = msg->content_type();
 
     if (type == nplex::msgs::MsgContent::KEEPALIVE_PUSH)

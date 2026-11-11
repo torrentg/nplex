@@ -67,7 +67,7 @@ nplex::rev_t parse_snapshot_rev(const fs::path &path)
 
 void validate_snapshot_payload(const std::string_view &data)
 {
-    auto verifier = flatbuffers::Verifier(
+    auto verifier = fb::Verifier(
         reinterpret_cast<const std::uint8_t *>(data.data()), data.size());
 
     if (!verifier.VerifyBuffer<nplex::msgs::Snapshot>(nullptr))
@@ -245,7 +245,7 @@ void nplex::filesystem_snapshot_persister_t::write_snapshot(rev_t rev, const std
 
     validate_snapshot_payload(data);
 
-    auto snapshot = flatbuffers::GetRoot<nplex::msgs::Snapshot>(data.data());
+    auto snapshot = fb::GetRoot<nplex::msgs::Snapshot>(data.data());
     if (snapshot->rev() != rev)
         throw nplex_exception("snapshot revision mismatch: file rev {} != payload rev {}", rev, snapshot->rev());
 

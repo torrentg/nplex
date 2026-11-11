@@ -365,7 +365,7 @@ void nplex::context_t::on_updates_written_2()
 void nplex::context_t::publish(std::span<const update_t> updates)
 {
     for (auto &session : m_sessions)
-        session->push_changes(updates);
+        session->push_updates(updates);
 }
 
 void nplex::context_t::publish(const session_ptr &session)
@@ -421,7 +421,7 @@ void nplex::context_t::check_for_snapshot()
     auto rev = m_store.rev();
     LOG_INFO("Creating snapshot at r{}", rev);
 
-    flatbuffers::FlatBufferBuilder builder;
+    FlatBufferBuilder builder;
     auto snapshot = m_store.serialize(builder);
     builder.Finish(snapshot);
 

@@ -179,7 +179,7 @@ static void cb_tcp_write(uv_write_t *req, int status)
     obj->report_peer_activity();
 
     for (size_t i = 0; i < chunk->get_num_msgs(); ++i) {
-        auto ptr = flatbuffers::GetRoot<nplex::msgs::Message>(chunk->get_msg(i));
+        auto ptr = fb::GetRoot<nplex::msgs::Message>(chunk->get_msg(i));
         obj->session()->process_delivery(ptr);
     }
 }
@@ -373,13 +373,13 @@ void nplex::connection_s::set_timer(uv_timer_t *&timer, std::uint32_t millis, uv
         disconnect(rc);
 }
 
-void nplex::connection_s::send(flatbuffers::DetachedBuffer &&buf)
+void nplex::connection_s::send(DetachedBuffer &&buf)
 {
-    flatbuffers::DetachedBuffer arr[1] = { std::move(buf) };
+    DetachedBuffer arr[1] = { std::move(buf) };
     send(arr);
 }
 
-void nplex::connection_s::send(std::span<flatbuffers::DetachedBuffer> msgs)
+void nplex::connection_s::send(std::span<DetachedBuffer> msgs)
 {
     int rc = 0;
 

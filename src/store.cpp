@@ -16,7 +16,7 @@ struct pending_upsert_t {
     gto::cstring data;
 };
 
-static gto::cstring create_cstring(const flatbuffers::Vector<std::uint8_t> *value)
+static gto::cstring create_cstring(const fb::Vector<std::uint8_t> *value)
 {
     if (!value)
         return {};
@@ -138,7 +138,7 @@ void nplex::store_t::load(const msgs::Snapshot *snapshot, const user_ptr &user)
 
     if (updates)
     {
-        for (flatbuffers::uoffset_t i = 0; i < updates->size(); i++)
+        for (fb::uoffset_t i = 0; i < updates->size(); i++)
         {
             update(updates->Get(i), user);
 
@@ -187,7 +187,7 @@ nplex::update_t nplex::store_t::validate_update(const msgs::Update *msg, const u
 
     if (upserts)
     {
-        for (flatbuffers::uoffset_t i = 0; i < upserts->size(); i++)
+        for (fb::uoffset_t i = 0; i < upserts->size(); i++)
         {
             auto keyval = upserts->Get(i);
 
@@ -211,7 +211,7 @@ nplex::update_t nplex::store_t::validate_update(const msgs::Update *msg, const u
 
     if (deletes)
     {
-        for (flatbuffers::uoffset_t i = 0; i < deletes->size(); i++)
+        for (fb::uoffset_t i = 0; i < deletes->size(); i++)
         {
             auto key = deletes->Get(i);
 
@@ -293,7 +293,7 @@ nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_t &user, cons
 
     if (upserts)
     {
-        for (flatbuffers::uoffset_t i = 0; i < upserts->size(); i++)
+        for (fb::uoffset_t i = 0; i < upserts->size(); i++)
         {
             auto keyval = upserts->Get(i);
 
@@ -340,7 +340,7 @@ nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_t &user, cons
 
     if (deletes)
     {
-        for (flatbuffers::uoffset_t i = 0; i < deletes->size(); i++)
+        for (fb::uoffset_t i = 0; i < deletes->size(); i++)
         {
             auto key = deletes->Get(i);
 
@@ -371,7 +371,7 @@ nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_t &user, cons
 
     if (ensures)
     {
-        for (flatbuffers::uoffset_t i = 0; i < ensures->size(); i++)
+        for (fb::uoffset_t i = 0; i < ensures->size(); i++)
         {
             auto ensure = ensures->Get(i);
 
@@ -519,10 +519,10 @@ std::uint32_t nplex::store_t::purge()
     return count;
 }
 
-flatbuffers::Offset<nplex::msgs::Snapshot> nplex::store_t::serialize(flatbuffers::FlatBufferBuilder &builder, const user_ptr &user) const
+fb::Offset<nplex::msgs::Snapshot> nplex::store_t::serialize(FlatBufferBuilder &builder, const user_ptr &user) const
 {
-    std::vector<flatbuffers::Offset<msgs::Update>> updates;
-    std::vector<flatbuffers::Offset<msgs::KeyValue>> upserts;
+    std::vector<fb::Offset<msgs::Update>> updates;
+    std::vector<fb::Offset<msgs::KeyValue>> upserts;
 
     for (const auto &[mrev, meta] : m_metas)
     {
