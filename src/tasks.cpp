@@ -5,6 +5,7 @@
 #include "context.hpp"
 #include "logger.hpp"
 #include "utils.hpp"
+#include <cassert>
 
 // ==========================================================
 // snapshot_task_t methods
@@ -19,6 +20,11 @@ void nplex::snapshot_task_t::run()
 
 void nplex::snapshot_task_t::after()
 {
+    if (excpt) {
+        m_session->disconnect(ERR_CLOSED_BY_LOCAL);
+        return;
+    }
+
     m_session->send_snapshot(m_cid, m_store);
 }
 
@@ -67,6 +73,65 @@ void nplex::sync_task_t::after()
         m_rev, m_last_rev, m_updates.size(), bytes_to_string(m_bytes));
     m_session->send_updates(m_cid, m_rev + 1, m_last_rev, m_updates);
     m_session->do_sync(m_cid);
+}
+
+// ==========================================================
+// read_updates_task_t methods
+// ==========================================================
+
+nplex::read_updates_task_t::read_updates_task_t(const session_ptr &session, rev_t rev, std::size_t cid, std::uint32_t max_msg_bytes, std::uint32_t max_total_bytes)
+    : m_rev(rev), m_cid(cid), m_session(session), m_max_msg_bytes(max_msg_bytes), m_max_total_bytes(max_total_bytes)
+{
+    LOG_TRACE("Launching read_updates_task: rev={}, max_msg_bytes={}, max_total_bytes={}", m_rev, bytes_to_string(max_msg_bytes), bytes_to_string(max_total_bytes));
+}
+
+void nplex::read_updates_task_t::run()
+{
+    auto storage = m_session->context()->storage();
+
+    m_msgs.reserve(8);
+    m_msgs.emplace_back(m_max_msg_bytes * 1.1);
+
+    storage->read_updates(m_rev, [this](const msgs::Update *update) -> bool {
+
+        assert(update);
+        assert(m_last_rev < update->rev());
+
+        if (!update)
+            return false;
+
+        m_last_rev = update->rev();
+
+        auto &builder = m_msgs.back();
+
+        auto rc = builder.append(update, m_session->user());
+
+        if (rc)
+        {
+            auto msg_bytes = builder.bytes();
+
+            if (msg_bytes >= m_max_msg_bytes) {
+                m_msgs.emplace_back(m_max_msg_bytes * 1.1);
+                m_total_bytes += msg_bytes;
+                msg_bytes = 0;
+            }
+
+            if (m_total_bytes + msg_bytes >= m_max_total_bytes)
+                return false;
+        }
+
+        return true;
+    });
+}
+
+void nplex::read_updates_task_t::after()
+{
+    if (excpt) {
+        m_session->disconnect(ERR_CLOSED_BY_LOCAL);
+        return;
+    }
+
+    m_session->send_updates(this);
 }
 
 // ==========================================================

@@ -12,6 +12,7 @@ namespace nplex {
 struct user_t;
 struct context_t;
 class store_t;
+struct read_updates_task_t;
 using user_ptr = std::shared_ptr<user_t>;
 using context_ptr = std::shared_ptr<context_t>;
 
@@ -47,7 +48,8 @@ class session_t : public std::enable_shared_from_this<session_t>
     void disconnect(int rc);
     void process_requests(std::span<const msgs::Message *> msgs);
     void process_delivery(const msgs::Message *msg);
-    void send_snapshot(std::size_t cid, const store_t &store, const user_ptr &user = nullptr);
+    void send_snapshot(std::size_t cid, const store_t &store, const user_ptr &usr = nullptr);
+    void send_updates(read_updates_task_t *task);
     void send_updates(std::size_t cid, rev_t from_rev, rev_t to_rev, const std::span<const update_dto_t> &updates);
     void push_updates(std::span<const update_t> updates, bool syncing = false);
     void push_session(const std::shared_ptr<session_t> &session);
@@ -57,20 +59,22 @@ class session_t : public std::enable_shared_from_this<session_t>
 
   private:
 
-    user_ptr m_user;                            // session user
-    context_ptr m_context;                      // server context
-    connection_t m_con;                         // connection object
-    std::string m_id;                           // session identifier (user@addr)
-    rev_t m_lrev = 0;                           // last revision sent (maybe unacked, maybe not sent because no data)
-    std::size_t m_updates_cid = 0;              // updates correlation id (0 means no push)
-    std::size_t m_sessions_cid = 0;             // sessions correlation id (0 means no push)
-    bool m_sync_in_progress = false;            // there is a sync task operation in progress
-    std::vector<DetachedBuffer> m_buffered_msgs;         // messages waiting to be sent
+    user_ptr m_user;                                // Session user
+    context_ptr m_context;                          // Server context
+    connection_t m_con;                             // Connection object
+    std::string m_id;                               // Session identifier (user@addr)
+    rev_t m_lrev = 0;                               // Last revision sent (maybe unacked or not sent because no data)
+    std::size_t m_updates_cid = 0;                  // Updates correlation id (0 means no push)
+    std::size_t m_sessions_cid = 0;                 // Sessions correlation id (0 means no push)
+    bool m_sync_in_progress = false;                // There is a sync task operation in progress
+    std::vector<DetachedBuffer> m_buffered_msgs;    // Messages waiting to be sent
+    std::size_t m_buffered_bytes = 0;               // Total size of buffered messages
 
     void send(DetachedBuffer &&buf);
     void send_buffered_msg(DetachedBuffer &&buf);
     void trace_output_msg(const DetachedBuffer &buf);
     void flush_buffered_msgs();
+    bool should_throttle() const;
 
     void process_request(const msgs::Message *msg);
     void process_login_request(const msgs::LoginRequest *req);

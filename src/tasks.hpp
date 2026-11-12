@@ -88,34 +88,23 @@ struct sync_task_t : public task_t
     void after() override;
 };
 
-// struct read_updates_task_t : public task_t
-// {
-//     namespace fb = flatbuffers;
+struct read_updates_task_t : public task_t
+{
+    rev_t m_rev;                            // First revision to read
+    std::size_t m_cid;                      // Correlation id
+    session_ptr m_session;                  // Users session
+    std::uint32_t m_max_msg_bytes;          // Max bytes per message
+    std::uint32_t m_max_total_bytes;        // Max cumulated bytes to be sent
+    std::size_t m_total_bytes = 0;          // Cumulated bytes (filtered by user)
+    rev_t m_last_rev = 0;                   // Last revision read
+    std::vector<updates_push_builder_t> m_msgs;
 
-//     struct item {
-//         rev_t initial_rev;
-//         rev_t final_rev;
-//         fb::FlatBufferBuilder m_builder;
-//         fb::Offset<fb::Vector<fb::Offset<msgs::Update>>> m_offset_vector_updates;
-//     };
+    read_updates_task_t(const session_ptr &session, rev_t rev, std::size_t cid, std::uint32_t max_msg_bytes, std::uint32_t max_total_bytes);
 
-//     Offset<Vector<T>> CreateVector()
-//     CreateUpdatesPush()
-
-//     rev_t m_rev;                            // Last revision sent to the session
-//     std::size_t m_cid;                      // Correlation id
-//     session_ptr m_session;                  // Users session
-//     std::uint32_t m_max_msg_bytes;          // Max bytes per message
-//     std::uint32_t m_max_total_bytes;        // Max cumulated bytes to be sent
-//     std::size_t m_bytes = 0;                // Cumulated bytes (filtered by user)
-//     std::vector<item> m_msgs;               // UpdatesPush messages partially built (filtered by user)
-
-//     read_updates_task_t(const session_ptr &session, rev_t rev, std::size_t cid, std::uint32_t max_msg_bytes, std::uint32_t max_total_bytes);
-
-//     const char * name() const override { return "read_updates_task"; }
-//     void run() override;
-//     void after() override;
-// };
+    const char * name() const override { return "read_updates_task"; }
+    void run() override;
+    void after() override;
+};
 
 /**
  * Write a snapshot to disk.

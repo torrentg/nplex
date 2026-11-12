@@ -18,8 +18,8 @@ namespace {
 constexpr std::string CURRENT_SEGMENT = "journal";
 constexpr std::string FILENAME_PREFIX = "journal-";
 constexpr std::string MAGIC_BYTES = "NPLEXLOG";
-constexpr std::size_t READ_BATCH_ENTRIES = 1024;
-constexpr std::size_t READ_BATCH_BYTES = 1 * 1024 * 1024;
+constexpr std::size_t READ_BATCH_ENTRIES = 10000;
+constexpr std::size_t READ_BATCH_BYTES = 20 * 1024 * 1024;
 constexpr nplex::millis_t MAX_READ_IDLE_TIME = std::chrono::seconds(30);
 constexpr nplex::millis_t MIN_CATALOG_UPDATE_INTERVAL = std::chrono::minutes(5);
 
@@ -244,7 +244,7 @@ void nplex::journal_updates_persister_t::read_updates(rev_t from_rev, const read
     // Read entries from catalog
     while (!result.stopped)
     {
-        journal_ptr journal = get_journal_from_catalog(result.rev);
+        journal_ptr journal = get_journal_from_catalog_with_retry(result.rev);
 
         if (!journal)
             break;
@@ -255,6 +255,7 @@ void nplex::journal_updates_persister_t::read_updates(rev_t from_rev, const read
     // Read entries from the current journal
     if (!result.stopped)
     {
+        LOG_TRACE("Reading updates from current journal starting at rev {}", result.rev);
         result = ::read_updates(m_journal, result.rev, on_entry, buffers);
     }
 }
@@ -531,8 +532,10 @@ nplex::journal_ptr nplex::journal_updates_persister_t::get_journal_from_catalog_
 
     journal = get_journal_from_catalog(rev);
 
-    if (!journal)
-        throw nplex_exception("Failed to get journal for rev {}", rev);
+    if (!journal) {
+        LOG_WARN("No journal found in catalog for rev {}", rev);
+        return nullptr;
+    }
 
     return journal;
 }

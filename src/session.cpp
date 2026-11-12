@@ -65,6 +65,20 @@ void nplex::session_t::shutdown(int rc)
     m_con.shutdown(rc);
 }
 
+bool nplex::session_t::should_throttle() const
+{
+    const auto &stats = m_con.stats();
+    const auto &params = m_con.params();
+
+    if (params.max_unack_bytes && stats.unack_bytes + m_buffered_bytes >= params.max_unack_bytes)
+        return true;
+
+    if (params.max_unack_msgs && stats.unack_msgs + m_buffered_msgs.size() >= params.max_unack_msgs)
+        return true;
+
+    return false;
+}
+
 void nplex::session_t::send(DetachedBuffer &&buf)
 {
     if (is_closed())
@@ -90,6 +104,7 @@ void nplex::session_t::send_buffered_msg(DetachedBuffer &&buf)
         return;
 
     m_buffered_msgs.emplace_back(std::move(buf));
+    m_buffered_bytes += buf.size();
 
     if (m_buffered_msgs.size() >= outgoing_network_frames_t::max_num_msgs())
         flush_buffered_msgs();
@@ -100,12 +115,8 @@ void nplex::session_t::flush_buffered_msgs()
     if (is_closed() || m_buffered_msgs.empty())
         return;
 
-    if (m_con.is_blocked())
-    {
-        LOG_INFO("{} exceeded output queue limits (shutdown)", m_id);
-        m_con.shutdown(ERR_UNACK);
-        return;
-    }
+    // Queue limits are intentionally not checked here. Reads may stop only
+    // after a limit is exceeded, which could otherwise lead to disconnect.
 
     for (auto &buf : m_buffered_msgs)
         trace_output_msg(buf);
@@ -113,13 +124,7 @@ void nplex::session_t::flush_buffered_msgs()
     m_con.send(m_buffered_msgs);
 
     m_buffered_msgs.clear();
-
-    if (m_con.is_blocked())  // TODO: move shutdown to connection?
-    {
-        LOG_INFO("{} exceeded output queue limits (shutdown)", m_id);
-        m_con.shutdown(ERR_UNACK);
-        return;
-    }
+    m_buffered_bytes = 0;
 }
 
 void nplex::session_t::process_delivery([[maybe_unused]] const msgs::Message *msg)
@@ -150,6 +155,11 @@ void nplex::session_t::process_request(const msgs::Message *msg)
     }
 
     LOG_DEBUG("Received {} from {}", msgs::EnumNameMsgContent(msg->content_type()), m_id);
+
+    if (should_throttle()) {
+        disconnect(ERR_EXCD_LIMITS);
+        return;
+    }
 
     switch (msg->content_type())
     {
@@ -384,7 +394,6 @@ void nplex::session_t::process_sessions_request(const msgs::SessionsRequest *req
     m_sessions_cid = ((m_user->params.can_monitor && req->stream()) ? cid : 0);
 }
 
-
 void nplex::session_t::process_submit_request(const nplex::msgs::SubmitRequest *req)
 {
     if (!is_logged()) {
@@ -426,16 +435,18 @@ void nplex::session_t::do_sync(std::size_t cid)
     const auto &stats = m_con.stats();
     const auto &params = m_con.params();
 
-    // Check output queue availability
-    if ((stats.unack_msgs  * 100) / params.max_unack_msgs  > MAX_PCT_OCCUPANCY_OUTPUT_QUEUE || 
-        (stats.unack_bytes * 100) / params.max_unack_bytes > MAX_PCT_OCCUPANCY_OUTPUT_QUEUE) {
+    // Check output queue availability.
+    // Keep a headroom below hard unack limits to avoid triggering shutdown on send().
+    if ((stats.unack_msgs  * 100) / params.max_unack_msgs  >= MAX_PCT_OCCUPANCY_OUTPUT_QUEUE || 
+        (stats.unack_bytes * 100) / params.max_unack_bytes >= MAX_PCT_OCCUPANCY_OUTPUT_QUEUE) {
         return;
     }
 
-    std::uint32_t max_bytes = MAX_BYTES_IN_SYNC ;
+    std::uint32_t max_bytes = MAX_BYTES_IN_SYNC;
     std::uint32_t unack_budget = static_cast<std::uint32_t>(params.max_unack_bytes - stats.unack_bytes);
 
     max_bytes = std::min(max_bytes, unack_budget);
+
     if (max_bytes == 0)
         return;
 
@@ -450,9 +461,9 @@ void nplex::session_t::do_sync(std::size_t cid)
     }
 
     // Fallback: launch async sync task which will read from storage.
-    sync_task_t *task = new sync_task_t(shared_from_this(), m_lrev, m_updates_cid, UINT32_MAX, max_bytes);
-    m_context->submit_task(task);
+    auto *task = new read_updates_task_t(shared_from_this(), m_lrev + 1, m_updates_cid, m_context->params().max_msg_bytes, max_bytes);
     m_sync_in_progress = true;
+    m_context->submit_task(task);
 }
 
 const char * nplex::session_t::strerror() const
@@ -490,7 +501,7 @@ void nplex::session_t::send_keepalive()
     send(create_keepalive_push(crev));
 }
 
-void nplex::session_t::send_snapshot(std::size_t cid, const store_t &store, const user_ptr &user)
+void nplex::session_t::send_snapshot(std::size_t cid, const store_t &store, const user_ptr &usr)
 {
     if (is_closed())
         return;
@@ -502,9 +513,44 @@ void nplex::session_t::send_snapshot(std::size_t cid, const store_t &store, cons
             m_context->minimum_rev(),
             true,
             store,
-            user
+            usr
         )
     );
+}
+
+void nplex::session_t::send_updates(read_updates_task_t *task)
+{
+    assert(task);
+
+    if (!task)
+        return;
+
+    if (task->excpt) {
+        disconnect(ERR_CLOSED_BY_LOCAL);
+        return;
+    }
+
+    if (is_closed() || task->m_cid != m_updates_cid)
+        return;
+
+    assert(m_lrev == 0 || m_lrev + 1 == task->m_rev);
+
+    rev_t crev = m_context->last_persisted_rev();
+
+    for (auto &msg : task->m_msgs)
+    {
+        if (msg.empty())
+            continue;
+
+        auto buf = msg.finish(m_updates_cid, crev);
+        send_buffered_msg(std::move(buf));
+    }
+
+    m_lrev = task->m_last_rev;
+    m_sync_in_progress = false;
+
+    flush_buffered_msgs();
+    do_sync(m_updates_cid);
 }
 
 void nplex::session_t::send_updates(std::size_t cid, [[maybe_unused]] rev_t from_rev, rev_t to_rev, const std::span<const update_dto_t> &updates)
@@ -536,12 +582,9 @@ void nplex::session_t::send_updates(std::size_t cid, [[maybe_unused]] rev_t from
         }
 
         std::uint32_t max_msg_bytes = m_context->params().max_msg_bytes;
-        std::uint32_t unack_budget = (params.max_unack_bytes * MAX_PCT_OCCUPANCY_OUTPUT_QUEUE) / 100;
+        std::uint32_t unack_budget = static_cast<std::uint32_t>(params.max_unack_bytes - stats.unack_bytes);
 
-        if (unack_budget > stats.unack_bytes)
-            max_msg_bytes = std::min(max_msg_bytes, static_cast<std::uint32_t>(unack_budget - stats.unack_bytes));
-        else
-            break;
+        max_msg_bytes = std::min(max_msg_bytes, unack_budget);
 
         if (max_msg_bytes == 0)
             break;
@@ -565,11 +608,13 @@ void nplex::session_t::send_updates(std::size_t cid, [[maybe_unused]] rev_t from
     }
 
     // Case: synced and last update was not sent
-    if (it == updates.end() && m_lrev == crev && updates.back().rev != to_rev) {
+    if (it == updates.end() && m_lrev == crev && updates.back().rev != to_rev)
+    {
         update_dto_t dto = {
             .rev = crev,
             .user = "admin"
         };
+
         builder.append(dto, nullptr, true);
         send(builder.finish(m_updates_cid, crev));
     }

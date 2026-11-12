@@ -103,12 +103,14 @@ struct updates_push_builder_t
     FlatBufferBuilder m_builder;
     std::vector<fb::Offset<msgs::Update>> m_updates;
 
-    std::size_t bytes() const { return m_builder.GetSize(); }
-    std::size_t count() const { return m_updates.size(); }
+    updates_push_builder_t(std::size_t initial_size = 0);
+
+    std::size_t bytes() const;
     bool empty() const { return m_updates.empty(); }
 
     bool append(const update_t &update, const user_ptr &user = nullptr, bool force = false);
     bool append(const update_dto_t &update, const user_ptr &user = nullptr, bool force = false);
+    bool append(const msgs::Update *update, const user_ptr &user = nullptr, bool force = false);
     DetachedBuffer finish(uint64_t cid, rev_t crev);
 };
 

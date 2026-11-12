@@ -13,6 +13,9 @@ using namespace flatbuffers;
 // Internal (static) functions
 // ==========================================================
 
+static constexpr std::size_t MIN_INITIAL_BYTES_BUFFER_BUILDER = 4 * 1024;
+static constexpr std::size_t MAX_INITIAL_BYTES_BUFFER_BUILDER = 16 * 1024 * 1024;
+
 static std::string create_string(const fb::String *str)
 {
     if (!str)
@@ -112,6 +115,61 @@ static fb::Offset<nplex::msgs::Update> serialize_update(fb::FlatBufferBuilder &b
         builder.CreateString(update.user),
         static_cast<std::uint64_t>(update.timestamp),
         update.tx_type,
+        (upserts.empty() ? 0 : builder.CreateVector(upserts)),
+        (deletes.empty() ? 0 : builder.CreateVector(deletes))
+    );
+}
+
+static fb::Offset<nplex::msgs::Update> serialize_update(fb::FlatBufferBuilder &builder, const nplex::msgs::Update *update, const nplex::user_ptr &user, bool force)
+{
+    std::vector<Offset<KeyValue>> upserts;
+    std::vector<Offset<String>> deletes;
+
+    if (update->upserts())
+    {
+        for (const auto kv : *update->upserts())
+        {
+            if (!kv || !kv->key() || !kv->value())
+                continue;
+
+            if (user && !user->is_authorized(CRUD_READ, kv->key()->c_str()))
+                continue;
+
+            auto offset = CreateKeyValue(
+                builder, 
+                builder.CreateString(kv->key()->c_str(), kv->key()->size()),
+                builder.CreateVector(kv->value()->data(), kv->value()->size())
+            );
+
+            upserts.push_back(offset);
+        }
+    }
+
+    if (update->deletes())
+    {
+        for (const auto key : *update->deletes())
+        {
+            if (!key)
+                continue;
+
+            if (user && !user->is_authorized(CRUD_READ, key->c_str()))
+                continue;
+
+            auto offset = builder.CreateString(key->c_str(), key->size());
+
+            deletes.push_back(offset);
+        }
+    }
+
+    if (!force && upserts.empty() && deletes.empty())
+        return 0;
+
+    return CreateUpdate(
+        builder,
+        update->rev(),
+        builder.CreateString(update->user()->c_str(), update->user()->size()),
+        update->timestamp(),
+        update->tx_type(),
         (upserts.empty() ? 0 : builder.CreateVector(upserts)),
         (deletes.empty() ? 0 : builder.CreateVector(deletes))
     );
@@ -461,6 +519,29 @@ nplex::update_dto_t nplex::deserialize_update(const Update *upd, const user_ptr 
 // updates_push_builder_t methods
 // ==========================================================
 
+nplex::updates_push_builder_t::updates_push_builder_t(std::size_t initial_size)
+{
+    auto size = std::clamp<std::size_t>(initial_size, MIN_INITIAL_BYTES_BUFFER_BUILDER, MAX_INITIAL_BYTES_BUFFER_BUILDER);
+    m_builder = FlatBufferBuilder(size);
+}
+
+// Try to aproximate the final size (in bytes) of the UpdatesPush message
+std::size_t nplex::updates_push_builder_t::bytes() const
+{
+    std::size_t ret = 0;
+
+    // Append the size of the current updates
+    ret += m_builder.GetSize();
+
+    // Append the updates array itself + length (to be done at finish)
+    ret += m_updates.size() * sizeof(fb::Offset<msgs::Update>) + 4;
+
+    // Others (cid, rev, msg_type, offsets, vtables, padding)
+    ret += 64;
+
+    return ret;
+}
+
 bool nplex::updates_push_builder_t::append(const update_t &update, const user_ptr &user, bool force)
 {
     auto off = ::serialize_update(m_builder, update, user, force);
@@ -485,8 +566,25 @@ bool nplex::updates_push_builder_t::append(const update_dto_t &update, const use
     return false;
 }
 
+bool nplex::updates_push_builder_t::append(const msgs::Update *update, const user_ptr &user, bool force)
+{
+    if (!update)
+        return false;
+
+    auto off = ::serialize_update(m_builder, update, user, force);
+
+    if (!off.IsNull()) {
+        m_updates.push_back(off);
+        return true;
+    }
+
+    return false;
+}
+
 fb::DetachedBuffer nplex::updates_push_builder_t::finish(uint64_t cid, rev_t crev)
 {
+    // TODO: if last update was not added then append an empty one (to signal end of sync)
+
     auto msg = CreateMessage(m_builder, 
         MsgContent::UPDATES_PUSH,
         CreateUpdatesPush(m_builder, 

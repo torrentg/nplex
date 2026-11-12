@@ -190,6 +190,7 @@ lizard -C 20 --language cpp --exclude src/schema.hpp src/*.[ch]pp
 | [base64](https://github.com/tobiaslocker/base64) | Base64 encoder / decoder | MIT |
 | [utf8.h](https://github.com/sheredom/utf8.h) | UTF-8 string functions | Unlicense |
 | [inih](https://github.com/benhoyt/inih) | INI file parser | BSD-3-Clause |
+| [fast-crc32](https://github.com/corsix/fast-crc32/) | Fast CRC32 implementation | MIT, zlib|
 
 ### Shared (system packages)
 
