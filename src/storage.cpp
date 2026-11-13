@@ -1,5 +1,6 @@
 #include "storage.hpp"
 #include "exception.hpp"
+#include "logger.hpp"
 #include <cassert>
 
 // ==========================================================
@@ -78,11 +79,14 @@ nplex::store_t nplex::storage_t::rebuild_store_at(rev_t rev, const user_ptr &use
 {
     store_t store;
 
-    // step1: retrieve nearest snapshot (less-eq than rev)
+    LOG_TRACE("Rebuilding store at rev={}, user={}", rev, (user ? user->name : "<none>"));
+
+    // Step1: retrieve nearest snapshot (less-eq than rev)
     std::string str = m_snapshot_persister->read_snapshot(rev);
     if (!str.empty())
     {
         auto snapshot = fb::GetRoot<msgs::Snapshot>(str.c_str());
+        LOG_TRACE("Loading snapshot at rev={}", snapshot->rev());
         store.load(snapshot, user);
         std::string{}.swap(str);
     }
@@ -90,13 +94,14 @@ nplex::store_t nplex::storage_t::rebuild_store_at(rev_t rev, const user_ptr &use
     if (store.rev() == rev)
         return store;
 
-    // step2: define a function to update the repo
+    // Step2: define a function to update the repo
     auto func = [&store, rev, user](const msgs::Update *update) -> bool {
         store.update(update, user);
         return (store.rev() < rev);
     };
 
-    // step3: apply updates until m_rev
+    // Step3: apply updates until m_rev
+    LOG_TRACE("Loading updates from rev={} to rev={}", store.rev() + 1, rev);
     read_updates(store.rev() + 1, func);
 
     if (store.rev() != rev)

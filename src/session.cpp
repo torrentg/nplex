@@ -9,11 +9,11 @@
 #include <algorithm>
 #include <cassert>
 
-// maximum time (in millis) for a not logged user
+// Maximum time (in millis) for a not logged user
 static constexpr std::uint32_t TIMEOUT_NO_USER = 5000;
-// maximum number of bytes in a sync batch
+// Maximum number of bytes in a sync batch
 static constexpr std::uint32_t MAX_BYTES_IN_SYNC = 50 * 1024 * 1024;
-// maximum % occupancy in output queue to start a sync
+// Maximum % occupancy in output queue to restart a sync
 static constexpr std::uint32_t MAX_PCT_OCCUPANCY_OUTPUT_QUEUE = 66;
 
 // ==========================================================
@@ -298,7 +298,7 @@ void nplex::session_t::process_snapshot_request(const msgs::SnapshotRequest *req
 
     LOG_INFO("{} requested snapshot at r{}", m_id, rev);
 
-    // case: requested snapshot out of range
+    // Case: requested snapshot out of range
     if (rev < m_context->minimum_rev() || rev > m_context->last_persisted_rev())
     {
         send_buffered_msg(
@@ -315,16 +315,28 @@ void nplex::session_t::process_snapshot_request(const msgs::SnapshotRequest *req
         return;
     }
 
-    // case: requested current snapshot
+    // Case: requested current snapshot
     if (rev == m_context->last_persisted_rev() && rev == m_context->store().rev())
     {
-        send_snapshot(cid, m_context->store(), m_user);
+        snapshot_response_builder_t builder;
+        builder.set_snapshot(m_context->store(), m_user);
+        auto buf = builder.finish(cid, m_context->last_persisted_rev(), m_context->minimum_rev(), true);
+        send(std::move(buf));
         return;
     }
 
-    // case: requested snapshot need to be retrieved from storage
-    auto task = new snapshot_task_t(shared_from_this(), rev, cid);
-    m_context->submit_task(task);
+    // Case: requested snapshot need to be retrieved from storage
+    m_context->submit_task(
+        new build_snapshot_task_t(
+            rev,
+            m_user,
+            m_context->storage()
+        ),
+        [self = shared_from_this(), cid](task_t *task) {
+            auto result = dynamic_cast<build_snapshot_task_t *>(task);
+            self->process_build_snapshot_task_result(cid, result);
+        }
+    );
 }
 
 void nplex::session_t::process_updates_request(const msgs::UpdatesRequest *req)
@@ -342,7 +354,7 @@ void nplex::session_t::process_updates_request(const msgs::UpdatesRequest *req)
 
     LOG_DEBUG("{} requested updates from r{}", m_id, rev);
 
-    // case: requested updates out of range (reject)
+    // Case: requested updates out of range (reject)
     if (rev < m_context->minimum_rev())
     {
         send_buffered_msg(
@@ -357,6 +369,7 @@ void nplex::session_t::process_updates_request(const msgs::UpdatesRequest *req)
         return;
     }
 
+    // Case: request accepted
     m_updates_cid = cid;
 
     send_buffered_msg(
@@ -442,28 +455,40 @@ void nplex::session_t::do_sync(std::size_t cid)
         return;
     }
 
-    std::uint32_t max_bytes = MAX_BYTES_IN_SYNC;
+    std::uint32_t max_total_bytes = MAX_BYTES_IN_SYNC;
     std::uint32_t unack_budget = static_cast<std::uint32_t>(params.max_unack_bytes - stats.unack_bytes);
 
-    max_bytes = std::min(max_bytes, unack_budget);
+    max_total_bytes = std::min(max_total_bytes, unack_budget);
 
-    if (max_bytes == 0)
+    if (max_total_bytes == 0)
         return;
 
     rev_t from_rev = m_lrev + 1;
 
     // First, try to serve updates from the in-memory cache.
-    auto updates = m_context->get_cached_updates(from_rev, max_bytes);
+    auto updates = m_context->get_cached_updates(from_rev, max_total_bytes);
 
     if (!updates.empty()) {
         push_updates(updates, true);
         return;
     }
 
-    // Fallback: launch async sync task which will read from storage.
-    auto *task = new read_updates_task_t(shared_from_this(), m_lrev + 1, m_updates_cid, m_context->params().max_msg_bytes, max_bytes);
+    // Fallback: launch async task to read updates from storage
     m_sync_in_progress = true;
-    m_context->submit_task(task);
+
+    m_context->submit_task(
+        new read_updates_task_t(
+            m_lrev + 1,
+            m_user,
+            m_context->storage(),
+            m_context->params().max_msg_bytes,
+            max_total_bytes
+        ),
+        [self = shared_from_this(), cid = m_updates_cid](task_t *task) {
+            auto result = dynamic_cast<read_updates_task_t *>(task);
+            self->process_read_updates_task_result(cid, result);
+        }
+    );
 }
 
 const char * nplex::session_t::strerror() const
@@ -488,6 +513,7 @@ const char * nplex::session_t::strerror() const
         case ERR_SCHEMA: return "unsupported API version";
         case ERR_CONNECTION_LOST: return "connection lost";
         case ERR_UNACK: return "max unack limits exceeded";
+        case ERR_DATA_RETRIEVAL: return "data retrieval error";
         default: return "unknown error";
     }
 }
@@ -501,43 +527,41 @@ void nplex::session_t::send_keepalive()
     send(create_keepalive_push(crev));
 }
 
-void nplex::session_t::send_snapshot(std::size_t cid, const store_t &store, const user_ptr &usr)
-{
-    if (is_closed())
-        return;
-
-    send_buffered_msg(
-        create_snapshot_response(
-            cid,
-            m_context->last_persisted_rev(),
-            m_context->minimum_rev(),
-            true,
-            store,
-            usr
-        )
-    );
-}
-
-void nplex::session_t::send_updates(read_updates_task_t *task)
+void nplex::session_t::process_build_snapshot_task_result(std::size_t cid, build_snapshot_task_t *task)
 {
     assert(task);
 
-    if (!task)
+    if (is_closed())
         return;
 
     if (task->excpt) {
-        disconnect(ERR_CLOSED_BY_LOCAL);
+        disconnect(ERR_DATA_RETRIEVAL);
         return;
     }
 
-    if (is_closed() || task->m_cid != m_updates_cid)
+    auto buf = task->builder.finish(cid, m_context->last_persisted_rev(), m_context->minimum_rev(), true);
+
+    send_buffered_msg(std::move(buf));
+    flush_buffered_msgs();
+}
+
+void nplex::session_t::process_read_updates_task_result(std::size_t cid, read_updates_task_t *task)
+{
+    assert(task);
+
+    if (is_closed() || cid != m_updates_cid)
         return;
 
-    assert(m_lrev == 0 || m_lrev + 1 == task->m_rev);
+    if (task->excpt) {
+        disconnect(ERR_DATA_RETRIEVAL);
+        return;
+    }
+
+    assert(m_lrev == 0 || m_lrev + 1 == task->rev);
 
     rev_t crev = m_context->last_persisted_rev();
 
-    for (auto &msg : task->m_msgs)
+    for (auto &msg : task->msgs)
     {
         if (msg.empty())
             continue;
@@ -546,80 +570,11 @@ void nplex::session_t::send_updates(read_updates_task_t *task)
         send_buffered_msg(std::move(buf));
     }
 
-    m_lrev = task->m_last_rev;
+    m_lrev = task->last_rev;
     m_sync_in_progress = false;
 
     flush_buffered_msgs();
     do_sync(m_updates_cid);
-}
-
-void nplex::session_t::send_updates(std::size_t cid, [[maybe_unused]] rev_t from_rev, rev_t to_rev, const std::span<const update_dto_t> &updates)
-{
-    if (is_closed() || cid != m_updates_cid || updates.empty()) {
-        m_sync_in_progress = false;
-        return;
-    }
-
-    assert(m_lrev == 0 || m_lrev + 1 == from_rev);
-
-    rev_t crev = m_context->last_persisted_rev();
-
-    // TODO: use send_buffered_msg()
-    LOG_TRACE("send_updates(): cid={}, from_rev={}, to_rev={}", cid, from_rev, to_rev);
-
-    updates_push_builder_t builder;
-    auto it = updates.begin();
-
-    while (it != updates.end())
-    {
-        const auto &stats = m_con.stats();
-        const auto &params = m_con.params();
-
-        // Stop pushing when output queue occupancy is high; do_sync() will resume later.
-        if ((stats.unack_msgs  * 100) / params.max_unack_msgs  >= MAX_PCT_OCCUPANCY_OUTPUT_QUEUE ||
-            (stats.unack_bytes * 100) / params.max_unack_bytes >= MAX_PCT_OCCUPANCY_OUTPUT_QUEUE) {
-            break;
-        }
-
-        std::uint32_t max_msg_bytes = m_context->params().max_msg_bytes;
-        std::uint32_t unack_budget = static_cast<std::uint32_t>(params.max_unack_bytes - stats.unack_bytes);
-
-        max_msg_bytes = std::min(max_msg_bytes, unack_budget);
-
-        if (max_msg_bytes == 0)
-            break;
-
-        for (; it != updates.end(); ++it)
-        {
-            if (builder.bytes() >= max_msg_bytes)
-                break;
-
-            assert(m_lrev < it->rev);
-            assert(from_rev <= it->rev && it->rev <= to_rev);
-            m_lrev = it->rev;
-
-            builder.append(*it);
-        }
-
-        if (!builder.empty())
-            send(builder.finish(m_updates_cid, crev));
-        else
-            break;
-    }
-
-    // Case: synced and last update was not sent
-    if (it == updates.end() && m_lrev == crev && updates.back().rev != to_rev)
-    {
-        update_dto_t dto = {
-            .rev = crev,
-            .user = "admin"
-        };
-
-        builder.append(dto, nullptr, true);
-        send(builder.finish(m_updates_cid, crev));
-    }
-
-    m_sync_in_progress = false;
 }
 
 void nplex::session_t::push_updates(std::span<const update_t> updates, bool syncing)
@@ -630,32 +585,35 @@ void nplex::session_t::push_updates(std::span<const update_t> updates, bool sync
     if (m_lrev + 1 != updates.front().meta->rev)
         return;
 
+    auto max_msg_bytes = m_context->params().max_msg_bytes;
     rev_t crev = m_context->last_persisted_rev();
-    updates_push_builder_t builder;
+    updates_push_builder_t builder(m_user);
     auto it = updates.begin();
 
-    // TODO: use send_buffered_msg()
+    // TODO: manage the output queue overflow case
 
     while (it != updates.end())
     {
         for (; it != updates.end(); ++it)
         {
-            if (builder.bytes() >= m_context->params().max_msg_bytes)
+            if (max_msg_bytes && builder.bytes() >= max_msg_bytes)
                 break;
 
             m_lrev = it->meta->rev;
 
-            // Case syncing: we enforce a non-empty msg to allow the client to check for sync
-            bool c1 = (syncing && m_lrev == crev);
-            // Case synced: own commits are always notified, even when empty
-            bool c2 = (!syncing && it->meta->user.view() == m_user->name);
-
-            builder.append(*it, m_user, c1 || c2);
+            builder.append(*it);
         }
 
-        if (!builder.empty())
-            send(builder.finish(m_updates_cid, crev));
+        bool force_ending_update = (syncing && m_lrev == crev);
+
+        if (!builder.empty() || force_ending_update)
+        {
+            auto buf = builder.finish(m_updates_cid, crev, force_ending_update);
+            send_buffered_msg(std::move(buf));
+        }
     }
+
+    flush_buffered_msgs();
 }
 
 void nplex::session_t::push_session(const session_ptr &session)

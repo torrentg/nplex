@@ -12,7 +12,6 @@
 #include <fmt/ranges.h>
 #include <filesystem>
 #include <cassert>
-#include <cstring>
 
 // ==========================================================
 // Internal (static) functions
@@ -74,7 +73,7 @@ static void cb_task_run(uv_work_t *req)
         task->run();
     }
     catch (const std::exception &e) {
-        LOG_ERROR("Task {} error: {}", task->name(), e.what());
+        LOG_ERROR("Error executing task {}: {}", task->name(), e.what());
         task->excpt = std::current_exception();
     }
 }
@@ -102,13 +101,13 @@ static void cb_task_after(uv_work_t *req, int status)
         goto ERR;
     }
 
-    if (task->excpt) {
-        // Error was already traced in cb_task_run()
-        goto ERR;
-    }
+    if (!task->callback)
+        goto END;
 
     try {
-        task->after();
+        // task->excpt msg is traced in cb_task_run()
+        // task->excpt is managed by the callback
+        task->callback(task);
         goto END;
     }
     catch (const std::exception &e) {
@@ -162,21 +161,21 @@ nplex::context_t::context_t(uv_loop_t *loop, const config_t &config) : m_loop(lo
     m_rev_w = m_storage->max_rev();
     LOG_INFO("Data range: [r{}, r{}]", m_rev_0, m_rev_w);
 
-    // set store content
+    // Set store content
     m_store = m_storage->rebuild_store_at(m_rev_w);
     m_store.config(config.store);
 
-    // async handle to stop the loop
+    // Async handle to stop the loop
     m_async_stop_loop = std::make_unique<uv_async_t>();
     m_async_stop_loop->data = this;
     uv_async_init(m_loop, m_async_stop_loop.get(), cb_async_stop_loop);
 
-    // async handle to process updates written by storage thread
+    // Async handle to process updates written by storage thread
     m_async_updates_written = std::make_unique<uv_async_t>();
     m_async_updates_written->data = this;
     uv_async_init(m_loop, m_async_updates_written.get(), cb_async_updates_result);
 
-    // start the writer thread
+    // Start the writer thread
     m_storage->start(
         [this](bool success, const std::span<update_t> &updates) {
             on_updates_written_1(success, updates);
@@ -194,8 +193,9 @@ nplex::context_t::context_t(uv_loop_t *loop, const config_t &config) : m_loop(lo
 
 nplex::context_t::~context_t()
 {
-    // this method is defined in the compilation unit to avoid incomplete type errors
-    // nothing to do explicitly
+    // Destructor.
+    // This method is defined in the compilation unit to avoid incomplete type errors
+    // Nothing to do explicitly
 }
 
 void nplex::context_t::open()
@@ -207,15 +207,15 @@ void nplex::context_t::close()
 {
     m_running = false;
 
-    // closing all sessions
+    // Closing all sessions
     for (auto &session : m_sessions)
         session->disconnect(ERR_CLOSED_BY_LOCAL);
 
-    // stopping the journal writing thread
+    // Stopping the journal writing thread
     if (m_storage)
         m_storage->stop();
 
-    // release libuv resources
+    // Release libuv resources
     if (m_async_updates_written)
         uv_close(reinterpret_cast<uv_handle_t *>(m_async_updates_written.get()), nullptr);
 
@@ -238,7 +238,7 @@ void nplex::context_t::persist(update_t &&upd)
     m_storage->write_update_async(std::move(upd));
 }
 
-void nplex::context_t::submit_task(task_t *task)
+void nplex::context_t::submit_task(task_t *task, const task_callback_f &callback)
 {
     assert(task);
 
@@ -248,12 +248,12 @@ void nplex::context_t::submit_task(task_t *task)
     }
 
     task->start_time = uv_hrtime();
+    task->callback = callback;
     m_num_running_tasks++;
 
     int rc = 0;
     if ((rc = uv_queue_work(m_loop, &task->work, ::cb_task_run, ::cb_task_after)) != 0)
         throw std::runtime_error(uv_strerror(rc));
-
 }
 
 void nplex::context_t::release_task(task_t *)
@@ -427,7 +427,7 @@ void nplex::context_t::check_for_snapshot()
 
     auto buf = builder.Release();
 
-    auto task = new write_snapshot_task_t(rev, std::move(buf), m_storage);
+    auto task = new save_snapshot_task_t(rev, std::move(buf), m_storage);
     submit_task(task);
 
     m_store.reset_stats();
@@ -471,7 +471,7 @@ std::span<const nplex::update_t> nplex::context_t::get_cached_updates(rev_t from
     size_t pos = from_rev - m_cache.front().meta->rev;
     assert(pos < m_cache.size());
 
-    // we need to return a contiguous span of updates starting at pos, 
+    // We need to return a contiguous span of updates starting at pos, 
     // but cqueue does not guarantee that the internal buffer is contiguous, 
     // so we need to find the largest contiguous range starting at pos
 

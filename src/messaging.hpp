@@ -96,22 +96,47 @@ class outgoing_network_frames_t
 const msgs::Message * parse_network_frame(const char *ptr, size_t len);
 
 /**
+ * Builder to create a SnapshotResponse message.
+ */
+class snapshot_response_builder_t
+{
+  public:
+    snapshot_response_builder_t();
+
+    bool set_snapshot(const store_t &store, const user_ptr &user = nullptr);
+    DetachedBuffer finish(uint64_t cid, rev_t crev, rev_t rev0, bool accepted = true);
+
+  private:
+    FlatBufferBuilder m_builder;
+    fb::Offset<nplex::msgs::Snapshot> m_snapshot_offset;
+};
+
+/**
  * Builder to create a UpdatesPush message.
+ * If no user is provided, updates are copied as-is.
+ * Only includes updates that are relevant to the user.
+ * User updates are always included, even if empty.
+ * Append an ending dummy update if it is necessary to signal the end.
  */
 struct updates_push_builder_t
 {
-    FlatBufferBuilder m_builder;
-    std::vector<fb::Offset<msgs::Update>> m_updates;
-
-    updates_push_builder_t(std::size_t initial_size = 0);
+  public:
+    updates_push_builder_t(user_ptr usr = nullptr, std::size_t initial_size = 0);
+    updates_push_builder_t(std::size_t initial_size) : updates_push_builder_t(nullptr, initial_size) {}
 
     std::size_t bytes() const;
     bool empty() const { return m_updates.empty(); }
+    bool append(const update_t &update);
+    bool append(const msgs::Update *update);
+    DetachedBuffer finish(uint64_t cid, rev_t crev, bool force = false);
 
-    bool append(const update_t &update, const user_ptr &user = nullptr, bool force = false);
-    bool append(const update_dto_t &update, const user_ptr &user = nullptr, bool force = false);
-    bool append(const msgs::Update *update, const user_ptr &user = nullptr, bool force = false);
-    DetachedBuffer finish(uint64_t cid, rev_t crev);
+  private:
+    user_ptr m_user;
+    FlatBufferBuilder m_builder;
+    std::vector<fb::Offset<msgs::Update>> m_updates;
+    rev_t m_initial_rev = 0;
+    rev_t m_final_rev = 0;
+    rev_t m_last_rev = 0;
 };
 
 /**
@@ -119,11 +144,13 @@ struct updates_push_builder_t
  */
 struct sessions_response_builder_t
 {
-    FlatBufferBuilder m_builder;
-    std::vector<fb::Offset<msgs::Session>> m_sessions;
-
+  public:
     bool append(const session_ptr &session);
     DetachedBuffer finish(uint64_t cid, rev_t crev);
+
+  private:
+    FlatBufferBuilder m_builder;
+    std::vector<fb::Offset<msgs::Session>> m_sessions;
 };
 
 /**
@@ -138,9 +165,8 @@ DetachedBuffer create_updates_response(std::size_t cid, rev_t crev, rev_t rev0, 
 DetachedBuffer create_sessions_push(std::size_t cid, rev_t crev, const session_ptr &session);
 
 /**
- * Functions used to write and read journal entries.
+ * Function used to write journal entries.
  */
 DetachedBuffer serialize_update(const update_t &update);
-update_dto_t deserialize_update(const msgs::Update *upd, const user_ptr &user = nullptr);
 
 } // namespace nplex

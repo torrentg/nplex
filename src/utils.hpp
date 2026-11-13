@@ -33,7 +33,6 @@ struct shared_ptr_compare
 std::string bytes_to_string(std::size_t bytes);
 
 // Estimate the number of bytes an update will take when serialized
-std::size_t estimate_bytes(const update_dto_t &update);
 std::size_t estimate_bytes(const update_t &update);
 
 /**

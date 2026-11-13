@@ -27,6 +27,7 @@ using session_ptr = std::shared_ptr<session_t>;
 struct context_t : public std::enable_shared_from_this<context_t>
 {
     using session_set_t = std::set<session_ptr, shared_ptr_compare<session_t>>;
+    using task_callback_f = std::function<void(task_t *)>;
 
     context_t(uv_loop_t *loop, const config_t &config);
     ~context_t();
@@ -43,7 +44,7 @@ struct context_t : public std::enable_shared_from_this<context_t>
     void open();
     void close();
     void persist(update_t &&upd);
-    void submit_task(task_t *task);
+    void submit_task(task_t *task, const task_callback_f &callback = {});
     void release_task(task_t *task);
     void publish(const session_ptr &session);
     void append_session(uv_stream_t *stream);

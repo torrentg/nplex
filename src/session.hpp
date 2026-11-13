@@ -13,6 +13,7 @@ struct user_t;
 struct context_t;
 class store_t;
 struct read_updates_task_t;
+struct build_snapshot_task_t;
 using user_ptr = std::shared_ptr<user_t>;
 using context_ptr = std::shared_ptr<context_t>;
 
@@ -48,12 +49,8 @@ class session_t : public std::enable_shared_from_this<session_t>
     void disconnect(int rc);
     void process_requests(std::span<const msgs::Message *> msgs);
     void process_delivery(const msgs::Message *msg);
-    void send_snapshot(std::size_t cid, const store_t &store, const user_ptr &usr = nullptr);
-    void send_updates(read_updates_task_t *task);
-    void send_updates(std::size_t cid, rev_t from_rev, rev_t to_rev, const std::span<const update_dto_t> &updates);
     void push_updates(std::span<const update_t> updates, bool syncing = false);
     void push_session(const std::shared_ptr<session_t> &session);
-    void do_sync(std::size_t cid);
     void send_keepalive();
     void release();
 
@@ -83,6 +80,11 @@ class session_t : public std::enable_shared_from_this<session_t>
     void process_sessions_request(const msgs::SessionsRequest *req);
     void process_submit_request(const msgs::SubmitRequest *req);
     void process_ping_request(const msgs::PingRequest *req);
+
+    void process_read_updates_task_result(std::size_t cid, read_updates_task_t *task);
+    void process_build_snapshot_task_result(std::size_t cid, build_snapshot_task_t *task);
+
+    void do_sync(std::size_t cid);
 };
 
 using session_ptr = std::shared_ptr<session_t>;

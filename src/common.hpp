@@ -35,6 +35,7 @@
 #define ERR_SCHEMA              1010
 #define ERR_CONNECTION_LOST     1011
 #define ERR_UNACK               1012
+#define ERR_DATA_RETRIEVAL      1013
 
 #define UNUSED(x)               (void)(x)
 
@@ -108,22 +109,13 @@ struct update_t {
     std::vector<key_t> deletes;
 };
 
-struct update_dto_t {
-    rev_t rev = 0;
-    std::string user{};
-    std::uint64_t timestamp = 0;
-    std::uint32_t tx_type = 0;
-    std::vector<std::pair<std::string, std::string>> upserts{};
-    std::vector<std::string> deletes{};
-};
-
 enum class log_level_e : std::uint8_t {
-    TRACE,    // developper messages
-    DEBUG,    // connection initiated/terminated, data update, sent/recv message (except KEEPALIVE_PUSH), tasks duration
-    INFO,     // users login/disconnection, snapshots
-    WARN,     // signal SIGINT, threshold exceeded, unexpected events
-    ERROR,    // critical errors
-    NONE      // disable logging
+    TRACE,    // Developper messages
+    DEBUG,    // Connection initiated/terminated, data update, sent/recv message (except KEEPALIVE_PUSH), tasks duration
+    INFO,     // Users login/disconnection, snapshots
+    WARN,     // Signal SIGINT, threshold exceeded, unexpected events
+    ERROR,    // Critical errors
+    NONE      // Disable logging
 };
 
 } // namespace nplex

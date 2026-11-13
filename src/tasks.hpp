@@ -20,17 +20,20 @@ using session_ptr = std::shared_ptr<session_t>;
  * This object contains:
  *   - uv_work_t object required by libuv
  *   - exception (if an exception is thrown)
+ *   - callback function to be called after task completion
  *   - task data (implemented by subclasses)
  *   - run() method required by uv_queue_work (implemented by subclasses)
- *   - after() method required by uv_queue_work() (implemented by subclasses)
  * 
  * This class is intended to be subclassed.
  */
 struct task_t
 {
+    using callback_f = std::function<void(task_t *)>;
+
     uv_work_t work;
     std::exception_ptr excpt;
     uint64_t start_time = 0;
+    callback_f callback;
 
     task_t() { work.data = this; }
     virtual ~task_t() = default;
@@ -38,89 +41,64 @@ struct task_t
     virtual const char * name() const = 0;
     //! Function executed in the thread-pool.
     virtual void run() = 0;
-    //! Function executed in the event-loop thread.
-    virtual void after() = 0;
 };
 
 /**
- * Create a snapshot and sends a response to the session.
+ * Builds the snapshot at rev for a given user.
  *   - Retrieve nearest snapshot from disk (filtered by user)
  *   - Apply updates until the given rev (filtered by user)
  *   - Creates the SnapshotResponse message
  *   - Sends the message over the network
  */
-struct snapshot_task_t : public task_t
+struct build_snapshot_task_t : public task_t
 {
-    rev_t m_rev;                        // Snapshot revision
-    std::size_t m_cid;                  // Correlation id
-    session_ptr m_session;              // Session used to send messages
-    nplex::store_t m_store;             // User store at m_rev (result)
+    rev_t rev = 0;                          // Snapshot revision
+    user_ptr user;                          // User (used to filter content)
+    storage_ptr storage;                    // Storage object (data access)
+    snapshot_response_builder_t builder;    // Builder for the response message
 
-    snapshot_task_t(const session_ptr &session, nplex::rev_t rev, std::size_t cid)
-        : m_rev(rev), m_cid(cid), m_session(session) {}
+    build_snapshot_task_t(nplex::rev_t rev_, user_ptr user_, storage_ptr storage_);
 
-    const char * name() const override { return "build_snapshot_at_task"; }
+    const char * name() const override { return "build_snapshot_task"; }
     void run() override;
-    void after() override;
 };
 
 /**
- * Synchronize the session with the store.
+ * Read updates from rev for a given user.
  *   - Read updates from disk
  *   - Save non-empty user updates in a list
  *   - Sends these updates over the network
  */
-struct sync_task_t : public task_t
-{
-    rev_t m_rev;                            // last revision sent to the session
-    std::size_t m_cid;                      // correlation id
-    session_ptr m_session;                  // users session
-    std::uint32_t m_max_items = UINT32_MAX; // max number of updates
-    std::uint32_t m_max_bytes = UINT32_MAX; // max bytes of retrieved updates
-    std::vector<update_dto_t> m_updates;    // non-empty updates read (filtered by user)
-    std::size_t m_bytes = 0;                // cumulated bytes (filtered by user)
-    rev_t m_last_rev = 0;                   // last revision read
-
-    sync_task_t(const session_ptr &session, rev_t rev, std::size_t cid, std::uint32_t max_items, std::uint32_t max_bytes);
-
-    const char * name() const override { return "sync_task"; }
-    void run() override;
-    void after() override;
-};
-
 struct read_updates_task_t : public task_t
 {
-    rev_t m_rev;                            // First revision to read
-    std::size_t m_cid;                      // Correlation id
-    session_ptr m_session;                  // Users session
-    std::uint32_t m_max_msg_bytes;          // Max bytes per message
-    std::uint32_t m_max_total_bytes;        // Max cumulated bytes to be sent
-    std::size_t m_total_bytes = 0;          // Cumulated bytes (filtered by user)
-    rev_t m_last_rev = 0;                   // Last revision read
-    std::vector<updates_push_builder_t> m_msgs;
+    rev_t rev = 0;                          // First revision to read
+    user_ptr user;                          // User (used to filter content)
+    storage_ptr storage;                    // Storage object (data access)
+    std::uint32_t max_msg_bytes = 0;        // Max bytes per message
+    std::uint32_t max_total_bytes = 0;      // Max cumulated bytes to be sent
+    std::size_t total_bytes = 0;            // Cumulated bytes (filtered by user)
+    rev_t last_rev = 0;                     // Last revision read
+    std::vector<updates_push_builder_t> msgs;
 
-    read_updates_task_t(const session_ptr &session, rev_t rev, std::size_t cid, std::uint32_t max_msg_bytes, std::uint32_t max_total_bytes);
+    read_updates_task_t(rev_t rev_, user_ptr user_, storage_ptr storage_, std::uint32_t max_msg_bytes_ = 0, std::uint32_t max_total_bytes_ = 0);
 
     const char * name() const override { return "read_updates_task"; }
     void run() override;
-    void after() override;
 };
 
 /**
- * Write a snapshot to disk.
+ * Save a snapshot to disk.
  */
-struct write_snapshot_task_t : public task_t
+struct save_snapshot_task_t : public task_t
 {
-    rev_t m_rev;                            // Snapshot revision
-    DetachedBuffer m_buf;                   // Serialized snapshot buffer
-    storage_ptr m_storage;                  // Storage object
+    rev_t rev;                              // Snapshot revision
+    DetachedBuffer buf;                     // Serialized snapshot buffer
+    storage_ptr storage;                    // Storage object
 
-    write_snapshot_task_t(rev_t rev, DetachedBuffer &&buf, const storage_ptr &storage)
-        : m_rev(rev), m_buf(std::move(buf)), m_storage(storage) {}
+    save_snapshot_task_t(rev_t rev_, DetachedBuffer &&buf_, storage_ptr storage_);
 
     const char * name() const override { return "save_snapshot_task"; }
     void run() override;
-    void after() override {}
 };
 
 } // namespace nplex

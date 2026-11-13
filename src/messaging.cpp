@@ -13,26 +13,11 @@ using namespace flatbuffers;
 // Internal (static) functions
 // ==========================================================
 
-static constexpr std::size_t MIN_INITIAL_BYTES_BUFFER_BUILDER = 4 * 1024;
-static constexpr std::size_t MAX_INITIAL_BYTES_BUFFER_BUILDER = 16 * 1024 * 1024;
+static constexpr std::size_t DEFAULT_BYTES_SNAPSHOT = 256 * 1024;
+static constexpr std::size_t MIN_INITIAL_BYTES_UPDATES = 4 * 1024;
+static constexpr std::size_t MAX_INITIAL_BYTES_UPDATES = 16 * 1024 * 1024;
 
-static std::string create_string(const fb::String *str)
-{
-    if (!str)
-        return "";
-
-    return std::string{str->c_str(), str->size()};
-}
-
-static std::string create_string(const fb::Vector<std::uint8_t> *value)
-{
-    if (!value)
-        return "";
-
-    return std::string{reinterpret_cast<const char *>(value->data()), static_cast<std::size_t>(value->size())};
-}
-
-static fb::Offset<nplex::msgs::Update> serialize_update(fb::FlatBufferBuilder &builder, const nplex::update_t &update, const nplex::user_ptr &user, bool force)
+static fb::Offset<nplex::msgs::Update> serialize_update(fb::FlatBufferBuilder &builder, const nplex::update_t &update, const nplex::user_ptr &user)
 {
     std::vector<Offset<KeyValue>> upserts;
     std::vector<Offset<String>> deletes;
@@ -62,7 +47,7 @@ static fb::Offset<nplex::msgs::Update> serialize_update(fb::FlatBufferBuilder &b
         deletes.push_back(builder.CreateString(key));
     }
 
-    if (!force && upserts.empty() && deletes.empty())
+    if (user && upserts.empty() && deletes.empty())
         return 0;
 
     return CreateUpdate(
@@ -76,51 +61,7 @@ static fb::Offset<nplex::msgs::Update> serialize_update(fb::FlatBufferBuilder &b
     );
 }
 
-static fb::Offset<nplex::msgs::Update> serialize_update(fb::FlatBufferBuilder &builder, const nplex::update_dto_t &update, const nplex::user_ptr &user, bool force)
-{
-    std::vector<Offset<KeyValue>> upserts;
-    std::vector<Offset<String>> deletes;
-
-    for (const auto &[key, value] : update.upserts)
-    {
-        if (user && !user->is_authorized(CRUD_READ, key.c_str()))
-            continue;
-
-        auto kv = CreateKeyValue(
-            builder, 
-            builder.CreateString(key),
-            builder.CreateVector(
-                reinterpret_cast<const uint8_t *>(value.data()), 
-                value.size()
-            )
-        );
-
-        upserts.push_back(kv);
-    }
-
-    for (const auto &key : update.deletes)
-    {
-        if (user && !user->is_authorized(CRUD_READ, key.c_str()))
-            continue;
-
-        deletes.push_back(builder.CreateString(key));
-    }
-
-    if (!force && upserts.empty() && deletes.empty())
-        return 0;
-
-    return CreateUpdate(
-        builder,
-        update.rev,
-        builder.CreateString(update.user),
-        static_cast<std::uint64_t>(update.timestamp),
-        update.tx_type,
-        (upserts.empty() ? 0 : builder.CreateVector(upserts)),
-        (deletes.empty() ? 0 : builder.CreateVector(deletes))
-    );
-}
-
-static fb::Offset<nplex::msgs::Update> serialize_update(fb::FlatBufferBuilder &builder, const nplex::msgs::Update *update, const nplex::user_ptr &user, bool force)
+static fb::Offset<nplex::msgs::Update> serialize_update(fb::FlatBufferBuilder &builder, const nplex::msgs::Update *update, const nplex::user_ptr &user)
 {
     std::vector<Offset<KeyValue>> upserts;
     std::vector<Offset<String>> deletes;
@@ -161,7 +102,7 @@ static fb::Offset<nplex::msgs::Update> serialize_update(fb::FlatBufferBuilder &b
         }
     }
 
-    if (!force && upserts.empty() && deletes.empty())
+    if (user && upserts.empty() && deletes.empty())
         return 0;
 
     return CreateUpdate(
@@ -361,6 +302,9 @@ fb::DetachedBuffer nplex::create_sessions_push(std::size_t cid, rev_t crev, cons
         case ERR_UNACK:
             exit_code = ExitCode::EXCD_LIMITS;
             break;
+        case ERR_DATA_RETRIEVAL:
+            exit_code = ExitCode::CLOSED_BY_SERVER;
+            break;
         default:
             exit_code = ExitCode::COMM_ERROR;
             break;
@@ -443,7 +387,7 @@ fb::DetachedBuffer nplex::create_submit_response(std::size_t cid, rev_t crev, Su
 
 fb::DetachedBuffer nplex::create_snapshot_response(std::size_t cid, rev_t crev, rev_t rev0, bool accepted, const store_t &store, const user_ptr &user)
 {
-    FlatBufferBuilder builder(32 * 1024);
+    FlatBufferBuilder builder(DEFAULT_BYTES_SNAPSHOT);
 
     auto snapshot_offset = (accepted ? store.serialize(builder, user) : 0);
 
@@ -466,62 +410,56 @@ fb::DetachedBuffer nplex::serialize_update(const update_t &update)
 {
     FlatBufferBuilder builder;
 
-    auto msg = ::serialize_update(builder, update, nullptr, true);
+    auto msg = ::serialize_update(builder, update, nullptr);
 
     builder.Finish(msg);
     return builder.Release();
 }
 
-nplex::update_dto_t nplex::deserialize_update(const Update *upd, const user_ptr &user)
+// ==========================================================
+// snapshot_response_builder_t methods
+// ==========================================================
+
+nplex::snapshot_response_builder_t::snapshot_response_builder_t() : m_builder(DEFAULT_BYTES_SNAPSHOT)
 {
-    update_dto_t update;
+    // Nothing to do
+}
 
-    update.rev = upd->rev();
-    update.user = ::create_string(upd->user());
-    update.timestamp = upd->timestamp();
-    update.tx_type = upd->tx_type();
+bool nplex::snapshot_response_builder_t::set_snapshot(const store_t &store, const user_ptr &user)
+{
+    m_snapshot_offset = store.serialize(m_builder, user);
+    return !m_snapshot_offset.IsNull();
+}
 
-    if (upd->upserts())
-    {
-        for (const auto &kv : *upd->upserts())
-        {
-            if (!kv || !kv->key() || !kv->key()->c_str() || !kv->value())
-                continue;
+DetachedBuffer nplex::snapshot_response_builder_t::finish(uint64_t cid, rev_t crev, rev_t rev0, bool accepted)
+{
+    auto msg = CreateMessage(m_builder, 
+        MsgContent::SNAPSHOT_RESPONSE,
+        CreateSnapshotResponse(m_builder,
+            cid, 
+            crev,
+            rev0,
+            accepted,
+            m_snapshot_offset
+        ).Union()
+    );
+    
+    m_builder.Finish(msg);
+    auto buf = m_builder.Release();
 
-            if (user && !user->is_authorized(CRUD_READ, kv->key()->c_str()))
-                continue;
+    m_snapshot_offset = 0;
+    m_builder.Clear();
 
-            update.upserts.push_back({
-                ::create_string(kv->key()),
-                ::create_string(kv->value())
-            });
-        }
-    }
-
-    if (upd->deletes())
-    {
-        for (const auto &key : *upd->deletes())
-        {
-            if (!key || !key->c_str())
-                continue;
-
-            if (user && !user->is_authorized(CRUD_READ, key->c_str()))
-                continue;
-
-            update.deletes.push_back(::create_string(key));
-        }
-    }
-
-    return update;
+    return buf;
 }
 
 // ==========================================================
 // updates_push_builder_t methods
 // ==========================================================
 
-nplex::updates_push_builder_t::updates_push_builder_t(std::size_t initial_size)
+nplex::updates_push_builder_t::updates_push_builder_t(user_ptr usr, std::size_t initial_size) : m_user(std::move(usr))
 {
-    auto size = std::clamp<std::size_t>(initial_size, MIN_INITIAL_BYTES_BUFFER_BUILDER, MAX_INITIAL_BYTES_BUFFER_BUILDER);
+    auto size = std::clamp<std::size_t>(initial_size, MIN_INITIAL_BYTES_UPDATES, MAX_INITIAL_BYTES_UPDATES);
     m_builder = FlatBufferBuilder(size);
 }
 
@@ -542,49 +480,76 @@ std::size_t nplex::updates_push_builder_t::bytes() const
     return ret;
 }
 
-bool nplex::updates_push_builder_t::append(const update_t &update, const user_ptr &user, bool force)
+bool nplex::updates_push_builder_t::append(const update_t &update)
 {
-    auto off = ::serialize_update(m_builder, update, user, force);
+    assert(update.meta);
+    rev_t rev = update.meta->rev;
+    assert(m_last_rev < rev);
 
-    if (!off.IsNull()) {
-        m_updates.push_back(off);
-        return true;
-    }
+    // User commits are always notified, even when empty
+    const auto &user = ((m_user && update.meta->user.view() != m_user->name) ? m_user: nullptr);
 
-    return false;
-}
+    auto off = ::serialize_update(m_builder, update, user);
 
-bool nplex::updates_push_builder_t::append(const update_dto_t &update, const user_ptr &user, bool force)
-{
-    auto off = ::serialize_update(m_builder, update, user, force);
+    m_last_rev = rev;
 
-    if (!off.IsNull()) {
-        m_updates.push_back(off);
-        return true;
-    }
-
-    return false;
-}
-
-bool nplex::updates_push_builder_t::append(const msgs::Update *update, const user_ptr &user, bool force)
-{
-    if (!update)
+    if (off.IsNull())
         return false;
 
-    auto off = ::serialize_update(m_builder, update, user, force);
+    m_updates.push_back(off);
 
-    if (!off.IsNull()) {
-        m_updates.push_back(off);
-        return true;
-    }
+    if (m_initial_rev == 0) m_initial_rev = rev;
+    m_final_rev = rev;
 
-    return false;
+    return true;
 }
 
-fb::DetachedBuffer nplex::updates_push_builder_t::finish(uint64_t cid, rev_t crev)
+bool nplex::updates_push_builder_t::append(const msgs::Update *update)
 {
-    // TODO: if last update was not added then append an empty one (to signal end of sync)
+    assert(update);
+    rev_t rev = update->rev();
+    assert(m_last_rev < rev);
 
+    // User commits are always notified, even when empty
+    const auto &user = ((m_user && update->user()->string_view() != m_user->name) ? m_user : nullptr);
+
+    auto off = ::serialize_update(m_builder, update, user);
+
+    m_last_rev = rev;
+
+    if (off.IsNull())
+        return false;
+
+    m_updates.push_back(off);
+
+    if (m_initial_rev == 0) m_initial_rev = rev;
+    m_final_rev = rev;
+
+    return true;
+}
+
+fb::DetachedBuffer nplex::updates_push_builder_t::finish(uint64_t cid, rev_t crev, bool force)
+{
+    assert(m_last_rev <= crev);
+
+    // Append an empty update to signal the end of sync
+    if (force && m_final_rev < m_last_rev)
+    {
+        auto off = CreateUpdate(
+            m_builder,
+            m_last_rev,
+            m_builder.CreateString("unknow"),
+            0,
+            0,
+            0,
+            0
+        );
+
+        m_updates.push_back(off);
+        m_final_rev = m_last_rev;
+    }
+
+    // Create the message
     auto msg = CreateMessage(m_builder, 
         MsgContent::UPDATES_PUSH,
         CreateUpdatesPush(m_builder, 
@@ -597,8 +562,11 @@ fb::DetachedBuffer nplex::updates_push_builder_t::finish(uint64_t cid, rev_t cre
     m_builder.Finish(msg);
     auto buf = m_builder.Release();
 
-    m_updates.clear();
     m_builder.Clear();
+    m_updates.clear();
+    m_initial_rev = 0;
+    m_final_rev = 0;
+    m_last_rev = 0;
 
     return buf;
 }
@@ -643,8 +611,8 @@ fb::DetachedBuffer nplex::sessions_response_builder_t::finish(uint64_t cid, rev_
     m_builder.Finish(msg);
     auto buf = m_builder.Release();
 
-    m_sessions.clear();
     m_builder.Clear();
+    m_sessions.clear();
 
     return buf;
 }
