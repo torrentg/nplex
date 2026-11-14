@@ -23,12 +23,12 @@ class filesystem_snapshot_persister_t : public snapshot_persister_t
     filesystem_snapshot_persister_t(filesystem_snapshot_persister_t &&) = delete;
     filesystem_snapshot_persister_t &operator=(filesystem_snapshot_persister_t &&) = delete;
 
-    std::pair<nplex::rev_t, nplex::rev_t> get_snapshots_range() override;
-    std::string read_snapshot(rev_t rev) override;
-    void write_snapshot(rev_t rev, const std::string_view &data) override;
+    std::pair<rev_t, rev_t> get_snapshots_range() override;
+    std::pair<rev_t, std::string> read_snapshot(rev_t rev) override;
+    void write_snapshot(rev_t rev, std::string_view data) override;
 
-    static std::string read_snapshot_file(const std::filesystem::path &path);
-    static void write_snapshot_file(const std::filesystem::path &path, const std::string_view &data);
+    static std::pair<rev_t, std::string> read_snapshot_file(const std::filesystem::path &path);
+    static void write_snapshot_file(rev_t rev, const std::filesystem::path &path, std::string_view data);
 
   private:
 

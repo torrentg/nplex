@@ -334,7 +334,7 @@ std::size_t nplex::journal_updates_persister_t::write_batch(std::span<update_ent
 void nplex::journal_updates_persister_t::write_updates(const std::span<update_entry_t> &entries, std::size_t &num_writes)
 {
     auto pending_entries = entries;
-    
+
     num_writes = 0;
 
     while (!pending_entries.empty())
@@ -443,7 +443,7 @@ bool nplex::journal_updates_persister_t::update_catalog(bool force)
         if (seen_files.find(file_name) != seen_files.end())
             continue;
 
-        auto segment_opt = get_journal_segment(entry.path());
+        auto segment_opt = get_file_info(entry.path());
         if (!segment_opt)
             continue;
 
@@ -457,14 +457,14 @@ bool nplex::journal_updates_persister_t::update_catalog(bool force)
         }
 
         m_catalog[segment_opt->range.second] = *segment_opt;
-        LOG_DEBUG("Journal {} added to catalog, range=[{}-{}]", 
+        LOG_DEBUG("{} added to catalog, range=[{}-{}]", 
             segment_opt->file_name, segment_opt->range.first, segment_opt->range.second);
     }
 
     auto catalog_range = normalize_catalog();
     UNUSED(catalog_range);
 
-    LOG_DEBUG("Catalog update complete: range {}-{}", catalog_range.first, catalog_range.second);
+    LOG_DEBUG("Journal catalog update complete: range {}-{}, entries={}", catalog_range.first, catalog_range.second, m_catalog.size());
     m_last_catalog_update = std::chrono::duration_cast<millis_t>(now);
 
     return true;
@@ -573,13 +573,13 @@ nplex::journal_ptr nplex::journal_updates_persister_t::get_journal_from_catalog(
 
     LOG_TRACE("get_journal(r{}): name={}, range=[{}-{}]", 
         rev, it->second.file_name, it->second.range.first, it->second.range.second);
-    
+
     return it->second.journal;
 }
 
-std::optional<nplex::journal_updates_persister_t::journal_segment_t> nplex::journal_updates_persister_t::get_journal_segment(const fs::path &filepath)
+std::optional<nplex::journal_updates_persister_t::file_info_t> nplex::journal_updates_persister_t::get_file_info(const fs::path &filepath)
 {
-    journal_segment_t segment;
+    file_info_t segment;
 
     try
     {
@@ -663,7 +663,7 @@ bool nplex::journal_updates_persister_t::rotate(const std::string &name)
     // Add the rotated segment to the catalog
     if (!is_empty(journal_range))
     {
-        auto segment_opt = get_journal_segment(segment_path_dat);
+        auto segment_opt = get_file_info(segment_path_dat);
 
         if (segment_opt) {
             assert(segment_opt->range.first == journal_range.first);

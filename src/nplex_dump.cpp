@@ -56,7 +56,7 @@ static file_type_e detect_file_type(const fs::path &path)
 
 static void dump_snapshot(const fs::path &path)
 {
-    auto content = nplex::filesystem_snapshot_persister_t::read_snapshot_file(path);
+    auto [rev, content] = nplex::filesystem_snapshot_persister_t::read_snapshot_file(path);
     auto json = nplex::snapshot_to_json(content.data(), content.size());
     printf("%s\n", json.c_str());
 }
@@ -158,7 +158,7 @@ static int dump_file(const char *argv)
                 dump_journal(path);
                 break;
             default:
-                fprintf(stderr, "%s: %s: unsupported file format\n", APP_NAME, argv);
+                fprintf(stderr, "Error reading %s: unsupported file format\n", argv);
                 break;
         }
 
@@ -166,7 +166,7 @@ static int dump_file(const char *argv)
     }
     catch (const std::exception &e)
     {
-        fprintf(stderr, "%s: %s: %s\n", APP_NAME, argv, e.what());
+        fprintf(stderr, "Error reading %s: %s\n", argv, e.what());
         return EXIT_FAILURE;
     }
 }

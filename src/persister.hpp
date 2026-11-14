@@ -93,11 +93,11 @@ class snapshot_persister_t
      *
      * @param[in] rev Target revision.
      *
-     * @return Serialized snapshot payload.
+     * @return Pair of snapshot revision and snapshot serialized content.
      * 
      * @throw std::exception on read error.
      */
-    virtual std::string read_snapshot(rev_t rev) = 0;
+    virtual std::pair<rev_t, std::string> read_snapshot(rev_t rev) = 0;
 
     /**
      * Writes a snapshot for the given revision.
@@ -109,7 +109,7 @@ class snapshot_persister_t
      *
      * @throw std::exception on write error.
      */
-    virtual void write_snapshot(const rev_t rev, const std::string_view &data) = 0;
+    virtual void write_snapshot(const rev_t rev, std::string_view data) = 0;
 };
 
 using updates_persister_ptr = std::shared_ptr<updates_persister_t>;

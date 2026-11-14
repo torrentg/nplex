@@ -72,7 +72,7 @@ class journal_updates_persister_t : public updates_persister_t
 
   private:
 
-    struct journal_segment_t {
+    struct file_info_t {
         std::string file_name;
         size_t file_size = 0;
         millis_t last_write_time = std::chrono::milliseconds(0);
@@ -83,7 +83,7 @@ class journal_updates_persister_t : public updates_persister_t
 
     std::filesystem::path m_path;
     journal_ptr m_journal;  // Current segment
-    std::map<rev_t, journal_segment_t> m_catalog;
+    std::map<rev_t, file_info_t> m_catalog;
     millis_t m_last_catalog_update = millis_t::zero();
     mutable std::mutex m_catalog_mutex;
     mutable std::mutex m_journal_mutex;
@@ -94,7 +94,7 @@ class journal_updates_persister_t : public updates_persister_t
 
     journal_ptr get_journal_from_catalog(rev_t rev);
     journal_ptr get_journal_from_catalog_with_retry(rev_t rev);
-    std::optional<journal_segment_t> get_journal_segment(const std::filesystem::path &filepath);
+    std::optional<file_info_t> get_file_info(const std::filesystem::path &filepath);
     std::pair<rev_t, rev_t> get_catalog_range() const;
     std::pair<rev_t, rev_t> get_journal_range() const;
     std::pair<rev_t, rev_t> normalize_catalog();

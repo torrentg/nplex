@@ -26,7 +26,7 @@ static spdlog::level::level_enum to_spdlog(nplex::log_level_e level) noexcept
 
 static std::string get_pattern(spdlog::level::level_enum level)
 {
-    // @see https://github.com/gabime/spdlog/wiki/3.-Custom-formatting#pattern-flags
+    // @see https://github.com/gabime/spdlog/wiki/Custom-formatting
     if (level <= spdlog::level::debug)
         return "[%Y-%m-%d %H:%M:%S.%e] [%t] [%s:%#] [%-5l] %v";
     else

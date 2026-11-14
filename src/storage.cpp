@@ -82,13 +82,14 @@ nplex::store_t nplex::storage_t::rebuild_store_at(rev_t rev, const user_ptr &use
     LOG_TRACE("Rebuilding store at rev={}, user={}", rev, (user ? user->name : "<none>"));
 
     // Step1: retrieve nearest snapshot (less-eq than rev)
-    std::string str = m_snapshot_persister->read_snapshot(rev);
-    if (!str.empty())
+    auto [srev, sdata] = m_snapshot_persister->read_snapshot(rev);
+    if (!sdata.empty())
     {
-        auto snapshot = fb::GetRoot<msgs::Snapshot>(str.c_str());
+        auto snapshot = fb::GetRoot<msgs::Snapshot>(sdata.c_str());
+        assert(snapshot->rev() == srev);
         LOG_TRACE("Loading snapshot at rev={}", snapshot->rev());
         store.load(snapshot, user);
-        std::string{}.swap(str);
+        std::string{}.swap(sdata);
     }
 
     if (store.rev() == rev)

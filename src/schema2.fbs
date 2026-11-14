@@ -1,6 +1,6 @@
 // ========================================================
 // Nplex flatbuffers schema - part 2: snapshot.
-// Used by: snapshot files (.snp)
+// Used by: snapshot files
 // @see https://github.com/google/flatbuffers
 // ========================================================
 

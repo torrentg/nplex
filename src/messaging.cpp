@@ -443,7 +443,7 @@ DetachedBuffer nplex::snapshot_response_builder_t::finish(uint64_t cid, rev_t cr
             m_snapshot_offset
         ).Union()
     );
-    
+
     m_builder.Finish(msg);
     auto buf = m_builder.Release();
 

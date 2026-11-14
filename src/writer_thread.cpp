@@ -142,7 +142,7 @@ void nplex::writer_thread_t::run()
     buffers_batch.reserve(32);
     entries_batch.reserve(32);
 
-    LOG_DEBUG("writer_thread started");
+    LOG_DEBUG("Writer thread started");
 
     while (m_running.load() || !m_queue.empty())
     {
@@ -218,11 +218,11 @@ void nplex::writer_thread_t::run()
         }
         catch (const std::exception &e)
         {
-            LOG_ERROR("writer_thread failed: {}", e.what());
+            LOG_ERROR("Writer thread failed: {}", e.what());
             excp_ptr = std::make_exception_ptr(e);
         }
 
-        LOG_TRACE("writer_thread wrote {}/{} entries ({} bytes) in {}μs", 
+        LOG_TRACE("Writer thread wrote {}/{} entries ({} bytes) in {}μs", 
             num_writes, entries_batch.size(), bytes_to_string(bytes_batch), (uv_hrtime() - start_time) / 1000);
 
         UNUSED(start_time);
@@ -254,7 +254,7 @@ void nplex::writer_thread_t::run()
         entries_batch.clear();
     }
 
-    LOG_DEBUG("writer_thread stopped");
+    LOG_DEBUG("Writer thread stopped");
 
     return;
 }

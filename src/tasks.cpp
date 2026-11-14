@@ -43,11 +43,10 @@ void nplex::read_updates_task_t::run()
     storage->read_updates(rev, [this](const msgs::Update *update) -> bool {
 
         assert(update);
-        assert(last_rev < update->rev());
-
         if (!update)
             return false;
 
+        assert(last_rev < update->rev());
         last_rev = update->rev();
 
         auto &builder = msgs.back();

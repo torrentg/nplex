@@ -42,7 +42,7 @@
 namespace nplex {
 
 //! Database revision number.
-using rev_t = std::size_t;
+using rev_t = std::uint64_t;
 
 //! Database key type.
 using key_t = gto::cstring;
