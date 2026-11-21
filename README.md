@@ -9,6 +9,8 @@ low-latency reads, real-time change notification, and minimal resource consumpti
 
 - **Key-value store** — Text keys, arbitrary binary values.
 - **Client-server architecture** — Clients connect over TCP using a compact binary protocol.
+- **Historical snapshots** — Retrieve a consistent database snapshot at any revision.
+- **Revision history** — Stream or query all updates since a given revision.
 - **ACID guarantees** — Atomic, consistent, isolated, and durable transactions.
 - **Persistence** — Append-only journal for durability, periodic snapshots for fast recovery.
 - **Lock-free atomic transactions** — Transactions are managed client-side; no server-side locks.
@@ -19,41 +21,55 @@ low-latency reads, real-time change notification, and minimal resource consumpti
 - **Reactive** — Clients receive real-time change notifications. You can build reactors that respond
   to every commit as it happens.
 - **Blazing-fast reads** — Data lives in client memory. Reads never hit the server.
-- **High write throughput** — Sub-millisecond commits, >10,000 tx/s on modest hardware.
+- **High write throughput** — Sub-millisecond commits, > 40,000 tx/s on modest hardware.
 - **Low resource footprint** — Minimal CPU, memory, and disk usage.
 
 **Additional capabilities**
 
-- Snapshot support (point-in-time database state).
-- Update feed/stream for real-time synchronization.
-- Journal-based audit trail (full history of modifications).
-- Glob-pattern filtering on keys.
+- Historical snapshots (point-in-time database state at any revision).
+- Update streaming for real-time synchronization.
+- Journal-based audit trail (complete history of modifications).
 - Basic ACL security (CRUD permissions over key patterns).
-- Serializable transactions with optional ensures (integrity checks at commit time).
+- Glob-pattern key filtering.
+
+**Transaction features**
+
+- Optimistic concurrency control.
+- Isolation levels (read-committed, repeatable-read, and serializable).
+- Ensures (assert that selected keys have not changed since the transaction revision).
+- Force mode (bypass serialization checks; restricted by ACL permissions).
 
 ## How It Works
 
-1. A client connects and authenticates.
-2. The server sends a **snapshot** — the full database state filtered by the client's permissions.
-3. From that point, the server pushes every **update** in real time.
-4. **Reads are local** — the client queries its own in-memory copy, never the server.
-5. **Writes go through the server** — the client submits a transaction; the server validates, persists
+1. The client connects and authenticates.
+2. The client requests a snapshot at a specific revision.
+3. The server sends the requested snapshot filtered by the client's permissions.
+3. The client requests a stream of updates starting from the requested revision.
+4. The server sends the requested existing updates filtered by the client's permissions.
+5. The server sends the requested existing updates filtered by the client's permissions.
+6. From that point, the server pushes every update in real time, filtered by the client's permissions.
+7. Reads are local — the client queries its own in-memory copy, never the server.
+8. Writes go through the server — the client submits a transaction; the server validates, persists
    (journal), and broadcasts the update to all connected clients.
 
-Each accepted transaction increments the database **revision**. Every key-value pair is tagged with
-the revision that last modified it. Transactions are **serializable**: if two clients modify the same
-key concurrently, the first commit wins and the second is rejected. Transactions are **atomic**: if
-any change in a transaction fails, the entire transaction is rolled back.
+Each accepted transaction increments the database revision. Every key-value pair is tagged with
+the revision that last modified it. Transactions are serializable: if two clients modify the same
+key concurrently, the first commit wins and the second is rejected (optimistic concurrency control). 
+Transactions are atomic: if any change in a transaction fails, the entire transaction is rolled back.
 
-Additional transaction features:
+Transactions are managed on the client side. Each client maintains an up-to-date local view of the 
+database state and continuously receives revision updates from the server. If a newly received 
+revision conflicts with an open transaction, that transaction is automatically invalidated and 
+must be rebuilt against the latest database state.
 
-- **Ensures** — Assert that certain keys have not changed since the client's revision (optimistic concurrency).
-- **Force mode** — Override serialization checks (god mode, restricted by ACL).
+The client supports the READ_COMMITTED, REPEATABLE_READ, and SERIALIZABLE isolation levels. 
+Open transactions are continuously validated against incoming revisions and automatically invalidated 
+when their isolation guarantees can no longer be preserved.
 
 ## Clients
 
 The only way to interact with Nplex is through a client library. There is no built-in CLI
-or GUI — you write the client that fits your use case.
+or GUI - you write the client that fits your use case.
 
 Currently available:
 

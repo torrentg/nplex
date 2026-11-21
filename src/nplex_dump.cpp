@@ -2,7 +2,7 @@
 #include "exception.hpp"
 #include "storage.hpp"
 #include "json.hpp"
-#include "journal_updates_persister.hpp"
+#include "journal_base.hpp"
 #include "filesystem_snapshot_persister.hpp"
 #include "journal.h"
 #include <fmt/core.h>
@@ -27,7 +27,7 @@ namespace fs = std::filesystem;
 // File type detection
 // ==========================================================
 
-enum class file_type_e { 
+enum class file_type_e : std::uint8_t { 
     SNAPSHOT, 
     JOURNAL, 
     UNKNOWN
@@ -63,7 +63,7 @@ static void dump_snapshot(const fs::path &path)
 
 static void dump_journal(const fs::path &path)
 {
-    auto journal = nplex::journal_updates_persister_t::open_journal_file(path, LDB_READONLY | LDB_RECOVER | LDB_CHECK);
+    auto journal = nplex::open_journal_file(path, LDB_READONLY | LDB_RECOVER | LDB_CHECK);
     auto range = journal->range();
 
     if (range.first == 0)

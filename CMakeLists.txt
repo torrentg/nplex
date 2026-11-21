@@ -346,6 +346,10 @@ target_sources(
     ${CMAKE_CURRENT_LIST_DIR}/src/exception.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/filesystem_snapshot_persister.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/filesystem_snapshot_persister.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/journal_base.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/journal_base.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/journal_catalog.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/journal_catalog.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/journal_updates_persister.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/journal_updates_persister.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/json.cpp
@@ -457,3 +461,7 @@ target_link_libraries(
     PRIVATE
     nplex_lib
 )
+
+include(CTest)
+enable_testing()
+add_subdirectory(test)

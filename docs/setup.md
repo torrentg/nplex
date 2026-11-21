@@ -164,10 +164,10 @@ cmake ..
 make -j$(nproc)
 
 # cppcheck
-cppcheck --enable=all --inconclusive --std=c++20 --force \
+cppcheck -v -D__GNUC__ --std=c++20 --force --enable=all --inconclusive \
   --suppress=missingIncludeSystem --suppress=unusedFunction \
   --suppress=noExplicitConstructor --suppress=normalCheckLevelMaxBranches \
-  -Ideps -Isrc src
+  --suppress=*:deps/* -ideps -Ideps -Isrc src
 
 # Lines of code
 cloc --exclude-content="automatically generated" src
@@ -191,6 +191,7 @@ lizard -C 20 --language cpp --exclude src/schema.hpp src/*.[ch]pp
 | [utf8.h](https://github.com/sheredom/utf8.h) | UTF-8 string functions | Unlicense |
 | [inih](https://github.com/benhoyt/inih) | INI file parser | BSD-3-Clause |
 | [fast-crc32](https://github.com/corsix/fast-crc32/) | Fast CRC32 implementation | MIT, zlib|
+| [doctest](https://github.com/doctest/doctest) | Testing framework | MIT license |
 
 ### Shared (system packages)
 

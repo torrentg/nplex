@@ -3,7 +3,6 @@
 #include "persister.hpp"
 #include "params.hpp"
 #include <filesystem>
-#include <optional>
 #include <atomic>
 #include <mutex>
 #include <map>
@@ -15,7 +14,9 @@ namespace ldb {
 
 namespace nplex {
 
+struct journal_segment_t;
 using journal_ptr = std::shared_ptr<ldb::journal_t>;
+using journal_catalog_t = std::map<rev_t, journal_segment_t>;
 
 /**
  * Persister that stores updates in a journal.
@@ -53,7 +54,7 @@ class journal_updates_persister_t : public updates_persister_t
   public:
 
     journal_updates_persister_t(const std::filesystem::path &path, const storage_params_t &params);
-    ~journal_updates_persister_t() override = default;
+    ~journal_updates_persister_t() override;
 
     journal_updates_persister_t(const journal_updates_persister_t &) = delete;
     journal_updates_persister_t &operator=(const journal_updates_persister_t &) = delete;
@@ -67,23 +68,11 @@ class journal_updates_persister_t : public updates_persister_t
     void maintenance();
     bool rotate_at(rev_t rev);
 
-    static journal_ptr open_journal_file(const std::filesystem::path &path, const std::string &name, int flags);
-    static journal_ptr open_journal_file(const std::filesystem::path &filepath, int flags);
-
   private:
 
-    struct file_info_t {
-        std::string file_name;
-        size_t file_size = 0;
-        millis_t last_write_time = std::chrono::milliseconds(0);
-        millis_t last_read_time = std::chrono::milliseconds(0);
-        std::pair<rev_t, rev_t> range = {0, 0};
-        journal_ptr journal;
-    };
-
     std::filesystem::path m_path;
-    journal_ptr m_journal;  // Current segment
-    std::map<rev_t, file_info_t> m_catalog;
+    journal_ptr m_journal;
+    journal_catalog_t m_catalog;
     millis_t m_last_catalog_update = millis_t::zero();
     mutable std::mutex m_catalog_mutex;
     mutable std::mutex m_journal_mutex;
@@ -94,14 +83,12 @@ class journal_updates_persister_t : public updates_persister_t
 
     journal_ptr get_journal_from_catalog(rev_t rev);
     journal_ptr get_journal_from_catalog_with_retry(rev_t rev);
-    std::optional<file_info_t> get_file_info(const std::filesystem::path &filepath);
     std::pair<rev_t, rev_t> get_catalog_range() const;
     std::pair<rev_t, rev_t> get_journal_range() const;
-    std::pair<rev_t, rev_t> normalize_catalog();
-    bool update_catalog(bool force = false);
-    bool rotate(const std::string &name = {});
     std::pair<std::span<update_entry_t>, bool> select_write_batch(std::span<update_entry_t> entries);
     std::size_t write_batch(std::span<update_entry_t> entries, std::size_t &num_writes);
+    bool update_catalog(bool force = false);
+    bool rotate(const std::string &name = {});
 };
 
 } // namespace nplex

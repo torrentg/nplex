@@ -103,8 +103,8 @@ void nplex::session_t::send_buffered_msg(DetachedBuffer &&buf)
     if (is_closed())
         return;
 
-    m_buffered_msgs.emplace_back(std::move(buf));
     m_buffered_bytes += buf.size();
+    m_buffered_msgs.emplace_back(std::move(buf));
 
     if (m_buffered_msgs.size() >= outgoing_network_frames_t::max_num_msgs())
         flush_buffered_msgs();
@@ -118,7 +118,7 @@ void nplex::session_t::flush_buffered_msgs()
     // Queue limits are intentionally not checked here. Reads may stop only
     // after a limit is exceeded, which could otherwise lead to disconnect.
 
-    for (auto &buf : m_buffered_msgs)
+    for (const auto &buf : m_buffered_msgs)
         trace_output_msg(buf);
 
     m_con.send(m_buffered_msgs);

@@ -1,5 +1,6 @@
 #include "addr.hpp"
 #include <fmt/core.h>
+#include <algorithm>
 #include <exception>
 #include <charconv>
 #include <regex>
@@ -34,19 +35,21 @@ namespace {
 nplex::addr_t::addr_t(const std::string_view &str)
 {
     auto pos = str.find_last_of(':');
-    if (pos == str.npos)
+
+    if (pos == std::string::npos)
         throw std::invalid_argument(fmt::format("'{}' is an invalid address (port not found)", str));
 
-    if (str.size() - pos > 6)
+    const auto port_len = str.size() - pos - 1;
+
+    if (port_len > 5)
         throw std::invalid_argument(fmt::format("'{}' is an invalid address (port too long)", str));
 
-    for (size_t i = pos + 1; i < str.size(); i++) {
-        if (!std::isdigit(str[i]))
-            throw std::invalid_argument(fmt::format("'{}' is an invalid address (invalid port)", str));
-    }
+    if (!std::all_of(str.begin() + pos + 1, str.end(), [](unsigned char c) { return std::isdigit(c); }))
+        throw std::invalid_argument(fmt::format("'{}' is an invalid address (invalid port)", str));
 
     int num = 0;
     auto [ptr, ec] = std::from_chars(str.begin() + pos + 1, str.end(), num);
+
     if (ec != std::errc() || ptr != str.end() || num <= 0 || num > 65535)
         throw std::invalid_argument(fmt::format("'{}' is an invalid address (invalid port)", str));
 
