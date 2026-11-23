@@ -40,9 +40,9 @@ class store_t
     millis_t timestamp() const noexcept { return m_timestamp; }
 
     /**
-     * Configure tombstone retention parameters.
+     * Configure tombstone parameters.
      * 
-     * @param[in] params Tombstone paramenters.
+     * @param[in] params Tombstone parameters.
      */
     void config(const store_params_t &params) noexcept;
 
@@ -228,11 +228,11 @@ class store_t
     void apply_update(const update_t &upd);
 
     /**
-     * Purge removed entries based on revision retention and tombstone limits.
+     * Purge removed entries based on revision age and tombstone limits.
      * 
-     * Uses purge_min_revs and max_tombstones to decide which
+     * Uses tombstone_min_age and tombstone_max_entries to decide which
      * tombstones can be safely discarded. Stale entries are always
-     * removed. purge_min_revs has precedence over max_tombstones.
+     * removed. tombstone_min_age has precedence over tombstone_max_entries.
      * 
      * @return Number of tombstones removed.
      */

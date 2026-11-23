@@ -9,7 +9,7 @@
 
 nplex::storage_t::storage_t(const storage_params_t &params)
 {
-    m_writer_thread.set_queue_limits(params.write_queue_max_entries, params.write_queue_max_bytes);
+    m_writer_thread.set_queue_limits(params.queue_max_entries, params.queue_max_bytes);
     m_writer_thread.set_flush_limits(params.flush_max_entries, params.flush_max_bytes);
 }
 

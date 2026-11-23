@@ -74,13 +74,13 @@ struct read_updates_task_t : public task_t
     rev_t rev = 0;                          // First revision to read
     user_ptr user;                          // User (used to filter content)
     storage_ptr storage;                    // Storage object (data access)
-    std::uint32_t max_msg_bytes = 0;        // Max bytes per message
+    std::uint32_t msg_max_bytes = 0;        // Max bytes per message
     std::uint32_t max_total_bytes = 0;      // Max cumulated bytes to be sent
     std::size_t total_bytes = 0;            // Cumulated bytes (filtered by user)
     rev_t last_rev = 0;                     // Last revision read
     std::vector<updates_push_builder_t> msgs;
 
-    read_updates_task_t(rev_t rev_, user_ptr user_, storage_ptr storage_, std::uint32_t max_msg_bytes_ = 0, std::uint32_t max_total_bytes_ = 0);
+    read_updates_task_t(rev_t rev_, user_ptr user_, storage_ptr storage_, std::uint32_t msg_max_bytes_ = 0, std::uint32_t max_total_bytes_ = 0);
 
     const char * name() const override { return "read_updates_task"; }
     void run() override;

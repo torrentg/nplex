@@ -28,17 +28,17 @@ void nplex::build_snapshot_task_t::run()
 // read_updates_task_t methods
 // ==========================================================
 
-nplex::read_updates_task_t::read_updates_task_t(rev_t rev_, user_ptr user_, storage_ptr storage_, std::uint32_t max_msg_bytes_, std::uint32_t max_total_bytes_)
-    : task_t(), rev(rev_), user(std::move(user_)), storage(std::move(storage_)), max_msg_bytes(max_msg_bytes_), max_total_bytes(max_total_bytes_)
+nplex::read_updates_task_t::read_updates_task_t(rev_t rev_, user_ptr user_, storage_ptr storage_, std::uint32_t msg_max_bytes_, std::uint32_t max_total_bytes_)
+    : task_t(), rev(rev_), user(std::move(user_)), storage(std::move(storage_)), msg_max_bytes(msg_max_bytes_), max_total_bytes(max_total_bytes_)
 {
-    LOG_TRACE("Launching read_updates_task: rev={}, user={}, max_msg_bytes={}, max_total_bytes={}", 
-        rev, user->name, bytes_to_string(max_msg_bytes_), bytes_to_string(max_total_bytes_));
+    LOG_TRACE("Launching read_updates_task: rev={}, user={}, msg_max_bytes={}, max_total_bytes={}", 
+        rev, user->name, bytes_to_string(msg_max_bytes_), bytes_to_string(max_total_bytes_));
 }
 
 void nplex::read_updates_task_t::run()
 {
     msgs.reserve(8);
-    msgs.emplace_back(user, max_msg_bytes * 1.1);
+    msgs.emplace_back(user, msg_max_bytes);
 
     storage->read_updates(rev, [this](const msgs::Update *update) -> bool {
 
@@ -57,8 +57,8 @@ void nplex::read_updates_task_t::run()
         {
             auto msg_bytes = builder.bytes();
 
-            if (max_msg_bytes && msg_bytes >= max_msg_bytes) {
-                msgs.emplace_back(user, max_msg_bytes * 1.1);
+            if (msg_max_bytes && msg_bytes >= msg_max_bytes) {
+                msgs.emplace_back(user, msg_max_bytes);
                 total_bytes += msg_bytes;
                 msg_bytes = 0;
             }

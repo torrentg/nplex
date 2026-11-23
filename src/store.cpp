@@ -30,8 +30,8 @@ static gto::cstring create_cstring(const fb::Vector<std::uint8_t> *value)
 
 void nplex::store_t::config(const store_params_t &params) noexcept 
 {
-    assert(params.retention_min <= params.retention_max);
-    assert(params.max_tombstones > 0);
+    assert(params.tombstone_min_age <= params.tombstone_max_age);
+    assert(params.tombstone_max_entries > 0);
 
     m_params = params;
 }
@@ -495,8 +495,8 @@ std::uint32_t nplex::store_t::purge()
         assert(it->second->rev() == rrev);
         assert(it->second->is_removed());
 
-        // Case: entry at a distance greater than configured max retention
-        if (m_params.retention_max > 0 && rrev + m_params.retention_max < m_rev) {
+        // Case: entry at a distance greater than configured
+        if (m_params.tombstone_max_age > 0 && rrev + m_params.tombstone_max_age < m_rev) {
             purge_entry(it);
             continue;
         }
@@ -509,11 +509,11 @@ std::uint32_t nplex::store_t::purge()
 
         // Case: max tombstones limit reached (hard)
         // 0 means unlimited tombstones.
-        if (m_params.max_tombstones == 0 || m_removed_keys.size() <= m_params.max_tombstones)
+        if (m_params.tombstone_max_entries == 0 || m_removed_keys.size() <= m_params.tombstone_max_entries)
             break;
 
         // Granting a minimum number of revisions before enforcing max_tombstones
-        if (m_params.retention_min > 0 && m_rev <= rrev + m_params.retention_min)
+        if (m_params.tombstone_min_age > 0 && m_rev <= rrev + m_params.tombstone_min_age)
             break;
 
         // Case: max_tombstones exceeded

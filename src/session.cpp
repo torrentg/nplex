@@ -481,7 +481,7 @@ void nplex::session_t::do_sync(std::size_t cid)
             m_lrev + 1,
             m_user,
             m_context->storage(),
-            m_context->params().max_msg_bytes,
+            m_context->params().msg_max_bytes,
             max_total_bytes
         ),
         [self = shared_from_this(), cid = m_updates_cid](task_t *task) {
@@ -585,7 +585,7 @@ void nplex::session_t::push_updates(std::span<const update_t> updates, bool sync
     if (m_lrev + 1 != updates.front().meta->rev)
         return;
 
-    auto max_msg_bytes = m_context->params().max_msg_bytes;
+    auto msg_max_bytes = m_context->params().msg_max_bytes;
     rev_t crev = m_context->last_persisted_rev();
     updates_push_builder_t builder(m_user);
     auto it = updates.begin();
@@ -596,7 +596,7 @@ void nplex::session_t::push_updates(std::span<const update_t> updates, bool sync
     {
         for (; it != updates.end(); ++it)
         {
-            if (max_msg_bytes && builder.bytes() >= max_msg_bytes)
+            if (msg_max_bytes && builder.bytes() >= msg_max_bytes)
                 break;
 
             m_lrev = it->meta->rev;

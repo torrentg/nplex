@@ -81,8 +81,8 @@ nplex::journal_updates_persister_t::journal_updates_persister_t(const fs::path &
     }
 
     m_fsync = params.fsync;
-    m_rotate_max_bytes = params.rotate_journal_max_bytes;
-    m_rotate_max_entries = params.rotate_journal_max_entries;
+    m_rotate_max_bytes = params.journal_max_bytes;
+    m_rotate_max_entries = params.journal_max_entries;
 
     m_journal = open_journal_file(m_path, JOURNAL_CURRENT_NAME, LDB_CREATE | LDB_RECOVER | LDB_CHECK | (m_fsync ? LDB_FSYNC : 0));
 

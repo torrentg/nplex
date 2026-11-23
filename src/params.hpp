@@ -9,11 +9,11 @@ struct context_params_t
 {
     addr_t addr;                                    // IP address to listen on.
     std::uint32_t max_sessions = 0;                 // Maximum number of simultaneous active sessions (0 = unlimited).
-    std::uint32_t max_msg_bytes = 0;                // Maximum output message size (0 = unlimited).
-    std::uint32_t snapshot_max_entries = 0;         // Maximum number of updates between two snapshots (0 = unlimited).
-    std::uint32_t snapshot_max_bytes = 0;           // Maximum bytes between two snapshots (0 = unlimited).
+    std::uint32_t msg_max_bytes = 0;                // Maximum output message size (0 = unlimited).
     std::uint32_t cache_max_entries = 0;            // Maximum number of entries in the cache (0 = unlimited).
     std::uint32_t cache_max_bytes = 0;              // Maximum bytes in the cache (0 = unlimited).
+    std::uint32_t snapshot_max_entries = 0;         // Maximum number of updates between two snapshots (0 = unlimited).
+    std::uint32_t snapshot_max_bytes = 0;           // Maximum bytes between two snapshots (0 = unlimited).
 };
 
 struct connection_params_t
@@ -36,19 +36,19 @@ struct user_params_t
 struct storage_params_t
 {
     bool fsync = true;                              // Enable/disable fsync for write updates.
-    std::uint32_t write_queue_max_entries = 0;      // Maximum entries pending to be written (0 = unlimited).
-    std::uint32_t write_queue_max_bytes = 0;        // Maximum bytes pending to be written (0 = unlimited).
+    std::uint32_t queue_max_entries = 0;            // Maximum entries pending to be written (0 = unlimited).
+    std::uint32_t queue_max_bytes = 0;              // Maximum bytes pending to be written (0 = unlimited).
     std::uint32_t flush_max_entries = 0;            // Maximum entries per batch write (0 = unlimited).
     std::uint32_t flush_max_bytes = 0;              // Maximum bytes per batch write (0 = unlimited).
-    std::uint32_t rotate_journal_max_entries = 0;   // Maximum entries in a journal before rotating (0 = unlimited).
-    std::uint32_t rotate_journal_max_bytes = 0;     // Maximum bytes in a journal before rotating (0 = unlimited).
+    std::uint32_t journal_max_entries = 0;          // Maximum entries in a journal before rotating (0 = unlimited).
+    std::uint32_t journal_max_bytes = 0;            // Maximum bytes in a journal before rotating (0 = unlimited).
 };
 
 struct store_params_t
 {
-    std::uint32_t retention_max = 0;                // Maximum number of revisions to keep for.
-    std::uint32_t retention_min = 0;                // Minimum number of revisions guaranteed to keep for.
-    std::uint32_t max_tombstones = 0;               // Maximum number of tombstones (0 = unlimited).
+    std::uint32_t tombstone_max_entries = 0;        // Maximum number of tombstones (0 = unlimited).
+    std::uint32_t tombstone_max_age = 0;            // Maximum tombstone age in revisions before eligible for purging (0 = unlimited).
+    std::uint32_t tombstone_min_age = 0;            // Minimum tombstone age in revisions before eligible for purging.
 };
 
 } // namespace nplex

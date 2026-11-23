@@ -1,4 +1,5 @@
 #include "config.hpp"
+#include "exception.hpp"
 #include "params.hpp"
 #include "utils.hpp"
 #include "user.hpp"
@@ -17,58 +18,58 @@ static constexpr const char *LOG_LEVEL                                  = "log-l
 static constexpr const char *FSYNC                                      = "fsync";
 static constexpr const char *NETWORK_ADDR                               = "addr";
 static constexpr const char *MAX_SESSIONS                               = "max-sessions";
+static constexpr const char *MSG_MAX_BYTES                              = "msg-max-bytes";
+static constexpr const char *WRITE_QUEUE_MAX_ENTRIES                    = "write-queue-max-entries";
+static constexpr const char *WRITE_QUEUE_MAX_BYTES                      = "write-queue-max-bytes";
+static constexpr const char *WRITE_FLUSH_MAX_ENTRIES                    = "write-flush-max-entries";
+static constexpr const char *WRITE_FLUSH_MAX_BYTES                      = "write-flush-max-bytes";
+static constexpr const char *TOMBSTONE_MAX_ENTRIES                      = "tombstone-max-entries";
+static constexpr const char *TOMBSTONE_MAX_AGE                          = "tombstone-max-age";
+static constexpr const char *TOMBSTONE_MIN_AGE                          = "tombstone-min-age";
+static constexpr const char *CACHE_MAX_ENTRIES                          = "cache-max-entries";
+static constexpr const char *CACHE_MAX_BYTES                            = "cache-max-bytes";
+static constexpr const char *JOURNAL_MAX_ENTRIES                        = "journal-max-entries";
+static constexpr const char *JOURNAL_MAX_BYTES                          = "journal-max-bytes";
+static constexpr const char *SNAPSHOT_MAX_ENTRIES                       = "snapshot-max-entries";
+static constexpr const char *SNAPSHOT_MAX_BYTES                         = "snapshot-max-bytes";
 static constexpr const char *USER_PASSWORD                              = "password";
 static constexpr const char *USER_ACTIVE                                = "active";
 static constexpr const char *USER_CAN_FORCE                             = "can-force";
 static constexpr const char *USER_CAN_MONITOR                           = "can-monitor";
 static constexpr const char *USER_MAX_CONNECTIONS                       = "max-connections";
 static constexpr const char *USER_KEEPALIVE_MILLIS                      = "keepalive-millis";
+static constexpr const char *USER_TIMEOUT_FACTOR                        = "timeout-factor";
 static constexpr const char *USER_MAX_UNACK_MSG                         = "max-unack-msg";
 static constexpr const char *USER_MAX_UNACK_BYTES                       = "max-unack-bytes";
-static constexpr const char *USER_TIMEOUT_FACTOR                        = "timeout-factor";
 static constexpr const char *USER_ACL                                   = "acl";
-static constexpr const char *MAX_MSG_BYTES                              = "max-msg-bytes";
-static constexpr const char *WRITE_QUEUE_MAX_LENGTH                     = "write-queue-max-length";
-static constexpr const char *WRITE_QUEUE_MAX_BYTES                      = "write-queue-max-bytes";
-static constexpr const char *FLUSH_MAX_ENTRIES                          = "flush-max-entries";
-static constexpr const char *FLUSH_MAX_BYTES                            = "flush-max-bytes";
-static constexpr const char *ROTATE_MAX_ENTRIES                         = "rotate-max-entries";
-static constexpr const char *ROTATE_MAX_BYTES                           = "rotate-max-bytes";
-static constexpr const char *MAX_UPDATES_BETWEEN_SNAPSHOTS              = "max-updates-between-snapshots";
-static constexpr const char *MAX_BYTES_BETWEEN_SNAPSHOTS                = "max-bytes-between-snapshots";
-static constexpr const char *TOMBSTONE_RETENTION_MAX                    = "tombstone-retention-max";
-static constexpr const char *TOMBSTONE_RETENTION_MIN                    = "tombstone-retention-min";
-static constexpr const char *MAX_TOMBSTONES                             = "max-tombstones";
-static constexpr const char *CACHE_MAX_BYTES                            = "cache-max-bytes";
-static constexpr const char *CACHE_MAX_ENTRIES                          = "cache-max-entries";
 
 // Defaults
 static constexpr nplex::log_level_e DEFAULT_LOG_LEVEL                   = nplex::log_level_e::INFO;
 static constexpr bool          DEFAULT_FSYNC                            = false;
 static constexpr const char   *DEFAULT_NETWORK_ADDR                     = "localhost:14022";
 static constexpr std::uint32_t DEFAULT_MAX_SESSIONS                     = 64;
-static constexpr std::uint32_t DEFAULT_MAX_MSG_BYTES                    = 2 * 1024 * 1024;
-static constexpr std::uint32_t DEFAULT_QUEUE_MAX_LENGTH                 = 1000;
-static constexpr std::uint32_t DEFAULT_QUEUE_MAX_BYTES                  = 350 * 1024 * 1024;
-static constexpr std::uint32_t DEFAULT_FLUSH_MAX_ENTRIES                = 50;
-static constexpr std::uint32_t DEFAULT_FLUSH_MAX_BYTES                  = 25 * 1024 * 1024;
+static constexpr std::uint32_t DEFAULT_MSG_MAX_BYTES                    = 2 * 1024 * 1024;
+static constexpr std::uint32_t DEFAULT_WRITE_QUEUE_MAX_ENTRIES          = 1000;
+static constexpr std::uint32_t DEFAULT_WRITE_QUEUE_MAX_BYTES            = 350 * 1024 * 1024;
+static constexpr std::uint32_t DEFAULT_WRITE_FLUSH_MAX_ENTRIES          = 50;
+static constexpr std::uint32_t DEFAULT_WRITE_FLUSH_MAX_BYTES            = 25 * 1024 * 1024;
+static constexpr std::uint32_t DEFAULT_TOMBSTONE_MAX_ENTRIES            = 1500;
+static constexpr std::uint32_t DEFAULT_TOMBSTONE_MAX_AGE                = 20000;
+static constexpr std::uint32_t DEFAULT_TOMBSTONE_MIN_AGE                = 5;
+static constexpr std::uint32_t DEFAULT_CACHE_MAX_ENTRIES                = 50000;
+static constexpr std::uint32_t DEFAULT_CACHE_MAX_BYTES                  = 500 * 1024 * 1024;
+static constexpr std::uint32_t DEFAULT_JOURNAL_MAX_ENTRIES              = 100000;
+static constexpr std::uint32_t DEFAULT_JOURNAL_MAX_BYTES                = 100 * 1024 * 1024;
+static constexpr std::uint32_t DEFAULT_SNAPSHOT_MAX_ENTRIES             = 50000;
+static constexpr std::uint32_t DEFAULT_SNAPSHOT_MAX_BYTES               = 50 * 1024 * 1024;
 static constexpr bool          DEFAULT_USER_ACTIVE                      = true;
 static constexpr bool          DEFAULT_USER_CAN_FORCE                   = false;
 static constexpr bool          DEFAULT_USER_CAN_MONITOR                 = false;
 static constexpr std::uint32_t DEFAULT_USER_MAX_CONNECTIONS             = 5;
 static constexpr std::uint32_t DEFAULT_USER_KEEPALIVE_MILLIS            = 3000;
+static constexpr float         DEFAULT_USER_TIMEOUT_FACTOR              = 3.0;
 static constexpr std::uint32_t DEFAULT_USER_MAX_UNACK_MSG               = 1000;
 static constexpr std::uint32_t DEFAULT_USER_MAX_UNACK_BYTES             = 100 * 1024 * 1024;
-static constexpr float         DEFAULT_USER_TIMEOUT_FACTOR              = 3.0;
-static constexpr std::uint32_t DEFAULT_MAX_UPDATES_BETWEEN_SNAPSHOTS    = 50000;
-static constexpr std::uint32_t DEFAULT_MAX_BYTES_BETWEEN_SNAPSHOTS      = 100 * 1024 * 1024;
-static constexpr std::uint32_t DEFAULT_TOMBSTONE_RETENTION_MAX          = 20000;
-static constexpr std::uint32_t DEFAULT_TOMBSTONE_RETENTION_MIN          = 5;
-static constexpr std::uint32_t DEFAULT_MAX_TOMBSTONES                   = 1500;
-static constexpr std::uint32_t DEFAULT_CACHE_MAX_ENTRIES                = 50000;
-static constexpr std::uint32_t DEFAULT_CACHE_MAX_BYTES                  = 500 * 1024 * 1024;
-static constexpr std::uint32_t DEFAULT_ROTATE_MAX_ENTRIES               = 100000;
-static constexpr std::uint32_t DEFAULT_ROTATE_MAX_BYTES                 = 0;
 
 // ==========================================================
 // Internal (static) functions
@@ -82,25 +83,25 @@ static bool parse_bool(const std::string_view &str)
     if (str == "false")
         return false;
 
-    throw std::invalid_argument(fmt::format("Invalid bool ({})", str));
+    throw nplex::nplex_exception("Invalid bool ({})", str);
 }
 
 static float parse_float(const std::string_view &str)
 {
     if (str.empty() || !isdigit(str[0]))
-        throw std::invalid_argument(fmt::format("Invalid float value ({})", str));
+        throw nplex::nplex_exception("Invalid float value ({})", str);
 
     float num = 0;
 
     auto [ptr, ec] = std::from_chars(str.begin(), str.end(), num);
 
     if (ec != std::errc())
-        throw std::invalid_argument(fmt::format("Invalid float value ({})", str));
+        throw nplex::nplex_exception("Invalid float value ({})", str);
 
     while (ptr != str.end() && isspace(*ptr)) ptr++;
 
     if (ptr != str.end())
-        throw std::invalid_argument(fmt::format("Invalid float value ({})", str));
+        throw nplex::nplex_exception("Invalid float value ({})", str);
 
     return num;
 }
@@ -108,19 +109,19 @@ static float parse_float(const std::string_view &str)
 static std::uint32_t parse_uint32(const std::string_view &str)
 {
     if (str.empty() || !isdigit(str[0]))
-        throw std::invalid_argument(fmt::format("Invalid number ({})", str));
+        throw nplex::nplex_exception("Invalid number ({})", str);
 
     std::uint32_t num = 0;
 
     auto [ptr, ec] = std::from_chars(str.begin(), str.end(), num);
 
     if (ec != std::errc())
-        throw std::invalid_argument(fmt::format("Invalid number ({})", str));
+        throw nplex::nplex_exception("Invalid number ({})", str);
 
     while (ptr != str.end() && isspace(*ptr)) ptr++;
 
     if (ptr != str.end())
-        throw std::invalid_argument(fmt::format("Invalid number ({})", str));
+        throw nplex::nplex_exception("Invalid number ({})", str);
 
     return num;
 }
@@ -128,13 +129,13 @@ static std::uint32_t parse_uint32(const std::string_view &str)
 static std::uint32_t parse_bytes(const std::string_view &str)
 {
     if (str.empty() || !isdigit(str[0]))
-        throw std::invalid_argument(fmt::format("Invalid bytes ({})", str));
+        throw nplex::nplex_exception("Invalid bytes ({})", str);
 
     double num = 0;
 
     auto [ptr, ec] = std::from_chars(str.begin(), str.end(), num);
     if (ec != std::errc())
-        throw std::invalid_argument(fmt::format("Invalid bytes ({})", str));
+        throw nplex::nplex_exception("Invalid bytes ({})", str);
 
     if (ptr != str.end() && isspace(*ptr)) ptr++;
     std::string_view unit{ptr};
@@ -148,10 +149,10 @@ static std::uint32_t parse_bytes(const std::string_view &str)
     else if (unit == "GB")
         num *= 1024 * 1024 * 1024;
     else
-        throw std::invalid_argument(fmt::format("Invalid bytes ({})", str));
+        throw nplex::nplex_exception("Invalid bytes ({})", str);
 
     if (num > std::numeric_limits<std::uint32_t>::max())
-        throw std::invalid_argument(fmt::format("Bytes value out of range ({})", str));
+        throw nplex::nplex_exception("Bytes value out of range ({})", str);
 
     return static_cast<std::uint32_t>(num);
 }
@@ -159,7 +160,7 @@ static std::uint32_t parse_bytes(const std::string_view &str)
 static nplex::acl_t parse_acl(const std::string_view &str)
 {
     if (str.size() < 6 || str[4] != ':')
-        throw std::invalid_argument(fmt::format("Invalid acl ({})", str));
+        throw nplex::nplex_exception("Invalid acl ({})", str);
 
     auto mode = nplex::parse_crud(str.substr(0, 4));
     std::string pattern{str.substr(5)};
@@ -177,36 +178,36 @@ static void parse_section_main(nplex::config_t *cfg, const char *name, const cha
         cfg->context.max_sessions = parse_uint32(value);
     } else if (strcmp(name, FSYNC) == 0) {
         cfg->storage.fsync = parse_bool(value);
-    } else if (strcmp(name, MAX_MSG_BYTES) == 0) {
-        cfg->context.max_msg_bytes = parse_bytes(value);
-    } else if (strcmp(name, WRITE_QUEUE_MAX_LENGTH) == 0) {
-        cfg->storage.write_queue_max_entries = parse_uint32(value);
+    } else if (strcmp(name, MSG_MAX_BYTES) == 0) {
+        cfg->context.msg_max_bytes = parse_bytes(value);
+    } else if (strcmp(name, WRITE_QUEUE_MAX_ENTRIES) == 0) {
+        cfg->storage.queue_max_entries = parse_uint32(value);
     } else if (strcmp(name, WRITE_QUEUE_MAX_BYTES) == 0) {
-        cfg->storage.write_queue_max_bytes = parse_bytes(value);
-    } else if (strcmp(name, FLUSH_MAX_ENTRIES) == 0) {
+        cfg->storage.queue_max_bytes = parse_bytes(value);
+    } else if (strcmp(name, WRITE_FLUSH_MAX_ENTRIES) == 0) {
         cfg->storage.flush_max_entries = parse_uint32(value);
-    } else if (strcmp(name, FLUSH_MAX_BYTES) == 0) {
+    } else if (strcmp(name, WRITE_FLUSH_MAX_BYTES) == 0) {
         cfg->storage.flush_max_bytes = parse_bytes(value);
-    } else if (strcmp(name, ROTATE_MAX_ENTRIES) == 0) {
-        cfg->storage.rotate_journal_max_entries = parse_uint32(value);
-    } else if (strcmp(name, ROTATE_MAX_BYTES) == 0) {
-        cfg->storage.rotate_journal_max_bytes = parse_bytes(value);
-    } else if (strcmp(name, MAX_UPDATES_BETWEEN_SNAPSHOTS) == 0) {
+    } else if (strcmp(name, JOURNAL_MAX_ENTRIES) == 0) {
+        cfg->storage.journal_max_entries = parse_uint32(value);
+    } else if (strcmp(name, JOURNAL_MAX_BYTES) == 0) {
+        cfg->storage.journal_max_bytes = parse_bytes(value);
+    } else if (strcmp(name, SNAPSHOT_MAX_ENTRIES) == 0) {
         cfg->context.snapshot_max_entries = parse_uint32(value);
-    } else if (strcmp(name, MAX_BYTES_BETWEEN_SNAPSHOTS) == 0) {
+    } else if (strcmp(name, SNAPSHOT_MAX_BYTES) == 0) {
         cfg->context.snapshot_max_bytes = parse_bytes(value);
-    } else if (strcmp(name, TOMBSTONE_RETENTION_MAX) == 0) {
-        cfg->store.retention_max = parse_uint32(value);
-    } else if (strcmp(name, TOMBSTONE_RETENTION_MIN) == 0) {
-        cfg->store.retention_min = parse_uint32(value);
-    } else if (strcmp(name, MAX_TOMBSTONES) == 0) {
-        cfg->store.max_tombstones = parse_uint32(value);
+    } else if (strcmp(name, TOMBSTONE_MAX_ENTRIES) == 0) {
+        cfg->store.tombstone_max_entries = parse_uint32(value);
+    } else if (strcmp(name, TOMBSTONE_MAX_AGE) == 0) {
+        cfg->store.tombstone_max_age = parse_uint32(value);
+    } else if (strcmp(name, TOMBSTONE_MIN_AGE) == 0) {
+        cfg->store.tombstone_min_age = parse_uint32(value);
     } else if (strcmp(name, CACHE_MAX_ENTRIES) == 0) {
         cfg->context.cache_max_entries = parse_uint32(value);
     } else if (strcmp(name, CACHE_MAX_BYTES) == 0) {
         cfg->context.cache_max_bytes = parse_bytes(value);
     } else {
-        throw std::invalid_argument(fmt::format("Unrecognized entry ({})", name));
+        throw nplex::nplex_exception("Unrecognized entry ({})", name);
     }
 }
 
@@ -228,11 +229,10 @@ static void parse_section_default_user(nplex::user_t &user, const char *name, co
         user.params.connection.max_unack_bytes = parse_bytes(value);
     } else if (strcmp(name, USER_TIMEOUT_FACTOR) == 0) {
         user.params.connection.timeout_factor = parse_float(value);
-        if (user.params.connection.timeout_factor != 0.0f &&
-            user.params.connection.timeout_factor <= 1.0f)
-            throw std::invalid_argument(fmt::format("Invalid timeout factor ({})", value));
+        if (user.params.connection.timeout_factor != 0.0f && user.params.connection.timeout_factor <= 1.0f)
+        throw nplex::nplex_exception("Invalid timeout factor ({})", value);
     } else {
-        throw std::invalid_argument(fmt::format("Unrecognized entry ({})", name));
+        throw nplex::nplex_exception("Unrecognized entry ({})", name);
     }
 }
 
@@ -257,11 +257,11 @@ static void parse_section_user(nplex::user_t &user, const char *name, const char
     } else if (strcmp(name, USER_TIMEOUT_FACTOR) == 0) {
         user.params.connection.timeout_factor = parse_float(value);
         if (user.params.connection.timeout_factor != 0.0f && user.params.connection.timeout_factor <= 1.0f)
-            throw std::invalid_argument(fmt::format("Invalid timeout factor ({})", value));
+            throw nplex::nplex_exception("Invalid timeout factor ({})", value);
     } else if (strcmp(name, USER_ACL) == 0) {
         user.permissions.push_back(parse_acl(value));
     } else {
-        throw std::invalid_argument(fmt::format("Unrecognized entry ({})", name));
+        throw nplex::nplex_exception("Unrecognized entry ({})", name);
     }
 }
 
@@ -301,7 +301,7 @@ static int cb_inih(void *obj, const char *section, const char *name, const char 
         return cb_inih_inner(obj, section, name, value);
     }
     catch (std::exception &e) {
-        throw std::invalid_argument(fmt::format("{} in {} section", e.what(), (*section ? section : "global")));
+        throw nplex::nplex_exception("{} in {} section", e.what(), (*section ? section : "global"));
     }
 }
 
@@ -313,25 +313,25 @@ static void set_defaults(nplex::config_t &cfg)
     // Network defaults
     cfg.context.addr = nplex::addr_t{DEFAULT_NETWORK_ADDR};
     cfg.context.max_sessions = DEFAULT_MAX_SESSIONS;
-    cfg.context.max_msg_bytes = DEFAULT_MAX_MSG_BYTES;
+    cfg.context.msg_max_bytes = DEFAULT_MSG_MAX_BYTES;
 
     // Storage defaults
     cfg.storage.fsync = DEFAULT_FSYNC;
-    cfg.storage.write_queue_max_entries = DEFAULT_QUEUE_MAX_LENGTH;
-    cfg.storage.write_queue_max_bytes = DEFAULT_QUEUE_MAX_BYTES;
-    cfg.storage.flush_max_entries = DEFAULT_FLUSH_MAX_ENTRIES;
-    cfg.storage.flush_max_bytes = DEFAULT_FLUSH_MAX_BYTES;
-    cfg.storage.rotate_journal_max_entries = DEFAULT_ROTATE_MAX_ENTRIES;
-    cfg.storage.rotate_journal_max_bytes = DEFAULT_ROTATE_MAX_BYTES;
+    cfg.storage.queue_max_entries = DEFAULT_WRITE_QUEUE_MAX_ENTRIES;
+    cfg.storage.queue_max_bytes = DEFAULT_WRITE_QUEUE_MAX_BYTES;
+    cfg.storage.flush_max_entries = DEFAULT_WRITE_FLUSH_MAX_ENTRIES;
+    cfg.storage.flush_max_bytes = DEFAULT_WRITE_FLUSH_MAX_BYTES;
+    cfg.storage.journal_max_entries = DEFAULT_JOURNAL_MAX_ENTRIES;
+    cfg.storage.journal_max_bytes = DEFAULT_JOURNAL_MAX_BYTES;
 
     // Snapshot defaults
-    cfg.context.snapshot_max_entries = DEFAULT_MAX_UPDATES_BETWEEN_SNAPSHOTS;
-    cfg.context.snapshot_max_bytes = DEFAULT_MAX_BYTES_BETWEEN_SNAPSHOTS;
+    cfg.context.snapshot_max_entries = DEFAULT_SNAPSHOT_MAX_ENTRIES;
+    cfg.context.snapshot_max_bytes = DEFAULT_SNAPSHOT_MAX_BYTES;
 
     // Tombstone defaults
-    cfg.store.retention_max = DEFAULT_TOMBSTONE_RETENTION_MAX;
-    cfg.store.retention_min = DEFAULT_TOMBSTONE_RETENTION_MIN;
-    cfg.store.max_tombstones = DEFAULT_MAX_TOMBSTONES;
+    cfg.store.tombstone_max_entries = DEFAULT_TOMBSTONE_MAX_ENTRIES;
+    cfg.store.tombstone_max_age = DEFAULT_TOMBSTONE_MAX_AGE;
+    cfg.store.tombstone_min_age = DEFAULT_TOMBSTONE_MIN_AGE;
 
     // Cache defaults
     cfg.context.cache_max_entries = DEFAULT_CACHE_MAX_ENTRIES;
@@ -347,9 +347,9 @@ static void set_defaults(nplex::config_t &cfg)
     cfg.default_user.params.connection.max_unack_bytes = DEFAULT_USER_MAX_UNACK_BYTES;
     cfg.default_user.params.connection.timeout_factor = DEFAULT_USER_TIMEOUT_FACTOR;
 
-    // Sanity: ensure retention_min does not exceed retention_max when both are set.
-    if (cfg.store.retention_max > 0 && cfg.store.retention_min > cfg.store.retention_max)
-        cfg.store.retention_min = cfg.store.retention_max;
+    // Sanity: ensure tombstone_min_age does not exceed tombstone_max_age when both are set.
+    if (cfg.store.tombstone_max_age > 0 && cfg.store.tombstone_min_age > cfg.store.tombstone_max_age)
+        cfg.store.tombstone_min_age = cfg.store.tombstone_max_age;
 }
 
 template <typename T>
@@ -359,20 +359,19 @@ static void normalize_unlimited(T &value)
         value = std::numeric_limits<T>::max();
 }
 
-// Validació global + transformació de paràmetres
 static void normalize(nplex::config_t &cfg)
 {
     normalize_unlimited(cfg.context.max_sessions);
-    normalize_unlimited(cfg.context.max_msg_bytes);
+    normalize_unlimited(cfg.context.msg_max_bytes);
     normalize_unlimited(cfg.context.snapshot_max_entries);
     normalize_unlimited(cfg.context.snapshot_max_bytes);
     normalize_unlimited(cfg.context.cache_max_entries);
     normalize_unlimited(cfg.context.cache_max_bytes);
-    normalize_unlimited(cfg.storage.write_queue_max_entries);
-    normalize_unlimited(cfg.storage.write_queue_max_bytes);
+    normalize_unlimited(cfg.storage.queue_max_entries);
+    normalize_unlimited(cfg.storage.queue_max_bytes);
     normalize_unlimited(cfg.storage.flush_max_entries);
     normalize_unlimited(cfg.storage.flush_max_bytes);
-    normalize_unlimited(cfg.store.max_tombstones);
+    normalize_unlimited(cfg.store.tombstone_max_entries);
 
     for (auto &user : cfg.users)
     {
@@ -402,12 +401,12 @@ void nplex::config_t::load(const fs::path &filepath)
     int rc = ini_parse(filepath.c_str(), cb_inih, this);
 
     if (rc < 0)
-        throw std::runtime_error("Unable to read file");
+        throw nplex_exception("Unable to read file");
     else if (rc > 0)
-        throw std::runtime_error("Syntax error at line " + std::to_string(rc));
+        throw nplex_exception("Syntax error at line {}", rc);
 
-    if (store.retention_min > store.retention_max)
-        throw std::invalid_argument("tombstone-retention-min cannot exceed tombstone-retention-max");
+    if (store.tombstone_min_age > store.tombstone_max_age)
+        throw nplex_exception("{} cannot exceed {}", TOMBSTONE_MIN_AGE, TOMBSTONE_MAX_AGE);
 
     normalize(*this);
 }
@@ -426,20 +425,20 @@ void nplex::config_t::save(const fs::path &filepath) const
     ofs << std::endl;
 
     ofs << MAX_SESSIONS << " = " << context.max_sessions << std::endl;
-    ofs << MAX_MSG_BYTES << " = " << bytes_to_string(context.max_msg_bytes) << std::endl;
-    ofs << WRITE_QUEUE_MAX_LENGTH << " = " << storage.write_queue_max_entries << std::endl;
-    ofs << WRITE_QUEUE_MAX_BYTES << " = " << bytes_to_string(storage.write_queue_max_bytes) << std::endl;
-    ofs << FLUSH_MAX_ENTRIES << " = " << storage.flush_max_entries << std::endl;
-    ofs << FLUSH_MAX_BYTES << " = " << bytes_to_string(storage.flush_max_bytes) << std::endl;
-    ofs << MAX_TOMBSTONES << " = " << store.max_tombstones << std::endl;
-    ofs << TOMBSTONE_RETENTION_MAX << " = " << store.retention_max << std::endl;
-    ofs << TOMBSTONE_RETENTION_MIN << " = " << store.retention_min << std::endl;
+    ofs << MSG_MAX_BYTES << " = " << bytes_to_string(context.msg_max_bytes) << std::endl;
+    ofs << WRITE_QUEUE_MAX_ENTRIES << " = " << storage.queue_max_entries << std::endl;
+    ofs << WRITE_QUEUE_MAX_BYTES << " = " << bytes_to_string(storage.queue_max_bytes) << std::endl;
+    ofs << WRITE_FLUSH_MAX_ENTRIES << " = " << storage.flush_max_entries << std::endl;
+    ofs << WRITE_FLUSH_MAX_BYTES << " = " << bytes_to_string(storage.flush_max_bytes) << std::endl;
+    ofs << TOMBSTONE_MAX_ENTRIES << " = " << store.tombstone_max_entries << std::endl;
+    ofs << TOMBSTONE_MAX_AGE << " = " << store.tombstone_max_age << std::endl;
+    ofs << TOMBSTONE_MIN_AGE << " = " << store.tombstone_min_age << std::endl;
     ofs << CACHE_MAX_BYTES << " = " << bytes_to_string(context.cache_max_bytes) << std::endl;
     ofs << CACHE_MAX_ENTRIES << " = " << context.cache_max_entries << std::endl;
-    ofs << MAX_UPDATES_BETWEEN_SNAPSHOTS << " = " << context.snapshot_max_entries << std::endl;
-    ofs << MAX_BYTES_BETWEEN_SNAPSHOTS << " = " << bytes_to_string(context.snapshot_max_bytes) << std::endl;
-    ofs << ROTATE_MAX_ENTRIES << " = " << storage.rotate_journal_max_entries << std::endl;
-    ofs << ROTATE_MAX_BYTES << " = " << bytes_to_string(storage.rotate_journal_max_bytes) << std::endl;
+    ofs << JOURNAL_MAX_ENTRIES << " = " << storage.journal_max_entries << std::endl;
+    ofs << JOURNAL_MAX_BYTES << " = " << bytes_to_string(storage.journal_max_bytes) << std::endl;
+    ofs << SNAPSHOT_MAX_ENTRIES << " = " << context.snapshot_max_entries << std::endl;
+    ofs << SNAPSHOT_MAX_BYTES << " = " << bytes_to_string(context.snapshot_max_bytes) << std::endl;
     ofs << std::endl;
 
     ofs << "[" << SECTION_USER_DEFAULTS << "]" << std::endl;
@@ -496,7 +495,7 @@ void nplex::config_t::save(const fs::path &filepath) const
     }
 
     if (!ofs)
-        throw std::runtime_error("Error writing file");
+        throw nplex_exception("Error writing file {}", filepath.filename().string());
 
     ofs.close();
 }
