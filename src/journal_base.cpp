@@ -219,7 +219,8 @@ nplex::read_journal_result_t nplex::read_journal(const journal_ptr &journal, rev
         }
     }
 
-    LOG_TRACE("read_updates(): range=[{}-{}], bytes={}", from_rev, seqnum - 1, nplex::bytes_to_string(total_bytes));
+    LOG_TRACE("read_updates(): range=[{}-{}], bytes={}", 
+        from_rev, (seqnum > from_rev ? seqnum - 1 : from_rev), nplex::bytes_to_string(total_bytes));
 
     return read_journal_result_t{seqnum, total_entries, total_bytes, false};
 }

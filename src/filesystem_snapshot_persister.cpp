@@ -1,12 +1,8 @@
 #include "filesystem_snapshot_persister.hpp"
-#include "buildinfo.hpp"
+#include "snapshot_base.hpp"
 #include "exception.hpp"
-#include "schema.hpp"
 #include "logger.hpp"
-#include "utils.hpp"
 #include <filesystem>
-#include <fstream>
-#include <string_view>
 #include <map>
 
 namespace fs = std::filesystem;
@@ -19,52 +15,6 @@ namespace {
 
 constexpr std::string FILENAME_PREFIX = "snapshot-";
 constexpr std::string FILENAME_EXTENSION = ".dat";
-constexpr std::string MAGIC_BYTES = "NPLEXSNP";
-
-struct snapshot_file_header_t
-{
-    std::uint8_t magic[8];
-    std::uint32_t schema2_hash;
-    std::uint32_t checksum;
-    std::uint64_t rev;
-
-    explicit snapshot_file_header_t(std::uint64_t rev_ = 0, std::uint32_t chk = 0) : schema2_hash(SCHEMA2_HASH), checksum(chk), rev(rev_) {
-        std::memcpy(magic, MAGIC_BYTES.data(), sizeof(magic));
-    }
-};
-
-bool is_valid_header(const snapshot_file_header_t &header)
-{
-    if (std::memcmp(header.magic, MAGIC_BYTES.data(), sizeof(header.magic)) != 0)
-        return false;
-
-    if (header.schema2_hash != SCHEMA2_HASH)
-        return false;
-
-    if (header.rev == 0)
-        return false;
-
-    return true;
-}
-
-snapshot_file_header_t get_file_header(const fs::path &path)
-{
-    snapshot_file_header_t header;
-    std::ifstream file(path, std::ios::binary);
-
-    if (!file)
-        throw nplex::nplex_exception("unable to open file");
-
-    file.read(reinterpret_cast<char *>(&header), sizeof(header));
-
-    if (!file)
-        throw nplex::nplex_exception("unable to read snapshot header");
-
-    if (!is_valid_header(header))
-        throw nplex::nplex_exception("invalid snapshot header");
-
-    return header;
-}
 
 std::map<nplex::rev_t, std::string> get_catalog(const fs::path &directory)
 {
@@ -88,7 +38,7 @@ std::map<nplex::rev_t, std::string> get_catalog(const fs::path &directory)
 
         try
         {
-            auto header = get_file_header(entry.path());
+            auto header = nplex::read_snapshot_file_header(entry.path());
 
             auto it = catalog.find(header.rev);
 
@@ -99,7 +49,7 @@ std::map<nplex::rev_t, std::string> get_catalog(const fs::path &directory)
         }
         catch (const std::exception &e)
         {
-            LOG_WARN("{}", e.what());
+            LOG_WARN("Unable to read {}: {}", file_name, e.what());
             continue;
         }
     }
@@ -146,7 +96,7 @@ std::pair<nplex::rev_t, nplex::rev_t> nplex::filesystem_snapshot_persister_t::ge
         auto it = catalog.begin();
 
         try {
-            auto [rev, snapshot] = read_snapshot_file(m_path / it->second);
+            auto [rev, timestamp, snapshot] = read_snapshot_file(m_path / it->second);
             range = {rev, rev};
             break;
         }
@@ -161,7 +111,7 @@ std::pair<nplex::rev_t, nplex::rev_t> nplex::filesystem_snapshot_persister_t::ge
         auto it = std::prev(catalog.end());
 
         try {
-            auto [rev, snapshot] = read_snapshot_file(m_path / it->second);
+            auto [rev, timestamp, snapshot] = read_snapshot_file(m_path / it->second);
             range.second = rev;
             break;
         }
@@ -183,46 +133,7 @@ std::pair<nplex::rev_t, nplex::rev_t> nplex::filesystem_snapshot_persister_t::ge
     return range;
 }
 
-std::pair<nplex::rev_t, std::string> nplex::filesystem_snapshot_persister_t::read_snapshot_file(const fs::path &path)
-{
-    std::streampos file_size = 0;
-    snapshot_file_header_t header{};
-    std::ifstream ifs(path, std::ios::binary);
-
-    LOG_TRACE("Reading file {}", path.string());
-
-    if (!ifs)
-        throw nplex::nplex_exception("failed to open file");
-
-    ifs.seekg(0, std::ios::end);
-    file_size = ifs.tellg();
-
-    ifs.seekg(0, std::ios::beg);
-    ifs.read(reinterpret_cast<char *>(&header), sizeof(header));
-
-    if (!ifs)
-        throw nplex::nplex_exception("invalid snapshot file");
-
-    if (!is_valid_header(header))
-        throw nplex::nplex_exception("invalid snapshot header");
-
-    auto snapshot_size = static_cast<std::size_t>(file_size) - sizeof(header);
-    std::string snapshot(snapshot_size, '\0');
-
-    ifs.read(snapshot.data(), static_cast<std::streamsize>(snapshot_size));
-
-    if (!ifs)
-        throw nplex::nplex_exception("failed to read file");
-
-    auto checksum = nplex::crc32(snapshot.data(), snapshot.size());
-
-    if (checksum != header.checksum)
-        throw nplex::nplex_exception("checksum mismatch");
-
-    return {header.rev, snapshot};
-}
-
-std::pair<nplex::rev_t, std::string> nplex::filesystem_snapshot_persister_t::read_snapshot(rev_t rev)
+std::tuple<nplex::rev_t, nplex::millis_t, std::string> nplex::filesystem_snapshot_persister_t::read_snapshot(rev_t rev)
 {
     auto catalog = get_catalog(m_path);
 
@@ -244,29 +155,10 @@ std::pair<nplex::rev_t, std::string> nplex::filesystem_snapshot_persister_t::rea
         }
     }
 
-    return {0, ""};
+    return {0, millis_t{0}, ""};
 }
 
-void nplex::filesystem_snapshot_persister_t::write_snapshot_file(rev_t rev, const fs::path &path, std::string_view data)
-{
-    std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
-    if (!ofs)
-        throw nplex_exception("failed to open snapshot file");
-
-    auto checksum = nplex::crc32(data.data(), data.size());
-
-    snapshot_file_header_t header(rev, checksum);
-
-    ofs.write(reinterpret_cast<const char *>(&header), sizeof(header));
-    ofs.write(data.data(), static_cast<std::streamsize>(data.size()));
-
-    if (!ofs)
-        throw nplex_exception("failed to write snapshot content");
-
-    ofs.close();
-}
-
-void nplex::filesystem_snapshot_persister_t::write_snapshot(rev_t rev, std::string_view data)
+void nplex::filesystem_snapshot_persister_t::write_snapshot(rev_t rev, millis_t timestamp, std::string_view data)
 {
     if (rev == 0 || data.empty())
         throw nplex_exception("snapshot payload is empty");
@@ -274,7 +166,7 @@ void nplex::filesystem_snapshot_persister_t::write_snapshot(rev_t rev, std::stri
     auto filename = FILENAME_PREFIX + std::to_string(rev) + FILENAME_EXTENSION;
 
     try {
-        write_snapshot_file(rev, m_path / filename, data);
+        write_snapshot_file(rev, timestamp, m_path / filename, data);
     }
     catch (...) {
         LOG_ERROR("Failed to write file {}", filename);

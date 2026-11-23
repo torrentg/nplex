@@ -57,9 +57,21 @@ class storage_t
      * - Blocking (may perform storage I/O)
      *
      * @param[in] from_rev First revision to read (included).
-     * @param[in] on_entry Callback invoked for each read update.
+     * @param[in] callback Callback invoked for each read update.
+     * 
+     * @exception nplex_exception on read error.
      */
-    void read_updates(rev_t from_rev, const std::function<bool(const msgs::Update *)> &on_entry);
+    void read_updates(rev_t from_rev, const std::function<bool(const msgs::Update *)> &callback);
+
+    /**
+     * Reads the latest snapshot with revision less-than-or-equal to the requested revision.
+     *
+     * @param[in] rev Target revision.
+     * @param[in] callback Callback invoked (called with nullptr if not available).
+     *
+     * @throw std::exception on read error.
+     */
+    void read_snapshot(rev_t rev, const std::function<void(const msgs::Snapshot *)> &callback);
 
     /**
      * Reconstructs the store at a given revision.
@@ -115,9 +127,10 @@ class storage_t
      * - Blocking (may perform storage I/O)
      *
      * @param[in] rev Snapshot revision.
+     * @param[in] timestamp Snapshot timestamp.
      * @param[in] data Serialized snapshot payload.
      */
-    void write_snapshot(rev_t rev, const std::string_view &data);
+    void write_snapshot(rev_t rev, millis_t timestamp, const std::string_view &data);
 
   private:
 

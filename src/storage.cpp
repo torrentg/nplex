@@ -46,8 +46,13 @@ nplex::rev_t nplex::storage_t::min_rev()
     auto [min_rev, max_rev] = m_updates_persister->get_updates_range();
     auto [min_snp, max_snp] = m_snapshot_persister->get_snapshots_range();
 
-    assert(!max_snp || max_snp <= max_rev);
-    assert( min_snp || min_rev <= 1);
+    assert(min_rev <= max_rev);
+    assert(min_snp <= max_snp);
+
+    // TODO: Case when there are no updates and no snapshots
+    // TODO: Case when there are no updates but snapshots exist
+    // TODO: Case when there are no snapshots but updates exist
+    // TODO: Case when snapshots are lower or upper than updates range
 
     return (min_rev <= 1 ? min_rev : min_snp);
 }
@@ -57,9 +62,9 @@ nplex::rev_t nplex::storage_t::max_rev()
     return m_updates_persister->get_updates_range().second;
 }
 
-void nplex::storage_t::read_updates(rev_t from_rev, const std::function<bool(const msgs::Update *)> &on_entry)
+void nplex::storage_t::read_updates(rev_t from_rev, const std::function<bool(const msgs::Update *)> &callback)
 {
-    auto on_raw_entry = [&on_entry](const updates_persister_t::update_entry_t &raw_entry) -> bool {
+    auto on_raw_entry = [&callback](const updates_persister_t::update_entry_t &raw_entry) -> bool {
         auto verifier = fb::Verifier(
             reinterpret_cast<const std::uint8_t *>(raw_entry.data),
             raw_entry.data_len);
@@ -69,10 +74,32 @@ void nplex::storage_t::read_updates(rev_t from_rev, const std::function<bool(con
 
         auto update = fb::GetRoot<msgs::Update>(raw_entry.data);
 
-        return on_entry(update);
+        return callback(update);
     };
 
     m_updates_persister->read_updates(from_rev, on_raw_entry);
+}
+
+void nplex::storage_t::read_snapshot(rev_t rev, const std::function<void(const msgs::Snapshot *)> &callback)
+{
+    auto [srev, sts, sdata] = m_snapshot_persister->read_snapshot(rev);
+
+    if (!srev || sdata.empty()) {
+        LOG_TRACE("No snapshot available at rev={}", rev);
+        callback(nullptr);
+        return;
+    }
+
+    LOG_TRACE("Loading snapshot at rev={}", srev);
+    auto snapshot = fb::GetRoot<msgs::Snapshot>(sdata.c_str());
+
+    auto verifier = fb::Verifier(reinterpret_cast<const std::uint8_t *>(sdata.c_str()), sdata.size());
+    if (!verifier.VerifyBuffer<msgs::Snapshot>(nullptr))
+        throw nplex_exception("invalid snapshot");
+
+    assert(snapshot->rev() == srev);
+
+    callback(snapshot);
 }
 
 nplex::store_t nplex::storage_t::rebuild_store_at(rev_t rev, const user_ptr &user)
@@ -82,15 +109,10 @@ nplex::store_t nplex::storage_t::rebuild_store_at(rev_t rev, const user_ptr &use
     LOG_TRACE("Rebuilding store at rev={}, user={}", rev, (user ? user->name : "<none>"));
 
     // Step1: retrieve nearest snapshot (less-eq than rev)
-    auto [srev, sdata] = m_snapshot_persister->read_snapshot(rev);
-    if (!sdata.empty())
-    {
-        auto snapshot = fb::GetRoot<msgs::Snapshot>(sdata.c_str());
-        assert(snapshot->rev() == srev);
-        LOG_TRACE("Loading snapshot at rev={}", snapshot->rev());
-        store.load(snapshot, user);
-        std::string{}.swap(sdata);
-    }
+    read_snapshot(rev, [&](const msgs::Snapshot *snapshot) {
+        if (snapshot)
+            store.load(snapshot, user);
+    });
 
     if (store.rev() == rev)
         return store;
@@ -121,7 +143,7 @@ bool nplex::storage_t::write_update_async(update_t &&upd)
     return m_writer_thread.write(std::move(upd));
 }
 
-void nplex::storage_t::write_snapshot(rev_t rev, const std::string_view &data)
+void nplex::storage_t::write_snapshot(rev_t rev, millis_t timestamp, const std::string_view &data)
 {
-    m_snapshot_persister->write_snapshot(rev, data);
+    m_snapshot_persister->write_snapshot(rev, timestamp, data);
 }

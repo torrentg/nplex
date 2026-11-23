@@ -1433,10 +1433,14 @@ struct Snapshot FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   struct Traits;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_REV = 4,
-    VT_UPDATES = 6
+    VT_TIMESTAMP = 6,
+    VT_UPDATES = 8
   };
   uint64_t rev() const {
     return GetField<uint64_t>(VT_REV, 0);
+  }
+  uint64_t timestamp() const {
+    return GetField<uint64_t>(VT_TIMESTAMP, 0);
   }
   const ::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::Update>> *updates() const {
     return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::Update>> *>(VT_UPDATES);
@@ -1445,6 +1449,7 @@ struct Snapshot FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint64_t>(verifier, VT_REV, 8) &&
+           VerifyField<uint64_t>(verifier, VT_TIMESTAMP, 8) &&
            VerifyOffset(verifier, VT_UPDATES) &&
            verifier.VerifyVector(updates()) &&
            verifier.VerifyVectorOfTables(updates()) &&
@@ -1458,6 +1463,9 @@ struct SnapshotBuilder {
   ::flatbuffers::uoffset_t start_;
   void add_rev(uint64_t rev) {
     fbb_.AddElement<uint64_t>(Snapshot::VT_REV, rev, 0);
+  }
+  void add_timestamp(uint64_t timestamp) {
+    fbb_.AddElement<uint64_t>(Snapshot::VT_TIMESTAMP, timestamp, 0);
   }
   void add_updates(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::Update>>> updates) {
     fbb_.AddOffset(Snapshot::VT_UPDATES, updates);
@@ -1476,8 +1484,10 @@ struct SnapshotBuilder {
 inline ::flatbuffers::Offset<Snapshot> CreateSnapshot(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     uint64_t rev = 0,
+    uint64_t timestamp = 0,
     ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::Update>>> updates = 0) {
   SnapshotBuilder builder_(_fbb);
+  builder_.add_timestamp(timestamp);
   builder_.add_rev(rev);
   builder_.add_updates(updates);
   return builder_.Finish();
@@ -1491,11 +1501,13 @@ struct Snapshot::Traits {
 inline ::flatbuffers::Offset<Snapshot> CreateSnapshotDirect(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     uint64_t rev = 0,
+    uint64_t timestamp = 0,
     const std::vector<::flatbuffers::Offset<nplex::msgs::Update>> *updates = nullptr) {
   auto updates__ = updates ? _fbb.CreateVector<::flatbuffers::Offset<nplex::msgs::Update>>(*updates) : 0;
   return nplex::msgs::CreateSnapshot(
       _fbb,
       rev,
+      timestamp,
       updates__);
 }
 

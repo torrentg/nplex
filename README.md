@@ -1,70 +1,56 @@
 # nplex
 
 A reactive, key-value database with ACID guarantees, designed for scenarios where
-low-latency reads, real-time change notification, and minimal resource consumption matter.
+low-latency reads, real-time change notification, and minimal resource consumption 
+matter.
 
 ## Features
 
 **Core database**
 
-- **Key-value store** — Text keys, arbitrary binary values.
-- **Client-server architecture** — Clients connect over TCP using a compact binary protocol.
-- **Historical snapshots** — Retrieve a consistent database snapshot at any revision.
-- **Revision history** — Stream or query all updates since a given revision.
-- **ACID guarantees** — Atomic, consistent, isolated, and durable transactions.
-- **Persistence** — Append-only journal for durability, periodic snapshots for fast recovery.
-- **Lock-free atomic transactions** — Transactions are managed client-side; no server-side locks.
-- **Isolation levels** — Read-committed, repeatable-read, and serializable.
+- **Key-value**. Text keys, arbitrary binary values.
+- **Client-server**. Clients connect over TCP using a compact binary protocol.
+- **Persistence**. Append-only journal with periodic snapshots.
+- **ACID**. Atomic, consistent, isolated, and durable transactions.
+- **Snapshots**. Retrieve a consistent database state at any revision.
+- **Streaming**. Stream updates since a given revision.
+- **ACL security**. CRUD permissions over key patterns.
 
 **What makes it different**
 
-- **Reactive** — Clients receive real-time change notifications. You can build reactors that respond
-  to every commit as it happens.
-- **Blazing-fast reads** — Data lives in client memory. Reads never hit the server.
-- **High write throughput** — Sub-millisecond commits, > 40,000 tx/s on modest hardware.
-- **Low resource footprint** — Minimal CPU, memory, and disk usage.
-
-**Additional capabilities**
-
-- Historical snapshots (point-in-time database state at any revision).
-- Update streaming for real-time synchronization.
-- Journal-based audit trail (complete history of modifications).
-- Basic ACL security (CRUD permissions over key patterns).
-- Glob-pattern key filtering.
+- **Blazing-fast**. Data lives in client memory. Reads never hit the server.
+- **Reactive**. Clients receive real-time change notifications.
+- **High throughput**. Sub-millisecond commits and high transaction throughput.
+- **Low resource footprint**. Minimal CPU, memory, and disk usage.
 
 **Transaction features**
 
-- Optimistic concurrency control.
-- Isolation levels (read-committed, repeatable-read, and serializable).
-- Ensures (assert that selected keys have not changed since the transaction revision).
+- Serializable transactions using optimistic concurrency control (OCC).
+- Isolation levels (read committed, repeatable read, and serializable).
+- Preconditions (assert selected keys have not changed since the transaction revision).
 - Force mode (bypass serialization checks; restricted by ACL permissions).
 
 ## How It Works
 
 1. The client connects and authenticates.
 2. The client requests a snapshot at a specific revision.
-3. The server sends the requested snapshot filtered by the client's permissions.
-3. The client requests a stream of updates starting from the requested revision.
-4. The server sends the requested existing updates filtered by the client's permissions.
-5. The server sends the requested existing updates filtered by the client's permissions.
-6. From that point, the server pushes every update in real time, filtered by the client's permissions.
-7. Reads are local — the client queries its own in-memory copy, never the server.
-8. Writes go through the server — the client submits a transaction; the server validates, persists
-   (journal), and broadcasts the update to all connected clients.
+3. The server sends a snapshot filtered according to the client's permissions.
+4. The client requests a stream of updates since a given revision.
+5. The server sends all existing updates filtered according to the client's permissions.
+6. The server pushes subsequent updates in real time, filtered according to the client's permissions.
+7. The client queries its own in-memory copy, never the server.
+8. The client submits a transaction to the server.
+9. The server validates it, persists it, and broadcasts the update to all connected clients.
 
-Each accepted transaction increments the database revision. Every key-value pair is tagged with
-the revision that last modified it. Transactions are serializable: if two clients modify the same
-key concurrently, the first commit wins and the second is rejected (optimistic concurrency control). 
-Transactions are atomic: if any change in a transaction fails, the entire transaction is rolled back.
+Each accepted transaction increments the database revision. Every key-value pair
+is tagged with the revision that last modified it. Transactions are atomic and
+serializable. Transactions are validated by the server at commit time; those that 
+would violate serializability are rejected and must be retried.
 
-Transactions are managed on the client side. Each client maintains an up-to-date local view of the 
-database state and continuously receives revision updates from the server. If a newly received 
-revision conflicts with an open transaction, that transaction is automatically invalidated and 
-must be rebuilt against the latest database state.
-
-The client supports the READ_COMMITTED, REPEATABLE_READ, and SERIALIZABLE isolation levels. 
-Open transactions are continuously validated against incoming revisions and automatically invalidated 
-when their isolation guarantees can no longer be preserved.
+Transactions are managed on the client side. Each client maintains a local copy
+of the database state and supports READ_COMMITTED, REPEATABLE_READ, and
+SERIALIZABLE isolation levels. Transactions that can no longer preserve their
+isolation guarantees are automatically invalidated.
 
 ## Clients
 
@@ -90,7 +76,6 @@ Currently available:
 | Admin console | Not yet available |
 | Metrics | No Prometheus/SNMP export yet |
 | Replication | No Raft-based replication yet |
-| Journal management | Single journal file (rotation not yet supported) |
 | Compression | No compression for snapshots or updates |
 
 ## Use Case Example — Industrial SCADA

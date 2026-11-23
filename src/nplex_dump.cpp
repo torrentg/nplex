@@ -3,7 +3,7 @@
 #include "storage.hpp"
 #include "json.hpp"
 #include "journal_base.hpp"
-#include "filesystem_snapshot_persister.hpp"
+#include "snapshot_base.hpp"
 #include "journal.h"
 #include <fmt/core.h>
 #include <filesystem>
@@ -56,7 +56,7 @@ static file_type_e detect_file_type(const fs::path &path)
 
 static void dump_snapshot(const fs::path &path)
 {
-    auto [rev, content] = nplex::filesystem_snapshot_persister_t::read_snapshot_file(path);
+    auto [rev, timestamp, content] = nplex::read_snapshot_file(path);
     auto json = nplex::snapshot_to_json(content.data(), content.size());
     printf("%s\n", json.c_str());
 }

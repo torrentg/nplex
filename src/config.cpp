@@ -67,7 +67,7 @@ static constexpr std::uint32_t DEFAULT_TOMBSTONE_RETENTION_MIN          = 5;
 static constexpr std::uint32_t DEFAULT_MAX_TOMBSTONES                   = 1500;
 static constexpr std::uint32_t DEFAULT_CACHE_MAX_ENTRIES                = 50000;
 static constexpr std::uint32_t DEFAULT_CACHE_MAX_BYTES                  = 500 * 1024 * 1024;
-static constexpr std::uint32_t DEFAULT_ROTATE_MAX_ENTRIES               = 0;
+static constexpr std::uint32_t DEFAULT_ROTATE_MAX_ENTRIES               = 100000;
 static constexpr std::uint32_t DEFAULT_ROTATE_MAX_BYTES                 = 0;
 
 // ==========================================================

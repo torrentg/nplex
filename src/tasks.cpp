@@ -75,14 +75,14 @@ void nplex::read_updates_task_t::run()
 // save_snapshot_task_t methods
 // ==========================================================
 
-nplex::save_snapshot_task_t::save_snapshot_task_t(rev_t rev_, DetachedBuffer &&buf_, storage_ptr storage_)
-    : task_t(), rev(rev_), buf(std::move(buf_)), storage(std::move(storage_))
+nplex::save_snapshot_task_t::save_snapshot_task_t(rev_t rev_, millis_t timestamp_, DetachedBuffer &&buf_, storage_ptr storage_)
+    : task_t(), rev(rev_), timestamp(timestamp_), buf(std::move(buf_)), storage(std::move(storage_))
 {
-    LOG_TRACE("Launching save_snapshot_task: rev={}, bytes={}", rev, buf.size());
+    LOG_TRACE("Launching save_snapshot_task: rev={}, timestamp={}, bytes={}", rev, to_iso8601(timestamp), buf.size());
 }
 
 void nplex::save_snapshot_task_t::run()
 {
-    storage->write_snapshot(rev, std::string_view{
+    storage->write_snapshot(rev, timestamp, std::string_view{
         reinterpret_cast<const char *>(buf.data()), buf.size() });
 }

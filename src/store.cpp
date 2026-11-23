@@ -123,6 +123,7 @@ bool nplex::store_t::mark_as_removed(const key_t &key, const meta_ptr &meta)
 void nplex::store_t::load(const msgs::Snapshot *snapshot, const user_ptr &user)
 {
     m_rev = 0;
+    m_timestamp = millis_t{0};
     m_data.clear();
     m_metas.clear();
     m_users.clear();
@@ -149,6 +150,7 @@ void nplex::store_t::load(const msgs::Snapshot *snapshot, const user_ptr &user)
 
     m_stats = {};
     m_rev = srev;
+    m_timestamp = millis_t{snapshot->timestamp()};
     m_min_rev = m_rev;
 }
 
@@ -158,12 +160,17 @@ nplex::update_t nplex::store_t::update(const msgs::Update *msg, const user_ptr &
         throw nplex_exception("Null update message");
 
     auto update = validate_update(msg, user);
+
     if (!update.meta)
     {
         // No visible modifications for this user: keep revision in sync only
         rev_t urev = msg->rev();
-        if (urev > m_rev)
+
+        if (urev > m_rev) {
             m_rev = urev;
+            m_timestamp = millis_t{msg->timestamp()};
+        }
+
         return update;
     }
 
@@ -233,6 +240,7 @@ nplex::update_t nplex::store_t::validate_update(const msgs::Update *msg, const u
     update_t ret;
 
     // No visible modifications for this user -> return empty update
+    // We do this to avoid create meta info (user, etc)
     if (pending_upserts.empty() && pending_deletes.empty())
         return ret;
 
@@ -252,7 +260,7 @@ nplex::update_t nplex::store_t::validate_update(const msgs::Update *msg, const u
     return ret;
 }
 
-nplex::msgs::SubmitCode nplex::store_t::try_commit(const user_t &user, const msgs::SubmitRequest *msg, update_t &update)
+nplex::msgs::SubmitCode nplex::store_t::try_commit(const user_t &user, const msgs::SubmitRequest *msg, update_t &upd)
 {
     assert(user.params.active);
 
@@ -267,19 +275,19 @@ nplex::msgs::SubmitCode nplex::store_t::try_commit(const user_t &user, const msg
     if (crev < m_min_rev)
         return msgs::SubmitCode::REJECTED_OLD_REVISION;
 
-    update.meta = nullptr;
-    update.upserts.clear();
-    update.deletes.clear();
+    upd.meta = nullptr;
+    upd.upserts.clear();
+    upd.deletes.clear();
 
-    auto rc = validate_commit(user, msg, update);
+    auto rc = validate_commit(user, msg, upd);
     if (rc != msgs::SubmitCode::ACCEPTED)
         return rc;
 
-    apply_update(update);
+    apply_update(upd);
     return rc;
 }
 
-nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_t &user, const msgs::SubmitRequest *msg, update_t &update)
+nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_t &user, const msgs::SubmitRequest *msg, update_t &upd)
 {
     bool forced = (user.params.can_force && msg->force());
     std::set<key_t, gto::cstring_compare> keys;
@@ -412,37 +420,38 @@ nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_t &user, cons
     millis_t timestamp = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
     auto meta = create_meta(m_rev + 1, user.name, msg->tx_type(), timestamp);
 
-    update.meta = meta;
-    update.upserts.clear();
-    update.upserts.reserve(pending_upserts.size());
+    upd.meta = meta;
+    upd.upserts.clear();
+    upd.upserts.reserve(pending_upserts.size());
 
     for (auto &pu : pending_upserts)
     {
         auto value = std::make_shared<value_t>(std::move(pu.data), meta);
-        update.upserts.emplace_back(std::move(pu.key), std::move(value));
+        upd.upserts.emplace_back(std::move(pu.key), std::move(value));
     }
 
-    update.deletes = std::move(pending_deletes);
+    upd.deletes = std::move(pending_deletes);
 
     return msgs::SubmitCode::ACCEPTED;
 }
 
-void nplex::store_t::apply_update(const update_t &update)
+void nplex::store_t::apply_update(const update_t &upd)
 {
-    assert(update.meta);
+    assert(upd.meta);
 
-    m_rev = update.meta->rev;
-    m_metas[m_rev] = update.meta;
-    m_stats.bytes += estimate_bytes(update);
+    m_rev = upd.meta->rev;
+    m_timestamp = upd.meta->timestamp;
+    m_metas[m_rev] = upd.meta;
+    m_stats.bytes += estimate_bytes(upd);
     m_stats.count++;
 
-    for (const auto &[key, value] : update.upserts)
+    for (const auto &[key, value] : upd.upserts)
         upsert_entry(key, value);
 
     auto num_removed_keys = m_removed_keys.size();
 
-    for (const auto &key : update.deletes)
-        mark_as_removed(key, update.meta);
+    for (const auto &key : upd.deletes)
+        mark_as_removed(key, upd.meta);
 
     if (m_removed_keys.size() > num_removed_keys)
         purge();
@@ -575,6 +584,7 @@ fb::Offset<nplex::msgs::Snapshot> nplex::store_t::serialize(FlatBufferBuilder &b
     auto snapshot = msgs::CreateSnapshot(
         builder, 
         static_cast<std::uint64_t>(m_rev), 
+        static_cast<std::uint64_t>(m_timestamp.count()), 
         builder.CreateVector(updates)
     );
 

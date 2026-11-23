@@ -8,6 +8,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <span>
 
 namespace nplex {
@@ -93,23 +94,24 @@ class snapshot_persister_t
      *
      * @param[in] rev Target revision.
      *
-     * @return Pair of snapshot revision and snapshot serialized content.
+     * @return Tuple of snapshot revision, snapshot timestamp, and snapshot serialized content.
      * 
      * @throw std::exception on read error.
      */
-    virtual std::pair<rev_t, std::string> read_snapshot(rev_t rev) = 0;
+    virtual std::tuple<rev_t, millis_t, std::string> read_snapshot(rev_t rev) = 0;
 
     /**
      * Writes a snapshot for the given revision.
      * 
      * If snapshot for the given revision already exists, it may be overwritten.
      *
-     * @param[in] rev Target revision.
+     * @param[in] rev Snapshot revision.
+     * @param[in] timestamp Snapshot timestamp.
      * @param[in] data Serialized snapshot payload.
      *
      * @throw std::exception on write error.
      */
-    virtual void write_snapshot(const rev_t rev, std::string_view data) = 0;
+    virtual void write_snapshot(const rev_t rev, const millis_t timestamp, std::string_view data) = 0;
 };
 
 using updates_persister_ptr = std::shared_ptr<updates_persister_t>;

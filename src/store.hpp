@@ -26,11 +26,18 @@ class store_t
   public: // methods
 
     /**
-     * Get the current revision.
+     * Last applied update revision.
      * 
-     * @return The current revision number.
+     * @return The revision number.
      */
     rev_t rev() const noexcept { return m_rev; }
+
+    /**
+     * Last applied update timestamp.
+     * 
+     * @return The timestamp in milliseconds since Unix epoch (UTC).
+     */
+    millis_t timestamp() const noexcept { return m_timestamp; }
 
     /**
      * Configure tombstone retention parameters.
@@ -89,13 +96,13 @@ class store_t
      * 
      * @param[in] user User submitting the request.
      * @param[in] msg Submit request.
-     * @param[out] update Update to apply (only set on accepted).
+     * @param[out] upd Update to apply (only set on accepted).
      * 
      * @return Result code.
      * 
      * @exception nplex_exception Unrecoverable error (no-memory, etc).
      */
-    msgs::SubmitCode try_commit(const user_t &user, const msgs::SubmitRequest *msg, update_t &update);
+    msgs::SubmitCode try_commit(const user_t &user, const msgs::SubmitRequest *msg, update_t &upd);
 
     /**
      * Serialize the database content to a snapshot.
@@ -129,6 +136,7 @@ class store_t
   private:  // members
 
     rev_t m_rev = 0;                             // Current revision.
+    millis_t m_timestamp = millis_t{0};          // Revision timestamp (milliseconds since Unix epoch, UTC).
     meta_map_t m_metas;                          // Metas indexed by revision.
     data_map_t m_data;                           // Key-value data store.
     user_map_t m_users;                          // Users list (with number of references)
@@ -205,19 +213,19 @@ class store_t
      * 
      * @param[in] user User submitting the request.
      * @param[in] msg Submit request.
-     * @param[out] update Update to apply.
+     * @param[out] upd Update to apply.
      * 
      * Pre-conditions: update is empty.
      * Post-conditions: update has a meta that must be released on error.
      */
-    msgs::SubmitCode validate_commit(const user_t &user, const msgs::SubmitRequest *msg, update_t &update);
+    msgs::SubmitCode validate_commit(const user_t &user, const msgs::SubmitRequest *msg, update_t &upd);
 
     /**
      * Internal function to apply a validated update.
      * 
-     * @param[in] update Update to apply.
+     * @param[in] upd Update to apply.
      */
-    void apply_update(const update_t &update);
+    void apply_update(const update_t &upd);
 
     /**
      * Purge removed entries based on revision retention and tombstone limits.

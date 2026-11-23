@@ -419,6 +419,7 @@ void nplex::context_t::check_for_snapshot()
         return;
 
     auto rev = m_store.rev();
+    auto timestamp = m_store.timestamp();
     LOG_INFO("Creating snapshot at r{}", rev);
 
     FlatBufferBuilder builder;
@@ -427,7 +428,7 @@ void nplex::context_t::check_for_snapshot()
 
     auto buf = builder.Release();
 
-    auto task = new save_snapshot_task_t(rev, std::move(buf), m_storage);
+    auto task = new save_snapshot_task_t(rev, timestamp, std::move(buf), m_storage);
     submit_task(task);
 
     m_store.reset_stats();

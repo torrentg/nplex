@@ -11,5 +11,6 @@ namespace nplex.msgs;
 table Snapshot
 {
     rev: uint64;                    // Snapshot revision
+    timestamp: uint64;              // Revision timestamp
     updates: [Update];              // List of updates sorted by commit revision (oldest to newest)
 }
