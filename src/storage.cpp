@@ -43,10 +43,10 @@ void nplex::storage_t::stop()
 
 nplex::rev_t nplex::storage_t::min_rev()
 {
-    auto [min_rev, max_rev] = m_updates_persister->get_updates_range();
+    auto [min_upd, max_upd] = m_updates_persister->get_updates_range();
     auto [min_snp, max_snp] = m_snapshot_persister->get_snapshots_range();
 
-    assert(min_rev <= max_rev);
+    assert(min_upd <= max_upd);
     assert(min_snp <= max_snp);
 
     // TODO: Case when there are no updates and no snapshots
@@ -54,7 +54,7 @@ nplex::rev_t nplex::storage_t::min_rev()
     // TODO: Case when there are no snapshots but updates exist
     // TODO: Case when snapshots are lower or upper than updates range
 
-    return (min_rev <= 1 ? min_rev : min_snp);
+    return (min_upd <= 1 ? min_upd : min_snp);
 }
 
 nplex::rev_t nplex::storage_t::max_rev()

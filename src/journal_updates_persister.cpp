@@ -52,7 +52,7 @@ bool remove_file_if_exists(const fs::path &file_path)
 // ==========================================================
 
 nplex::journal_updates_persister_t::~journal_updates_persister_t() {
-    // Defined out-of-line because journal_segment_t is forward-declared
+    // Defined out-of-line because journal_file_t is forward-declared
     // in the header and must be a complete type at the destructor definition.
 }
 
@@ -239,13 +239,13 @@ void nplex::journal_updates_persister_t::write_updates(const std::span<update_en
 void nplex::journal_updates_persister_t::maintenance()
 {
     std::lock_guard lock(m_catalog_mutex);
-    auto now = std::chrono::system_clock::now().time_since_epoch();
+    auto now = std::chrono::duration_cast<millis_t>(std::chrono::system_clock::now().time_since_epoch());
 
     for (auto &item : m_catalog)
     {
         // Release idle journals
-        if (item.second.journal && now > item.second.last_read_time + MAX_READ_IDLE_TIME) {
-            item.second.last_read_time = millis_t::zero();
+        if (item.second.journal && now > item.second.last_read + MAX_READ_IDLE_TIME) {
+            item.second.last_read = millis_t::zero();
             item.second.journal = nullptr;
             LOG_TRACE("Released idle journal: name={}", item.second.file_name);
         }
@@ -255,7 +255,7 @@ void nplex::journal_updates_persister_t::maintenance()
 bool nplex::journal_updates_persister_t::update_catalog(bool force)
 {
     std::lock_guard lock(m_catalog_mutex);
-    auto now = std::chrono::system_clock::now().time_since_epoch();
+    auto now = std::chrono::duration_cast<millis_t>(std::chrono::system_clock::now().time_since_epoch());
 
     // Skip catalog update if it was recently updated
     if (!force && m_last_catalog_update != millis_t::zero() && now < m_last_catalog_update + MIN_CATALOG_UPDATE_INTERVAL)
@@ -270,11 +270,11 @@ bool nplex::journal_updates_persister_t::update_catalog(bool force)
            .with_range(m_journal->range());
 
     m_catalog = builder.build(m_catalog);
-    m_last_catalog_update = std::chrono::duration_cast<millis_t>(now);
+    m_last_catalog_update = now;
 
-    rev_t min_rev = (m_catalog.empty() ? 0 : m_catalog.begin()->second.min_rev);
-    rev_t max_rev = (m_catalog.empty() ? 0 : m_catalog.rbegin()->second.max_rev);
-    
+    [[maybe_unused]] rev_t min_rev = (m_catalog.empty() ? 0 : m_catalog.begin()->second.min_rev);
+    [[maybe_unused]] rev_t max_rev = (m_catalog.empty() ? 0 : m_catalog.rbegin()->second.max_rev);
+
     LOG_DEBUG("Journal catalog update complete: range {}-{}, entries={}", min_rev, max_rev, m_catalog.size());
 
     return true;
@@ -330,8 +330,8 @@ nplex::journal_ptr nplex::journal_updates_persister_t::get_journal_from_catalog(
         }
     }
 
-    auto now = std::chrono::system_clock::now().time_since_epoch();
-    segment.last_read_time = std::chrono::duration_cast<millis_t>(now);
+    auto now = std::chrono::duration_cast<millis_t>(std::chrono::system_clock::now().time_since_epoch());
+    segment.last_read = now;
 
     LOG_TRACE("get_journal(r{}): name={}, range=[{}-{}]", 
         rev, segment.file_name, segment.min_rev, segment.max_rev);
@@ -399,7 +399,7 @@ bool nplex::journal_updates_persister_t::rotate(const std::string &name)
     // Add the rotated segment to the catalog
     if (!is_empty(journal_range))
     {
-        auto segment = journal_segment_t(segment_path_dat);
+        auto segment = journal_file_t(segment_path_dat);
         m_catalog[segment.max_rev] = segment;
     }
 

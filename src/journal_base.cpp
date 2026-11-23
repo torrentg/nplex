@@ -115,20 +115,19 @@ nplex::millis_t get_timestamp(const nplex::journal_ptr &journal, nplex::rev_t re
 } // unnamed namespace
 
 // ==========================================================
-// journal_segment_t methods
+// journal_file_t methods
 // ==========================================================
 
-nplex::journal_segment_t::journal_segment_t(const fs::path &filepath)
+nplex::journal_file_t::journal_file_t(const fs::path &filepath)
 {
     file_name = filepath.filename().string();
     file_size = fs::file_size(filepath);
-    auto lwt = fs::last_write_time(filepath).time_since_epoch();
-    last_write_time = std::chrono::duration_cast<millis_t>(lwt);
+    last_write = fs::last_write_time(filepath);
 
     journal = open_journal_file(filepath, LDB_READONLY | LDB_RECOVER | LDB_CHECK);
 
-    auto now = std::chrono::system_clock::now().time_since_epoch();
-    last_read_time = std::chrono::duration_cast<millis_t>(now);
+    auto now = std::chrono::duration_cast<millis_t>(std::chrono::system_clock::now().time_since_epoch());
+    last_read = now;
 
     auto range = journal->range();
     min_rev = range.first;

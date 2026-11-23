@@ -14,20 +14,20 @@ namespace nplex {
 
 using journal_ptr = std::shared_ptr<ldb::journal_t>;
 
-struct journal_segment_t
+struct journal_file_t
 {
     std::string file_name;                          // Name of the journal file.
     size_t file_size = 0;                           // Size of the journal file in bytes (used to detect file changes).
-    millis_t last_write_time = millis_t{0};         // Last write time of the journal file (used to detect file changes).
-    millis_t last_read_time = millis_t{0};          // Last read time of the journal file (used to release journal_ptr).
+    std::filesystem::file_time_type last_write;     // Last write time of the journal file (used to detect file changes).
+    millis_t last_read = millis_t{0};               // Last read time of the journal file (used to release journal_ptr).
     journal_ptr journal;                            // Pointer to the loaded journal object.
     rev_t min_rev = 0;                              // Minimum revision covered by this journal file.
     rev_t max_rev = 0;                              // Maximum revision covered by this journal file.
     millis_t min_timestamp = millis_t{0};           // Minimum timestamp covered by this journal file.
     millis_t max_timestamp = millis_t{0};           // Maximum timestamp covered by this journal file.
 
-    journal_segment_t() = default;
-    journal_segment_t(const std::filesystem::path &filepath);
+    journal_file_t() = default;
+    journal_file_t(const std::filesystem::path &filepath);
     bool is_empty() const { return (min_rev == 0 || max_rev == 0); }
 };
 

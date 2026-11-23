@@ -15,7 +15,7 @@ namespace nplex {
  * Enables efficient lookup of the segment containing a given revision.
  * File descriptors are automatically closed after an idle period.
  */
-using journal_catalog_t = std::map<rev_t, journal_segment_t>;
+using journal_catalog_t = std::map<rev_t, journal_file_t>;
 
 /**
 * Builds a journal catalog from the journal files in a directory.
@@ -54,11 +54,11 @@ class journal_catalog_builder_t
         rev_t min_rev = 0;                          // Minimum revision covered by the chain.
     };
 
-    struct file_t : public journal_segment_t
+    struct file_t : public journal_file_t
     {
         file_t() = default;
-        file_t(const journal_segment_t &p) : journal_segment_t(p) {}
-        file_t(const std::filesystem::path &filepath) : journal_segment_t(filepath) {}
+        file_t(const journal_file_t &p) : journal_file_t(p) {}
+        file_t(const std::filesystem::path &filepath) : journal_file_t(filepath) {}
         file_ptr upstream() const { return (links.empty() ? nullptr : links[0].file); }
         rev_t chain_min_rev() const { return (links.empty() ? min_rev : links[0].min_rev); }
         std::size_t chain_num_segments() const { return 1 + (links.empty() ? 0 : links[0].num_segments); }

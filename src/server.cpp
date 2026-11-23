@@ -168,7 +168,7 @@ void nplex::server_t::init(const config_t &config)
     }
 }
 
-void nplex::server_t::init_event_loop(const config_t &)
+void nplex::server_t::init_event_loop([[maybe_unused]] const config_t &config)
 {
     int rc = 0;
 
@@ -184,7 +184,7 @@ void nplex::server_t::init_context(const config_t &config)
     m_loop->data = m_context.get();
 }
 
-void nplex::server_t::init_signals(const config_t &)
+void nplex::server_t::init_signals([[maybe_unused]] const config_t &config)
 {
     int rc = 0;
 

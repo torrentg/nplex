@@ -36,7 +36,7 @@ void nplex::store_t::config(const store_params_t &params) noexcept
     m_params = params;
 }
 
-nplex::meta_ptr nplex::store_t::create_meta(rev_t rev, const std::string_view &username, std::uint32_t type, millis_t timestamp)
+nplex::meta_ptr nplex::store_t::create_meta(rev_t rev_, const std::string_view &username, std::uint32_t type, millis_t ts)
 {
     gto::cstring user;
     auto user_it = m_users.find(username);
@@ -52,7 +52,7 @@ nplex::meta_ptr nplex::store_t::create_meta(rev_t rev, const std::string_view &u
         user_it->second++;
     }
 
-    return std::make_shared<meta_t>(meta_t{rev, std::move(user), timestamp, type, {}});
+    return std::make_shared<meta_t>(meta_t{rev_, std::move(user), ts, type, {}});
 }
 
 void nplex::store_t::update_meta(const meta_ptr &meta, const key_t &key, meta_e mode)
@@ -417,8 +417,8 @@ nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_t &user, cons
 
     // Data validated - filling update
     using namespace std::chrono;
-    millis_t timestamp = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
-    auto meta = create_meta(m_rev + 1, user.name, msg->tx_type(), timestamp);
+    millis_t ts = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
+    auto meta = create_meta(m_rev + 1, user.name, msg->tx_type(), ts);
 
     upd.meta = meta;
     upd.upserts.clear();
@@ -472,8 +472,8 @@ std::uint32_t nplex::store_t::purge()
 
     while (!m_removed_keys.empty())
     {
-        auto [key, rev] = m_removed_keys.front();
-        auto it = m_data.find(key);
+        auto [rkey, rrev] = m_removed_keys.front();
+        auto it = m_data.find(rkey);
 
         // Security check
         if (it == m_data.end()) {
@@ -483,26 +483,26 @@ std::uint32_t nplex::store_t::purge()
         }
 
         // Case: useless entry (modified after deletion)
-        if (rev != it->second->rev()) {
-            assert(rev < it->second->rev());
+        if (rrev != it->second->rev()) {
+            assert(rrev < it->second->rev());
             m_removed_keys.pop();
             count++;
             continue;
         }
 
         // Invariants
-        assert(it->first == key);
-        assert(it->second->rev() == rev);
+        assert(it->first == rkey);
+        assert(it->second->rev() == rrev);
         assert(it->second->is_removed());
 
         // Case: entry at a distance greater than configured max retention
-        if (m_params.retention_max > 0 && rev + m_params.retention_max < m_rev) {
+        if (m_params.retention_max > 0 && rrev + m_params.retention_max < m_rev) {
             purge_entry(it);
             continue;
         }
 
         // Case: revision removed from tombstones
-        if (last_purged_rev && rev == last_purged_rev) {
+        if (last_purged_rev && rrev == last_purged_rev) {
             purge_entry(it);
             continue;
         }
@@ -513,7 +513,7 @@ std::uint32_t nplex::store_t::purge()
             break;
 
         // Granting a minimum number of revisions before enforcing max_tombstones
-        if (m_params.retention_min > 0 && m_rev <= rev + m_params.retention_min)
+        if (m_params.retention_min > 0 && m_rev <= rrev + m_params.retention_min)
             break;
 
         // Case: max_tombstones exceeded

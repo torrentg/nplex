@@ -14,7 +14,7 @@ static constexpr std::uint32_t TIMEOUT_NO_USER = 5000;
 // Maximum number of bytes in a sync batch
 static constexpr std::uint32_t MAX_BYTES_IN_SYNC = 50 * 1024 * 1024;
 // Maximum % occupancy in output queue to restart a sync
-static constexpr std::uint32_t MAX_PCT_OCCUPANCY_OUTPUT_QUEUE = 66;
+static constexpr std::uint32_t MAX_PCT_OCCUPANCY_OUTPUT_QUEUE = 50;
 
 // ==========================================================
 // session_t methods

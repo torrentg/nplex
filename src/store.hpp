@@ -158,7 +158,7 @@ class store_t
      * 
      * @return The inserted metadata.
      */
-    meta_ptr create_meta(rev_t rev, const std::string_view &username, std::uint32_t type, millis_t timestamp);
+    meta_ptr create_meta(rev_t rev_, const std::string_view &username, std::uint32_t type, millis_t ts);
 
     /**
      * Update a metadata object.

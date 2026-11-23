@@ -372,6 +372,8 @@ target_sources(
     ${CMAKE_CURRENT_LIST_DIR}/src/session.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/snapshot_base.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/snapshot_base.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/snapshot_catalog.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/snapshot_catalog.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/storage.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/storage.hpp
     ${CMAKE_CURRENT_LIST_DIR}/src/store.cpp

@@ -14,9 +14,9 @@ namespace ldb {
 
 namespace nplex {
 
-struct journal_segment_t;
+struct journal_file_t;
 using journal_ptr = std::shared_ptr<ldb::journal_t>;
-using journal_catalog_t = std::map<rev_t, journal_segment_t>;
+using journal_catalog_t = std::map<rev_t, journal_file_t>;
 
 /**
  * Persister that stores updates in a journal.
@@ -32,7 +32,7 @@ using journal_catalog_t = std::map<rev_t, journal_segment_t>;
  * Closed segments are immutable and are only accessed in read-only mode.
  * At any given time, only the latest segment is writable.
  *
- * A segment catalog is built at startup and indexed by the last
+ * A journal catalog is built at startup and indexed by the last
  * sequence number of each segment.
  *
  * Read workflow:
@@ -67,6 +67,7 @@ class journal_updates_persister_t : public updates_persister_t
 
     void maintenance();
     bool rotate_at(rev_t rev);
+    bool update_catalog(bool force = false);
 
   private:
 
@@ -87,7 +88,6 @@ class journal_updates_persister_t : public updates_persister_t
     std::pair<rev_t, rev_t> get_journal_range() const;
     std::pair<std::span<update_entry_t>, bool> select_write_batch(std::span<update_entry_t> entries);
     std::size_t write_batch(std::span<update_entry_t> entries, std::size_t &num_writes);
-    bool update_catalog(bool force = false);
     bool rotate(const std::string &name = {});
 };
 

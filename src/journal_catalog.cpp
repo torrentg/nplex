@@ -80,6 +80,14 @@ nplex::journal_catalog_builder_t::file_ptr create_file(const fs::path &filepath)
     }
 }
 
+bool is_file_unchanged(const fs::path &path, const nplex::journal_file_t &file)
+{
+    auto file_size = fs::file_size(path);
+    auto last_write = fs::last_write_time(path);
+
+    return (file_size == file.file_size && last_write == file.last_write);
+}
+
 } // unnamed namespace
 
 // ==========================================================
@@ -134,6 +142,11 @@ nplex::journal_catalog_t nplex::journal_catalog_builder_t::build(const journal_c
     rev_t catalog_min_rev = (catalog.empty() ? 0 : catalog.begin()->second.min_rev);
 
     mark_orphans_and_unuseds(catalog_min_rev);
+
+    if (spdlog::should_log(spdlog::level::trace))
+        for (const auto &[rev, segment] : catalog)
+            LOG_TRACE("Journal catalog entry {}: {}, range=[{}-{}]", 
+                rev, segment.file_name, segment.min_rev, segment.max_rev);
 
     return catalog;
 }
@@ -240,7 +253,7 @@ nplex::journal_catalog_t nplex::journal_catalog_builder_t::create_catalog()
 
         catalog.emplace(
             upstream->max_rev,
-            static_cast<journal_segment_t&>(*upstream)
+            static_cast<journal_file_t&>(*upstream)
         );
 
         upstream = upstream->upstream();
@@ -280,7 +293,7 @@ void nplex::journal_catalog_builder_t::populate_files(const journal_catalog_t &p
     if (m_path.empty() || m_files_prefix.empty() || m_files_extension.empty())
         throw nplex_exception("invalid configuration");
 
-    std::map<std::string, const journal_segment_t &> prev_files;
+    std::map<std::string, const journal_file_t &> prev_files;
 
     for (const auto &[rev, segment] : prev_catalog)
         prev_files.emplace(segment.file_name, segment);
@@ -302,7 +315,7 @@ void nplex::journal_catalog_builder_t::populate_files(const journal_catalog_t &p
         // Check if the file was present in the previous catalog
         auto it = prev_files.find(file_name);
 
-        if (it != prev_files.end())
+        if (it != prev_files.end() && ::is_file_unchanged(entry.path(), it->second))
         {
             // Create a journal file entry from previous catalog
             m_files.emplace(

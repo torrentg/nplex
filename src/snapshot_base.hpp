@@ -6,26 +6,17 @@
 
 namespace nplex {
 
-struct snapshot_file_header_t
+struct snapshot_file_t
 {
-    std::uint8_t magic[8] = {0};
-    std::uint32_t schema2_hash = 0;
-    std::uint32_t checksum = 0;
-    std::uint64_t rev = 0;
-    std::uint64_t timestamp = 0;
-};
+    snapshot_file_t() = default;
+    snapshot_file_t(const std::filesystem::path &filepath);
 
-/**
- * Reads the header of a snapshot file.
- * 
- * Used to get the metadata of a snapshot file without reading the entire content.
- * 
- * @param[in] path The path to the snapshot file.
- * 
- * @return The snapshot file header.
- * @exception std::exception If reading the snapshot file header fails.
- */
-snapshot_file_header_t read_snapshot_file_header(const std::filesystem::path &path);
+    std::string file_name;                          // Name of the snapshot file.
+    size_t file_size = 0;                           // Size of the snapshot file in bytes (used to detect file changes).
+    std::filesystem::file_time_type last_write;     // Last write time of the snapshot file (used to detect file changes).
+    rev_t rev = 0;                                  // Snapshot revision.
+    millis_t timestamp = millis_t{0};               // Snapshot timestamp.
+};
 
 /**
  * Reads a snapshot file from the specified path.

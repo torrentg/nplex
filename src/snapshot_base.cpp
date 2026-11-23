@@ -16,7 +16,16 @@ namespace {
 
 constexpr std::string MAGIC_BYTES = "NPLEXSNP";
 
-bool is_valid_header(const nplex::snapshot_file_header_t &header)
+struct snapshot_file_header_t
+{
+    std::uint8_t magic[8] = {0};
+    std::uint32_t schema2_hash = 0;
+    std::uint32_t checksum = 0;
+    std::uint64_t rev = 0;
+    std::uint64_t timestamp = 0;
+};
+
+bool is_valid_header(const snapshot_file_header_t &header)
 {
     if (std::memcmp(header.magic, MAGIC_BYTES.data(), sizeof(header.magic)) != 0)
         return false;
@@ -30,13 +39,7 @@ bool is_valid_header(const nplex::snapshot_file_header_t &header)
     return true;
 }
 
-} // unnamed namespace
-
-// ==========================================================
-// nplex journal functions
-// ==========================================================
-
-nplex::snapshot_file_header_t nplex::read_snapshot_file_header(const fs::path &path)
+snapshot_file_header_t read_snapshot_file_header(const fs::path &path)
 {
     snapshot_file_header_t header{};
     std::ifstream file(path, std::ios::binary);
@@ -55,13 +58,33 @@ nplex::snapshot_file_header_t nplex::read_snapshot_file_header(const fs::path &p
     return header;
 }
 
+} // unnamed namespace
+
+// ==========================================================
+// snapshot_file_t methods
+// ==========================================================
+
+nplex::snapshot_file_t::snapshot_file_t(const std::filesystem::path &filepath)
+{
+    file_name = filepath.filename().string();
+    file_size = fs::file_size(filepath);
+    last_write = fs::last_write_time(filepath);
+    auto header = ::read_snapshot_file_header(filepath);
+    rev = header.rev;
+    timestamp = millis_t{header.timestamp};
+}
+
+// ==========================================================
+// nplex journal functions
+// ==========================================================
+
 std::tuple<nplex::rev_t, nplex::millis_t, std::string> nplex::read_snapshot_file(const fs::path &path)
 {
     std::streampos file_size = 0;
     snapshot_file_header_t header{};
     std::ifstream ifs(path, std::ios::binary);
 
-    LOG_TRACE("Reading file {}", path.string());
+    LOG_TRACE("Reading file {}", path.filename().string());
 
     if (!ifs)
         throw nplex::nplex_exception("failed to open file");

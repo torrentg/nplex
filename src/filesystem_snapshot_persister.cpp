@@ -1,5 +1,5 @@
 #include "filesystem_snapshot_persister.hpp"
-#include "snapshot_base.hpp"
+#include "snapshot_catalog.hpp"
 #include "exception.hpp"
 #include "logger.hpp"
 #include <filesystem>
@@ -15,53 +15,18 @@ namespace {
 
 constexpr std::string FILENAME_PREFIX = "snapshot-";
 constexpr std::string FILENAME_EXTENSION = ".dat";
-
-std::map<nplex::rev_t, std::string> get_catalog(const fs::path &directory)
-{
-    std::map<nplex::rev_t, std::string> catalog;
-
-    if (!fs::exists(directory))
-        return catalog;
-
-    for (const auto &entry : fs::directory_iterator(directory))
-    {
-        if (!entry.is_regular_file())
-            continue;
-
-        const std::string file_name = entry.path().filename().string();
-
-        if (!file_name.starts_with(FILENAME_PREFIX))
-            continue;
-
-        if (!file_name.ends_with(FILENAME_EXTENSION))
-            continue;
-
-        try
-        {
-            auto header = nplex::read_snapshot_file_header(entry.path());
-
-            auto it = catalog.find(header.rev);
-
-            if (it != catalog.end())
-                throw nplex::nplex_exception("Found duplicated snapshots: rev={}, file1={}, file2={}", header.rev, it->second, file_name);
-
-            catalog[header.rev] = file_name;
-        }
-        catch (const std::exception &e)
-        {
-            LOG_WARN("Unable to read {}: {}", file_name, e.what());
-            continue;
-        }
-    }
-
-    return catalog;
-}
+constexpr nplex::millis_t MIN_CATALOG_UPDATE_INTERVAL = std::chrono::minutes(5);
 
 } // unnamed namespace
 
 // ==========================================================
 // filesystem_snapshot_persister_t methods
 // ==========================================================
+
+nplex::filesystem_snapshot_persister_t::~filesystem_snapshot_persister_t() {
+    // Defined out-of-line because snapshot_file_t is forward-declared
+    // in the header and must be a complete type at the destructor definition.
+}
 
 nplex::filesystem_snapshot_persister_t::filesystem_snapshot_persister_t(const fs::path &path) : m_path(path)
 {
@@ -83,75 +48,50 @@ nplex::filesystem_snapshot_persister_t::filesystem_snapshot_persister_t(const fs
     {
         throw nplex_exception("snapshots directory is not readable: {}", m_path.string());
     }
+
+    update_catalog();
 }
 
 std::pair<nplex::rev_t, nplex::rev_t> nplex::filesystem_snapshot_persister_t::get_snapshots_range()
 {
-    std::pair<nplex::rev_t, nplex::rev_t> range{0, 0};
+    std::lock_guard lock(m_catalog_mutex);
 
-    auto catalog = ::get_catalog(m_path);
+    if (m_catalog.empty())
+        return {0, 0};
 
-    while (!catalog.empty())
-    {
-        auto it = catalog.begin();
-
-        try {
-            auto [rev, timestamp, snapshot] = read_snapshot_file(m_path / it->second);
-            range = {rev, rev};
-            break;
-        }
-        catch (const std::exception &e) {
-            LOG_WARN("Failed to read file {}: {}", it->second, e.what());
-            catalog.erase(it);
-        }
-    }
-
-    while (catalog.size() > 1)
-    {
-        auto it = std::prev(catalog.end());
-
-        try {
-            auto [rev, timestamp, snapshot] = read_snapshot_file(m_path / it->second);
-            range.second = rev;
-            break;
-        }
-        catch (const std::exception &e) {
-            LOG_WARN("Failed to read file {}: {}", it->second, e.what());
-            catalog.erase(it);
-        }
-    }
-
-    if (spdlog::should_log(spdlog::level::debug))
-        for (const auto &[rev, file] : catalog)
-            LOG_DEBUG("{} added to catalog, rev={}", file, rev);
-
-    LOG_DEBUG("Snapshot catalog complete: range=[{}-{}], entries={}", 
-        (catalog.empty() ? 0 : catalog.begin()->first), 
-        (catalog.empty() ? 0 : catalog.rbegin()->first), 
-        catalog.size());
-
-    return range;
+    return {m_catalog.begin()->first, m_catalog.rbegin()->first};
 }
 
 std::tuple<nplex::rev_t, nplex::millis_t, std::string> nplex::filesystem_snapshot_persister_t::read_snapshot(rev_t rev)
 {
-    auto catalog = get_catalog(m_path);
+    auto [srev, sts, sdata] = read_snapshot_from_catalog(rev);
 
-    while (!catalog.empty())
+    if (srev != 0)
+        return {srev, sts, sdata};
+
+    if (update_catalog())
+        return read_snapshot_from_catalog(rev);
+
+    return {0, millis_t{0}, ""};
+}
+
+std::tuple<nplex::rev_t, nplex::millis_t, std::string> nplex::filesystem_snapshot_persister_t::read_snapshot_from_catalog(rev_t rev)
+{
+    while (!m_catalog.empty())
     {
-        auto it = catalog.upper_bound(rev);
+        auto it = m_catalog.upper_bound(rev);
 
-        if (it == catalog.begin())
+        if (it == m_catalog.begin())
             break;
 
         it = std::prev(it);
 
         try {
-            return read_snapshot_file(m_path / it->second);
+            return read_snapshot_file(m_path / it->second.file_name);
         }
         catch (const std::exception &e) {
-            LOG_WARN("Failed to read file {}: {}", it->second, e.what());
-            catalog.erase(it);
+            LOG_WARN("Failed to read file {}: {}", it->second.file_name, e.what());
+            m_catalog.erase(it);
         }
     }
 
@@ -172,4 +112,30 @@ void nplex::filesystem_snapshot_persister_t::write_snapshot(rev_t rev, millis_t 
         LOG_ERROR("Failed to write file {}", filename);
         throw;
     }
+}
+
+bool nplex::filesystem_snapshot_persister_t::update_catalog(bool force)
+{
+    std::lock_guard lock(m_catalog_mutex);
+    auto now = std::chrono::duration_cast<millis_t>(std::chrono::system_clock::now().time_since_epoch());
+
+    // Skip catalog update if it was recently updated
+    if (!force && m_last_catalog_update != millis_t::zero() && now < m_last_catalog_update + MIN_CATALOG_UPDATE_INTERVAL)
+        return false;
+
+    snapshot_catalog_builder_t builder;
+
+    builder.with_path(m_path)
+           .with_files_prefix(FILENAME_PREFIX)
+           .with_files_extension(FILENAME_EXTENSION);
+
+    m_catalog = builder.build(m_catalog);
+    m_last_catalog_update = now;
+
+    [[maybe_unused]] rev_t min_rev = (m_catalog.empty() ? 0 : m_catalog.begin()->first);
+    [[maybe_unused]] rev_t max_rev = (m_catalog.empty() ? 0 : m_catalog.rbegin()->first);
+    
+    LOG_DEBUG("Snapshot catalog update complete: range {}-{}, entries={}", min_rev, max_rev, m_catalog.size());
+
+    return true;
 }
