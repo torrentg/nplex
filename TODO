@@ -4,7 +4,38 @@
 * Add admin API (nplexadm via uv_pipe_t, stats, conf, purge, rollback, rotate)
 * Support multiple journals (rotate-journal-max-bytes, rotate-journal-max-entries, rotate-journal-daily-at, max-open-archives)
 * Create timer to check if msg delivery exceeds X millis
-* Considere to compress snapshots (see https://github.com/mateidavid/zstr)
+* Consider to compress snapshots (see https://github.com/mateidavid/zstr)
 * Data replication (see https://github.com/eBay/NuRaft)
 * Considere to create nplex_restore (json -> binary)
 * Add authentication abuse protection: track failed login attempts per IP/user within a sliding time window (e.g. max N failures in last X seconds) and temporarily block or slow down further attempts (exponential back-off or fixed cooldown)
+* Create architecture.md
+  - Main requirements (ex: performance, no-boost, etc)
+  - libuv
+  - flatbuffers
+  - journal + snapshots
+  - cstring
+  - config ini
+  - etc
+* Modify user
+  - Add is_admin attribute
+* Modify session
+  - Add synced
+  - Add lrev
+* Modify store
+  - Add std::map<rev_t, key_t> m_refs and remove meta_t::refs
+  - Add stripped_copy() method (rev, timestamp, data, refs)
+  - Snapshot task receives a store strip_copy() instead of buffer
+* Add Unix Domain Sockets (AF_UNIX) connection
+  - Only for administration tasks
+  - Add admin messages (schema4)
+  - Support journal rotation
+  - Support snapshot creation
+  - Support catalogs refresh
+  - Support log level changes
+  - Support log file rotation
+  - Disconnect sessions
+  - Terminate server
+* Consider adding support for counted pointers (make_counted, counted_ptr)
+  - meta_ptr
+  - value_ptr
+  - update_ptr

@@ -51,7 +51,7 @@ struct context_t : public std::enable_shared_from_this<context_t>
     void release_session(session_t *session);
     void on_updates_written_1(bool success, const std::span<update_t> &updates);
     void on_updates_written_2();
-    std::tuple<msgs::SubmitCode, rev_t> try_commit(const msgs::SubmitRequest *msg, const user_t &user);
+    std::tuple<msgs::SubmitCode, rev_t> try_commit(const msgs::SubmitRequest *msg, const user_ptr &user);
     std::span<const update_t> get_cached_updates(rev_t from_rev, std::size_t max_bytes) const;
 
   private: // types

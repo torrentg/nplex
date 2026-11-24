@@ -387,7 +387,7 @@ nplex::user_ptr nplex::context_t::get_user(const std::string &name) const
     return it->second;
 }
 
-std::tuple<nplex::msgs::SubmitCode, nplex::rev_t> nplex::context_t::try_commit(const msgs::SubmitRequest *msg, const user_t &user)
+std::tuple<nplex::msgs::SubmitCode, nplex::rev_t> nplex::context_t::try_commit(const msgs::SubmitRequest *msg, const user_ptr &user)
 {
     if (!m_storage->can_accept_writes())
         return { msgs::SubmitCode::TRY_LATER, 0 };
@@ -396,7 +396,7 @@ std::tuple<nplex::msgs::SubmitCode, nplex::rev_t> nplex::context_t::try_commit(c
 
     auto rc = m_store.try_commit(user, msg, update);
     if (rc != msgs::SubmitCode::ACCEPTED) {
-        LOG_DEBUG("Commit rejected: user={}, crev={}, rc={}", user.name, msg->crev(), static_cast<int>(rc));
+        LOG_DEBUG("Commit rejected: user={}, crev={}, rc={}", user->name, msg->crev(), static_cast<int>(rc));
         return { rc, 0 };
     }
 

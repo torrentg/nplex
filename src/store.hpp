@@ -94,7 +94,7 @@ class store_t
      * On invalid or rejected request, content is not modified.
      * On exception, the content is left in an inconsistent state.
      * 
-     * @param[in] user User submitting the request.
+     * @param[in] user User submitting the request (mandatory).
      * @param[in] msg Submit request.
      * @param[out] upd Update to apply (only set on accepted).
      * 
@@ -102,7 +102,7 @@ class store_t
      * 
      * @exception nplex_exception Unrecoverable error (no-memory, etc).
      */
-    msgs::SubmitCode try_commit(const user_t &user, const msgs::SubmitRequest *msg, update_t &upd);
+    msgs::SubmitCode try_commit(const user_ptr &user, const msgs::SubmitRequest *msg, update_t &upd);
 
     /**
      * Serialize the database content to a snapshot.
@@ -123,7 +123,7 @@ class store_t
       SUBTRACT
     };
 
-    struct removed_key_t {
+    struct tombstone_t {
         key_t key;                          // Removed key.
         rev_t rev = 0;                      // Revision when removed.
     };
@@ -131,7 +131,7 @@ class store_t
     using user_map_t = std::map<gto::cstring, std::uint32_t, gto::cstring_compare>;
     using data_map_t = std::map<key_t, value_ptr, gto::cstring_compare>;
     using meta_map_t = std::map<rev_t, meta_ptr>;
-    using rm_queue_t = gto::cqueue<removed_key_t>;
+    using tombstone_queue_t = gto::cqueue<tombstone_t>;
 
   private:  // members
 
@@ -139,8 +139,8 @@ class store_t
     millis_t m_timestamp = millis_t{0};          // Revision timestamp (milliseconds since Unix epoch, UTC).
     meta_map_t m_metas;                          // Metas indexed by revision.
     data_map_t m_data;                           // Key-value data store.
-    user_map_t m_users;                          // Users list (with number of references)
-    rm_queue_t m_removed_keys;                   // List of removed keys (can contain duplicates and reinserted keys)
+    user_map_t m_users;                          // Users list (with number of references, used to unificate user name)
+    tombstone_queue_t m_tombstones;              // List of removed keys (can contain duplicates and reinserted keys)
     store_params_t m_params;                     // Store parameters.
     stats_t m_stats;                             // Store statistics.
     rev_t m_min_rev = 0;                         // Minimum rev with guaranteed tombstone info.
@@ -218,7 +218,7 @@ class store_t
      * Pre-conditions: update is empty.
      * Post-conditions: update has a meta that must be released on error.
      */
-    msgs::SubmitCode validate_commit(const user_t &user, const msgs::SubmitRequest *msg, update_t &upd);
+    msgs::SubmitCode validate_commit(const user_ptr &user, const msgs::SubmitRequest *msg, update_t &upd);
 
     /**
      * Internal function to apply a validated update.
@@ -236,7 +236,7 @@ class store_t
      * 
      * @return Number of tombstones removed.
      */
-    std::uint32_t purge();
+    std::uint32_t purge_tombstones();
 
 };
 

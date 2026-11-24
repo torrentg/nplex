@@ -414,7 +414,7 @@ void nplex::session_t::process_submit_request(const nplex::msgs::SubmitRequest *
         return;
     }
 
-    auto [rc, erev] = m_context->try_commit(req, *m_user);
+    auto [rc, erev] = m_context->try_commit(req, m_user);
 
     send_buffered_msg(
         create_submit_response(

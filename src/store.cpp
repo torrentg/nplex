@@ -115,7 +115,7 @@ bool nplex::store_t::mark_as_removed(const key_t &key, const meta_ptr &meta)
 
     it->second->set_removed();
     it->second->m_meta = meta;
-    m_removed_keys.push({key, meta->rev});
+    m_tombstones.push({key, meta->rev});
 
     return true;
 }
@@ -127,7 +127,7 @@ void nplex::store_t::load(const msgs::Snapshot *snapshot, const user_ptr &user)
     m_data.clear();
     m_metas.clear();
     m_users.clear();
-    m_removed_keys.clear();
+    m_tombstones.clear();
     m_stats = {};
     m_min_rev = 0;
 
@@ -260,9 +260,10 @@ nplex::update_t nplex::store_t::validate_update(const msgs::Update *msg, const u
     return ret;
 }
 
-nplex::msgs::SubmitCode nplex::store_t::try_commit(const user_t &user, const msgs::SubmitRequest *msg, update_t &upd)
+nplex::msgs::SubmitCode nplex::store_t::try_commit(const user_ptr &user, const msgs::SubmitRequest *msg, update_t &upd)
 {
-    assert(user.params.active);
+    if (!user || !user->params.active)
+        throw nplex_exception("Invalid user");
 
     if (!msg)
         return msgs::SubmitCode::INVALID_MESSAGE;
@@ -287,9 +288,9 @@ nplex::msgs::SubmitCode nplex::store_t::try_commit(const user_t &user, const msg
     return rc;
 }
 
-nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_t &user, const msgs::SubmitRequest *msg, update_t &upd)
+nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_ptr &user, const msgs::SubmitRequest *msg, update_t &upd)
 {
-    bool forced = (user.params.can_force && msg->force());
+    bool forced = (user->params.can_force && msg->force());
     std::set<key_t, gto::cstring_compare> keys;
     std::vector<pending_upsert_t> pending_upserts;
     std::vector<key_t> pending_deletes;
@@ -318,12 +319,12 @@ nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_t &user, cons
 
             if (it == m_data.end())
             {
-                if (!user.is_authorized(CRUD_CREATE, keyval->key()->c_str()))
+                if (!user->is_authorized(CRUD_CREATE, keyval->key()->c_str()))
                     return msgs::SubmitCode::REJECTED_PERMISSION;
             }
             else if (it->second->is_removed())
             {
-                if (!user.is_authorized(CRUD_CREATE, keyval->key()->c_str()))
+                if (!user->is_authorized(CRUD_CREATE, keyval->key()->c_str()))
                     return msgs::SubmitCode::REJECTED_PERMISSION;
 
                 if (!forced && it->second->rev() > crev)
@@ -331,7 +332,7 @@ nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_t &user, cons
             }
             else
             {
-                if (!user.is_authorized(CRUD_UPDATE, keyval->key()->c_str()))
+                if (!user->is_authorized(CRUD_UPDATE, keyval->key()->c_str()))
                     return msgs::SubmitCode::REJECTED_PERMISSION;
 
                 if (!forced && it->second->rev() > crev)
@@ -355,7 +356,7 @@ nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_t &user, cons
             if (!key || !is_valid_key(key->string_view()))
                 return msgs::SubmitCode::ERROR_INVALID_KEY;
 
-            if (!user.is_authorized(CRUD_DELETE, key->c_str()))
+            if (!user->is_authorized(CRUD_DELETE, key->c_str()))
                 return msgs::SubmitCode::REJECTED_PERMISSION;
 
             if (keys.contains(key->string_view()))
@@ -402,7 +403,7 @@ nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_t &user, cons
                     continue;
                 }
 
-                if (!user.is_authorized(CRUD_READ, it->first.c_str())) {
+                if (!user->is_authorized(CRUD_READ, it->first.c_str())) {
                     ++it;
                     continue;
                 }
@@ -417,8 +418,8 @@ nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_t &user, cons
 
     // Data validated - filling update
     using namespace std::chrono;
-    millis_t ts = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
-    auto meta = create_meta(m_rev + 1, user.name, msg->tx_type(), ts);
+    millis_t now = duration_cast<millis_t>(system_clock::now().time_since_epoch());
+    auto meta = create_meta(m_rev + 1, user->name, msg->tx_type(), now);
 
     upd.meta = meta;
     upd.upserts.clear();
@@ -448,16 +449,16 @@ void nplex::store_t::apply_update(const update_t &upd)
     for (const auto &[key, value] : upd.upserts)
         upsert_entry(key, value);
 
-    auto num_removed_keys = m_removed_keys.size();
+    auto num_tombstones = m_tombstones.size();
 
     for (const auto &key : upd.deletes)
         mark_as_removed(key, upd.meta);
 
-    if (m_removed_keys.size() > num_removed_keys)
-        purge();
+    if (m_tombstones.size() > num_tombstones)
+        purge_tombstones();
 }
 
-std::uint32_t nplex::store_t::purge()
+std::uint32_t nplex::store_t::purge_tombstones()
 {
     std::uint32_t count = 0;
     rev_t last_purged_rev = 0;
@@ -466,18 +467,18 @@ std::uint32_t nplex::store_t::purge()
         last_purged_rev = it->second->rev();
         update_meta(it->second->m_meta, it->first, meta_e::SUBTRACT);
         m_data.erase(it);
-        m_removed_keys.pop();
+        m_tombstones.pop();
         count++;
     };
 
-    while (!m_removed_keys.empty())
+    while (!m_tombstones.empty())
     {
-        auto [rkey, rrev] = m_removed_keys.front();
+        auto [rkey, rrev] = m_tombstones.front();
         auto it = m_data.find(rkey);
 
         // Security check
         if (it == m_data.end()) {
-            m_removed_keys.pop();
+            m_tombstones.pop();
             count++;
             continue;
         }
@@ -485,7 +486,7 @@ std::uint32_t nplex::store_t::purge()
         // Case: useless entry (modified after deletion)
         if (rrev != it->second->rev()) {
             assert(rrev < it->second->rev());
-            m_removed_keys.pop();
+            m_tombstones.pop();
             count++;
             continue;
         }
@@ -509,7 +510,7 @@ std::uint32_t nplex::store_t::purge()
 
         // Case: max tombstones limit reached (hard)
         // 0 means unlimited tombstones.
-        if (m_params.tombstone_max_entries == 0 || m_removed_keys.size() <= m_params.tombstone_max_entries)
+        if (m_params.tombstone_max_entries == 0 || m_tombstones.size() <= m_params.tombstone_max_entries)
             break;
 
         // Granting a minimum number of revisions before enforcing max_tombstones
