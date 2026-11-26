@@ -52,7 +52,7 @@ nplex::meta_ptr nplex::store_t::create_meta(rev_t rev_, const std::string_view &
         user_it->second++;
     }
 
-    return std::make_shared<meta_t>(meta_t{rev_, std::move(user), ts, type, {}});
+    return gto::make_counted<meta_t>(meta_t{rev_, std::move(user), ts, type, {}});
 }
 
 void nplex::store_t::update_meta(const meta_ptr &meta, const key_t &key, meta_e mode)
@@ -251,7 +251,7 @@ nplex::update_t nplex::store_t::validate_update(const msgs::Update *msg, const u
 
     for (auto &pu : pending_upserts)
     {
-        auto value = std::make_shared<value_t>(std::move(pu.data), meta);
+        auto value = gto::make_counted<value_t>(std::move(pu.data), meta);
         ret.upserts.emplace_back(std::move(pu.key), std::move(value));
     }
 
@@ -427,7 +427,7 @@ nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_ptr &user, co
 
     for (auto &pu : pending_upserts)
     {
-        auto value = std::make_shared<value_t>(std::move(pu.data), meta);
+        auto value = gto::make_counted<value_t>(std::move(pu.data), meta);
         upd.upserts.emplace_back(std::move(pu.key), std::move(value));
     }
 

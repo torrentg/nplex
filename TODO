@@ -21,10 +21,6 @@
 * Modify session
   - Add synced
   - Add lrev
-* Modify store
-  - Add std::map<rev_t, key_t> m_refs and remove meta_t::refs
-  - Add stripped_copy() method (rev, timestamp, data, refs)
-  - Snapshot task receives a store strip_copy() instead of buffer
 * Add Unix Domain Sockets (AF_UNIX) connection
   - Only for administration tasks
   - Add admin messages (schema4)
@@ -35,7 +31,13 @@
   - Support log file rotation
   - Disconnect sessions
   - Terminate server
-* Consider adding support for counted pointers (make_counted, counted_ptr)
-  - meta_ptr
-  - value_ptr
-  - update_ptr
+* Create class gto::flexible_array<T>, compact_vector<T>
+  - sizeof() = 4+4 bytes
+  - N elements preceded by length and capacity (uint32_t)
+  - Supporting most of vector ops (iterators, operators, etc)
+* Modify store
+  - Add std::map<rev_t, gto::flexible_array<key_t>> m_refs and remove meta_t::refs
+  - Use swap-and-pop for efficient key_t removal from m_refs
+  - Convert meta_ptr to meta_ptr<const meta_t>
+  - Add stripped_copy() method (rev, timestamp, data, refs)
+  - Snapshot task receives a store strip_copy() instead of buffer

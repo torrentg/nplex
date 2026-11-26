@@ -2,6 +2,7 @@
 
 #include "buildinfo.hpp"
 #include "cstring.hpp"
+#include "counted_ptr.hpp"
 #include <set>
 #include <vector>
 #include <memory>
@@ -60,15 +61,16 @@ struct meta_t
     std::set<key_t> refs;           //!< Set of keys modified by the transaction.
 };
 
-using meta_ptr = std::shared_ptr<meta_t>;
+//! Pointer to transaction metadata.
+using meta_ptr = gto::counted_ptr<meta_t>;
 
 //! Database value.
 class value_t
 {
   public:
 
-    value_t(const gto::cstring &data, std::shared_ptr<meta_t> meta) : m_data{data}, m_meta{std::move(meta)} {}
-    value_t(gto::cstring &&data, std::shared_ptr<meta_t> meta) : m_data{std::move(data)}, m_meta{std::move(meta)} {}
+    value_t(const gto::cstring &data, meta_ptr meta) : m_data{data}, m_meta{std::move(meta)} {}
+    value_t(gto::cstring &&data, meta_ptr meta) : m_data{std::move(data)}, m_meta{std::move(meta)} {}
 
     const meta_ptr & meta() const { return m_meta; }
     const gto::cstring & data() const { return m_data; }
@@ -101,14 +103,17 @@ class value_t
     }
 };
 
-using value_ptr = std::shared_ptr<value_t>;
+//! Pointer to database value.
+using value_ptr = gto::counted_ptr<value_t>;
 
+//! Database update (aka committed transaction).
 struct update_t {
     meta_ptr meta;
     std::vector<std::pair<key_t, value_ptr>> upserts;
     std::vector<key_t> deletes;
 };
 
+//! Logging levels.
 enum class log_level_e : std::uint8_t {
     TRACE,    // Developper messages
     DEBUG,    // Connection initiated/terminated, data update, sent/recv message (except KEEPALIVE_PUSH), tasks duration
@@ -120,7 +125,7 @@ enum class log_level_e : std::uint8_t {
 
 } // namespace nplex
 
-/**
+/*
  * Flatbuffers library is used extensively in nplex
  * to reduce memory usage and improve serialization performance.
  * Some basic nplex types are flatbuffers types.
@@ -136,6 +141,6 @@ namespace flatbuffers {
 // Flatbuffers namespace alias for convenience.
 namespace fb = flatbuffers;
 
-//! Flatbuffers type aliases for convenience.
+// Flatbuffers type aliases for convenience.
 using DetachedBuffer = flatbuffers::DetachedBuffer;
 using FlatBufferBuilder = flatbuffers::FlatBufferBuilderImpl<false>;

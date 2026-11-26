@@ -184,6 +184,7 @@ lizard -C 20 --language cpp --exclude src/schema.hpp src/*.[ch]pp
 | Library | Description | License |
 |---------|-------------|---------|
 | [FastGlobbing](https://github.com/Robert-van-Engelen/FastGlobbing) | Wildcard pattern matching | CPOL |
+| [counted_ptr](https://github.com/torrentg/counted_ptr) | Reference-counted smart pointer | MIT |
 | [cstring](https://github.com/torrentg/cstring) | Immutable C-string with reference counting | LGPL-3.0 |
 | [journal](https://github.com/torrentg/journal) | Log-structured append-only storage | MIT |
 | [cqueue](https://github.com/torrentg/cqueue) | Circular queue | LGPL-3.0 |
