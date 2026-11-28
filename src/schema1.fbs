@@ -15,7 +15,7 @@ table KeyValue
 table Update
 {
     rev: uint64;                    // Commit revision
-    user: string (required);        // Creator
+    username: string (required);    // Creator
     timestamp: uint64;              // Timestamp
     tx_type: uint32;                // Transaction type (user-defined value)
     upserts: [KeyValue];            // List of creates and updates

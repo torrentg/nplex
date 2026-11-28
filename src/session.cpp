@@ -215,7 +215,7 @@ void nplex::session_t::process_login_request(const msgs::LoginRequest *req)
         return;
     }
 
-    if (!req->user() || !req->password()) {
+    if (!req->username() || !req->password()) {
         send(
             create_login_response(
                 req->cid(), 
@@ -226,7 +226,7 @@ void nplex::session_t::process_login_request(const msgs::LoginRequest *req)
         return;
     }
 
-    auto usr = m_context->get_user(req->user()->str());
+    auto usr = m_context->get_user(req->username()->str());
     if (!usr) {
         send(
             create_login_response(

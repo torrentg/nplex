@@ -1,7 +1,6 @@
 #pragma once
 
 #include "common.hpp"
-#include <chrono>
 
 namespace nplex {
 
@@ -71,7 +70,16 @@ inline bool is_valid_key(const key_t &key) { return is_valid_key(key.view()); }
  * 
  * @return ISO 8601 formatted string.
  */
-std::string to_iso8601(std::chrono::milliseconds ms_since_epoch);
+std::string to_iso8601(millis_t ms_since_epoch);
+
+/**
+ * Get the current UTC time in milliseconds since epoch.
+ * 
+ * @return millis_t Current UTC time in milliseconds since epoch.
+ */
+inline millis_t now() {
+    return duration_cast<millis_t>(std::chrono::system_clock::now().time_since_epoch());
+}
 
 /**
  * Calculate CRC32 checksum.

@@ -24,18 +24,18 @@ static std::vector<nplex::update_t> get_updates(const nplex::snapshot_t &snapsho
 
     std::map<rev_t, update_t> updates;
 
-    for (const auto &[key, value] : snapshot.data)
+    for (const auto &[key, stored_value] : snapshot.data)
     {
         if (user && !user->is_authorized(CRUD_READ, key))
             continue;
 
-        auto rev = value->rev();
+        auto rev = stored_value->rev();
         auto it = updates.find(rev);
 
         if (it == updates.end())
         {
             auto [it_new, inserted] = updates.emplace(rev, update_t{
-                .meta = value->meta(), 
+                .meta = stored_value->meta(), 
                 .upserts = {}, 
                 .deletes = {}
             });
@@ -44,7 +44,7 @@ static std::vector<nplex::update_t> get_updates(const nplex::snapshot_t &snapsho
         }
 
         auto &upserts = it->second.upserts;
-        upserts.push_back({key, value});
+        upserts.push_back({key, stored_value->value()});
     }
 
     std::vector<update_t> result;
@@ -68,10 +68,10 @@ static fb::Offset<nplex::msgs::Update> serialize_update(fb::FlatBufferBuilder &b
 
         auto kv = CreateKeyValue(
             builder, 
-            builder.CreateString(key.c_str(), key.size()),
+            builder.CreateString(key),
             builder.CreateVector(
-                reinterpret_cast<const uint8_t *>(value->data().c_str()), 
-                value->data().size()
+                reinterpret_cast<const uint8_t *>(value.c_str()), 
+                value.size()
             )
         );
 
@@ -92,7 +92,7 @@ static fb::Offset<nplex::msgs::Update> serialize_update(fb::FlatBufferBuilder &b
     return CreateUpdate(
         builder,
         update.meta->rev,
-        builder.CreateString(update.meta->user.c_str(), update.meta->user.size()),
+        builder.CreateString(update.meta->username),
         static_cast<std::uint64_t>(update.meta->timestamp.count()),
         update.meta->tx_type,
         (upserts.empty() ? 0 : builder.CreateVector(upserts)),
@@ -118,7 +118,7 @@ static fb::Offset<nplex::msgs::Update> serialize_update(fb::FlatBufferBuilder &b
 
             auto offset = CreateKeyValue(
                 builder, 
-                builder.CreateString(kv->key()->c_str(), kv->key()->size()),
+                builder.CreateString(kv->key()),
                 builder.CreateVector(kv->value()->data(), kv->value()->size())
             );
 
@@ -136,7 +136,7 @@ static fb::Offset<nplex::msgs::Update> serialize_update(fb::FlatBufferBuilder &b
             if (user && !user->is_authorized(CRUD_READ, key->c_str()))
                 continue;
 
-            auto offset = builder.CreateString(key->c_str(), key->size());
+            auto offset = builder.CreateString(key);
 
             deletes.push_back(offset);
         }
@@ -148,7 +148,7 @@ static fb::Offset<nplex::msgs::Update> serialize_update(fb::FlatBufferBuilder &b
     return CreateUpdate(
         builder,
         update->rev(),
-        builder.CreateString(update->user()->c_str(), update->user()->size()),
+        builder.CreateString(update->username()),
         update->timestamp(),
         update->tx_type(),
         (upserts.empty() ? 0 : builder.CreateVector(upserts)),
@@ -568,7 +568,7 @@ bool nplex::updates_push_builder_t::append(const update_t &update)
     assert(m_last_rev < rev);
 
     // User commits are always notified, even when empty
-    const auto &user = ((m_user && update.meta->user.view() != m_user->name) ? m_user: nullptr);
+    const auto &user = ((m_user && update.meta->username != m_user->name) ? m_user: nullptr);
 
     auto off = ::serialize_update(m_builder, update, user);
 
@@ -592,7 +592,7 @@ bool nplex::updates_push_builder_t::append(const msgs::Update *update)
     assert(m_last_rev < rev);
 
     // User commits are always notified, even when empty
-    const auto &user = ((m_user && update->user()->string_view() != m_user->name) ? m_user : nullptr);
+    const auto &user = ((m_user && update->username()->string_view() != m_user->name.view()) ? m_user : nullptr);
 
     auto off = ::serialize_update(m_builder, update, user);
 

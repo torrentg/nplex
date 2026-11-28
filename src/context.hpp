@@ -26,6 +26,7 @@ using session_ptr = std::shared_ptr<session_t>;
 
 struct context_t : public std::enable_shared_from_this<context_t>
 {
+    using user_map_t = std::map<username_t, user_ptr, gto::cstring_compare>;
     using session_set_t = std::set<session_ptr, shared_ptr_compare<session_t>>;
     using task_callback_f = std::function<void(task_t *)>;
 
@@ -53,10 +54,6 @@ struct context_t : public std::enable_shared_from_this<context_t>
     void on_updates_written_2();
     std::tuple<msgs::SubmitCode, rev_t> try_commit(const msgs::SubmitRequest *msg, const user_ptr &user);
     std::span<const update_t> get_cached_updates(rev_t from_rev, std::size_t max_bytes) const;
-
-  private: // types
-
-    using user_map_t = std::map<std::string, user_ptr>;
 
   private: // members
 

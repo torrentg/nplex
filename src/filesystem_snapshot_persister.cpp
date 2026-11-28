@@ -2,8 +2,7 @@
 #include "snapshot_catalog.hpp"
 #include "exception.hpp"
 #include "logger.hpp"
-#include <filesystem>
-#include <map>
+#include "utils.hpp"
 
 namespace fs = std::filesystem;
 
@@ -117,7 +116,7 @@ void nplex::filesystem_snapshot_persister_t::write_snapshot(rev_t rev, millis_t 
 bool nplex::filesystem_snapshot_persister_t::update_catalog(bool force)
 {
     std::lock_guard lock(m_catalog_mutex);
-    auto now = std::chrono::duration_cast<millis_t>(std::chrono::system_clock::now().time_since_epoch());
+    auto now = nplex::now();
 
     // Skip catalog update if it was recently updated
     if (!force && m_last_catalog_update != millis_t::zero() && now < m_last_catalog_update + MIN_CATALOG_UPDATE_INTERVAL)

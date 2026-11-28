@@ -40,24 +40,27 @@ static bool is_valid_user(const nplex::user_t &user)
     return true;
 }
 
-static std::map<std::string, nplex::user_ptr> create_users(const std::vector<nplex::user_t> &users)
+static nplex::context_t::user_map_t create_users_map(const std::vector<nplex::user_t> &users)
 {
     using namespace nplex;
 
-    std::map<std::string, nplex::user_ptr> ret;
-    std::vector<std::string> valid_users;
+    context_t::user_map_t ret;
+    std::vector<username_t> valid_users;
 
     for (const auto &user : users)
     {
         if (!::is_valid_user(user))
             continue;
 
+        if (ret.contains(user.name))
+            throw nplex_exception(fmt::format("Duplicate user: {}", user.name));
+
         ret[user.name] = std::make_shared<user_t>(user);
         valid_users.push_back(user.name);
     }
 
     if (ret.empty())
-        throw nplex_exception("No valid users found");
+        throw nplex_exception("No valid users");
 
     LOG_INFO("Users: [{}]", fmt::join(valid_users, ", "));
 
@@ -140,7 +143,7 @@ static void cb_async_updates_result(uv_async_t *handle)
 
 nplex::context_t::context_t(uv_loop_t *loop, const config_t &config) : m_loop(loop)
 {
-    m_users = ::create_users(config.users);
+    m_users = ::create_users_map(config.users);
 
     m_params = config.context;
     assert(m_params.max_sessions);
@@ -401,7 +404,7 @@ std::tuple<nplex::msgs::SubmitCode, nplex::rev_t> nplex::context_t::try_commit(c
     }
 
     assert(m_store.rev() == update.meta->rev);
-    LOG_DEBUG("Commit accepted: rev={}, user={}, tx-type={}", update.meta->rev, update.meta->user.c_str(), update.meta->tx_type);
+    LOG_DEBUG("Commit accepted: rev={}, user={}, tx-type={}", update.meta->rev, update.meta->username, update.meta->tx_type);
 
     auto erev = update.meta->rev;
     persist(std::move(update));

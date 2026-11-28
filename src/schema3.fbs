@@ -54,7 +54,7 @@ table Acl
 
 table Session
 {
-    user: string (required);        // User name
+    username: string (required);    // User name
     address: string (required);     // Peer address (IP)
     code: ExitCode;                 // Exit code (0 means connected)
     since: uint64;                  // Connection start (UTC millis since epoch)
@@ -68,7 +68,7 @@ table LoginRequest
 {
     cid: uint64;                    // Correlation id (used to match responses to requests)
     schema: uint32;                 // First 4 bytes of the sha256-hash of the schema3.bfbs file
-    user: string (required);        // User name
+    username: string (required);    // User name
     password: string (required);    // User password
 }
 

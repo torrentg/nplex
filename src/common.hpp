@@ -42,20 +42,26 @@
 
 namespace nplex {
 
-//! Database revision number.
+//! Database revision (incremental number).
 using rev_t = std::uint64_t;
 
-//! Database key type.
+//! Database key type (string).
 using key_t = gto::cstring;
+
+//! Database value type (binary content).
+using value_t = gto::cstring;
 
 //! Database timestamps (milliseconds from epoch time).
 using millis_t = std::chrono::milliseconds;
 
-//! Transaction metadata.
+//! User name (string),
+using username_t = gto::cstring;
+
+//! Transaction or update metadata.
 struct meta_t
 {
     rev_t rev = 0;                  //!< Revision at transaction creation.
-    gto::cstring user;              //!< Transaction creator.
+    username_t username;            //!< Transaction creator.
     millis_t timestamp;             //!< Creation timestamp (milliseconds since Unix epoch, UTC).
     std::uint32_t tx_type = 0;      //!< Transaction type (user-defined).
 };
@@ -64,42 +70,42 @@ struct meta_t
 using meta_ptr = gto::counted_ptr<const meta_t>;
 
 //! Database value.
-class value_t
+class stored_value_t
 {
   public:
 
-    value_t(const gto::cstring &data, meta_ptr meta) : m_data{data}, m_meta{std::move(meta)} {}
-    value_t(gto::cstring &&data, meta_ptr meta) : m_data{std::move(data)}, m_meta{std::move(meta)} {}
+    stored_value_t(const value_t &value, meta_ptr meta) : m_value{value}, m_meta{std::move(meta)} {}
+    stored_value_t(value_t &&value, meta_ptr meta) : m_value{std::move(value)}, m_meta{std::move(meta)} {}
 
+    // Getters
     const meta_ptr & meta() const { return m_meta; }
-    const gto::cstring & data() const { return m_data; }
+    const value_t & value() const { return m_value; }
 
+    // Accessors
     rev_t rev() const { return (m_meta ? m_meta->rev : 0); }
-    const gto::cstring & user() const { return (m_meta ? m_meta->user : empty_user()); }
+    const username_t & username() const { return (m_meta ? m_meta->username : empty_username()); }
     millis_t timestamp() const { return (m_meta ? m_meta->timestamp : millis_t{0}); }
     std::uint32_t tx_type() const { return (m_meta ? m_meta->tx_type : 0); }
 
   private:
 
-    friend class store_t;
-
-    gto::cstring m_data;
+    value_t m_value;
     meta_ptr m_meta;
 
-    static const gto::cstring &empty_user()
+    static const username_t &empty_username()
     {
-        static const gto::cstring value = "";
+        static const username_t value = "";
         return value;
     }
 };
 
 //! Pointer to database value.
-using value_ptr = gto::counted_ptr<const value_t>;
+using stored_value_ptr = gto::counted_ptr<const stored_value_t>;
 
 //! Database update (aka committed transaction).
 struct update_t {
     meta_ptr meta;
-    std::vector<std::pair<key_t, value_ptr>> upserts;
+    std::vector<std::pair<key_t, value_t>> upserts;
     std::vector<key_t> deletes;
 };
 
@@ -108,7 +114,7 @@ struct snapshot_t
 {
     rev_t rev = 0;
     millis_t timestamp = millis_t{0};
-    std::map<key_t, value_ptr, gto::cstring_compare> data;
+    std::map<key_t, stored_value_ptr> data;
 };
 
 //! Logging levels.

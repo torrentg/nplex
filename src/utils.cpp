@@ -6,6 +6,8 @@
 #include <arpa/inet.h>
 #include <nmmintrin.h>
 
+using namespace std::chrono;
+
 std::uint32_t nplex::ntohl_ptr(const char *ptr)
 {
     return ntohl(*reinterpret_cast<const std::uint32_t *>(ptr));
@@ -83,7 +85,7 @@ std::uint8_t nplex::parse_crud(const std::string_view &str)
     return crud;
 }
 
-std::string nplex::to_iso8601(std::chrono::milliseconds ms_since_epoch)
+std::string nplex::to_iso8601(millis_t ms_since_epoch)
 {
     auto total_secs = ms_since_epoch.count() / 1000;
     auto millis     = ms_since_epoch.count() % 1000;
@@ -192,15 +194,15 @@ std::size_t nplex::estimate_bytes(const update_t &update)
     bytes += sizeof(std::uint32_t);             // type
     bytes += sizeof(std::uint32_t);             // num upserts
     bytes += sizeof(std::uint32_t);             // num deletes
-    bytes += sizeof(std::uint32_t);             // user length
-    bytes += update.meta->user.size();          // user
+    bytes += sizeof(std::uint32_t);             // username length
+    bytes += update.meta->username.size();      // username
 
     for (const auto &pair : update.upserts)
     {
         bytes += sizeof(std::uint32_t);         // key length
         bytes += sizeof(std::uint32_t);         // value length
         bytes += pair.first.size();             // key data
-        bytes += pair.second->data().size();    // value data
+        bytes += pair.second.size();            // value data
     }
 
     for (const auto &key : update.deletes)

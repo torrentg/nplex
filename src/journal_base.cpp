@@ -126,8 +126,7 @@ nplex::journal_file_t::journal_file_t(const fs::path &filepath)
 
     journal = open_journal_file(filepath, LDB_READONLY | LDB_RECOVER | LDB_CHECK);
 
-    auto now = std::chrono::duration_cast<millis_t>(std::chrono::system_clock::now().time_since_epoch());
-    last_read = now;
+    last_read = now();
 
     auto range = journal->range();
     min_rev = range.first;

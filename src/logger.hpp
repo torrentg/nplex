@@ -23,6 +23,16 @@ void reopen_logger();
 
 } // namespace nplex
 
+/** 
+ * Formats a gto::cstring as a std::string_view for use with fmt.
+ */
+template<>
+struct fmt::formatter<gto::cstring> : fmt::formatter<std::string_view> {
+    auto format(const gto::cstring &s, format_context &ctx) const {
+        return fmt::formatter<std::string_view>::format(s.view(), ctx);
+    }
+};
+
 #define LOG_TRACE(...) do { \
     if (spdlog::should_log(spdlog::level::trace)) \
         SPDLOG_TRACE(__VA_ARGS__); \

@@ -10,29 +10,24 @@
 // Internal to compilation unit
 // ==========================================================
 
-static const gto::cstring REMOVED_VALUE = "<REMOVED>";
+static const nplex::value_t REMOVED_VALUE = "<REMOVED>";
 
-struct pending_upsert_t {
-    nplex::key_t key;
-    gto::cstring data;
-};
-
-static gto::cstring create_cstring(const fb::Vector<std::uint8_t> *value)
+static nplex::value_t create_value(const fb::Vector<std::uint8_t> *value)
 {
     if (!value)
         return {};
 
-    return gto::cstring{reinterpret_cast<const char *>(value->data()), static_cast<std::size_t>(value->size())};
+    return nplex::value_t{reinterpret_cast<const char *>(value->data()), static_cast<std::size_t>(value->size())};
 }
 
-static const void * address_of(const gto::cstring &str)
+static const void * address_of(const nplex::value_t &str)
 {
     return static_cast<const void *>(str.c_str());
 }
 
-static bool is_removed(const nplex::value_ptr &value)
+static bool is_removed(const nplex::stored_value_ptr &stored_value)
 {
-    return (value && ::address_of(value->data()) == ::address_of(REMOVED_VALUE));
+    return (stored_value && ::address_of(stored_value->value()) == ::address_of(REMOVED_VALUE));
 }
 
 // ==========================================================
@@ -47,22 +42,27 @@ void nplex::store_t::config(const store_params_t &params) noexcept
     m_params = params;
 }
 
-nplex::meta_ptr nplex::store_t::create_meta(rev_t rev_, std::string_view username, std::uint32_t type, millis_t ts)
+nplex::username_t nplex::store_t::get_unified_username(std::string_view username)
 {
-    gto::cstring user;
-    auto it = m_users.find(username);
+    auto it = m_usernames.find(username);
 
-    if (it == m_users.end())
+    if (it == m_usernames.end())
     {
-        user = key_t{username};
-        m_users.emplace(user);
+        username_t unified_username{username};
+        m_usernames.emplace(unified_username);
+        return unified_username;
     }
     else
     {
-        user = *it;
+        return *it;
     }
+}
 
-    return gto::make_counted<const meta_t>(meta_t{rev_, std::move(user), ts, type});
+nplex::meta_ptr nplex::store_t::create_meta(rev_t rev_, std::string_view username, std::uint32_t type, millis_t ts)
+{
+    return gto::make_counted<const meta_t>(
+                    meta_t{rev_, get_unified_username(username), ts, type}
+                );
 }
 
 void nplex::store_t::mark_as_removed(const std::vector<key_t> &keys, const meta_ptr &meta)
@@ -71,7 +71,7 @@ void nplex::store_t::mark_as_removed(const std::vector<key_t> &keys, const meta_
         return;
 
     auto num_tombstones = m_tombstones.size();
-    auto removed_value = gto::make_counted<const value_t>(REMOVED_VALUE, meta);
+    auto removed_value = gto::make_counted<const stored_value_t>(REMOVED_VALUE, meta);
     auto rev_ = meta->rev;
 
     for (const auto &key : keys)
@@ -94,7 +94,7 @@ void nplex::store_t::load(const msgs::Snapshot *snapshot, const user_ptr &user)
     m_rev = 0;
     m_timestamp = millis_t{0};
     m_data.clear();
-    m_users.clear();
+    m_usernames.clear();
     m_tombstones.clear();
     m_min_rev = 0;
     m_stats = {};
@@ -149,8 +149,7 @@ nplex::update_t nplex::store_t::update(const msgs::Update *msg, const user_ptr &
 
 nplex::update_t nplex::store_t::validate_update(const msgs::Update *msg, const user_ptr &user)
 {
-    std::vector<pending_upsert_t> pending_upserts;
-    std::vector<key_t> pending_deletes;
+    update_t upd;
     auto upserts = msg->upserts();
     auto deletes = msg->deletes();
     rev_t urev = msg->rev();
@@ -158,7 +157,7 @@ nplex::update_t nplex::store_t::validate_update(const msgs::Update *msg, const u
     if (urev <= m_rev)
         throw nplex_exception("Update out of order (r{})", urev);
 
-    if (!msg->user() || msg->user()->size() == 0)
+    if (!msg->username() || msg->username()->size() == 0)
         throw nplex_exception("Malformed update message (r{})", urev);
 
     if (upserts)
@@ -173,13 +172,13 @@ nplex::update_t nplex::store_t::validate_update(const msgs::Update *msg, const u
             if (user && !user->is_authorized(CRUD_READ, key))
                 continue;
 
-            gto::cstring data = ::create_cstring(keyval->value());
+            value_t value = ::create_value(keyval->value());
 
             // Reuse existing key storage when possible
             auto it = m_data.find(key);
             key_t ckey = (it != m_data.end() ? it->first : key_t{key});
 
-            pending_upserts.push_back(pending_upsert_t{std::move(ckey), std::move(data)});
+            upd.upserts.push_back({std::move(ckey), std::move(value)});
         }
     }
 
@@ -198,31 +197,19 @@ nplex::update_t nplex::store_t::validate_update(const msgs::Update *msg, const u
             if (it == m_data.end())
                 continue;
 
-            pending_deletes.emplace_back(it->first);
+            upd.deletes.emplace_back(it->first);
         }
     }
 
-    update_t ret;
-
     // No visible modifications for this user -> return empty update
     // We do this to avoid create meta info (user, etc)
-    if (pending_upserts.empty() && pending_deletes.empty())
-        return ret;
+    if (upd.upserts.empty() && upd.deletes.empty())
+        return upd;
 
-    auto meta = create_meta(urev, msg->user()->string_view(), msg->tx_type(), millis_t{msg->timestamp()});
-    ret.meta = meta;
+    auto meta = create_meta(urev, msg->username()->string_view(), msg->tx_type(), millis_t{msg->timestamp()});
+    upd.meta = meta;
 
-    ret.upserts.reserve(pending_upserts.size());
-
-    for (auto &pu : pending_upserts)
-    {
-        auto value = gto::make_counted<const value_t>(std::move(pu.data), meta);
-        ret.upserts.emplace_back(std::move(pu.key), std::move(value));
-    }
-
-    ret.deletes = std::move(pending_deletes);
-
-    return ret;
+    return upd;
 }
 
 nplex::msgs::SubmitCode nplex::store_t::try_commit(const user_ptr &user, const msgs::SubmitRequest *msg, update_t &upd)
@@ -256,9 +243,9 @@ nplex::msgs::SubmitCode nplex::store_t::try_commit(const user_ptr &user, const m
 nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_ptr &user, const msgs::SubmitRequest *msg, update_t &upd)
 {
     bool forced = (user->params.can_force && msg->force());
-    std::set<key_t, gto::cstring_compare> keys;
-    std::vector<pending_upsert_t> pending_upserts;
-    std::vector<key_t> pending_deletes;
+    std::set<key_t> keys;
+
+    upd = update_t{};
 
     auto upserts = msg->upserts();
     auto deletes = msg->deletes();
@@ -303,9 +290,9 @@ nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_ptr &user, co
             }
 
             key_t key = (it != m_data.end() ? it->first : key_t{keyval->key()->string_view()});
-            auto data = ::create_cstring(keyval->value());
+            auto value = ::create_value(keyval->value());
 
-            pending_upserts.push_back(pending_upsert_t{key, std::move(data)});
+            upd.upserts.push_back({std::move(key), std::move(value)});
             keys.insert(std::move(key));
         }
     }
@@ -331,12 +318,12 @@ nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_ptr &user, co
             if (!forced && it->second->rev() > crev)
                 return msgs::SubmitCode::REJECTED_INTEGRITY;
 
-            pending_deletes.emplace_back(it->first);
+            upd.deletes.emplace_back(it->first);
             keys.insert(it->first);
         }
     }
 
-    if (pending_upserts.empty() && pending_deletes.empty() && !forced)
+    if (!forced && upd.upserts.empty() && upd.deletes.empty())
         return msgs::SubmitCode::NO_MODIFICATIONS;
 
     if (ensures)
@@ -376,21 +363,9 @@ nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_ptr &user, co
     }
 
     // Data validated - filling update
-    using namespace std::chrono;
-    millis_t now = duration_cast<millis_t>(system_clock::now().time_since_epoch());
-    auto meta = create_meta(m_rev + 1, user->name, msg->tx_type(), now);
+    auto meta = create_meta(m_rev + 1, user->name.view(), msg->tx_type(), now());
 
     upd.meta = meta;
-    upd.upserts.clear();
-    upd.upserts.reserve(pending_upserts.size());
-
-    for (auto &pu : pending_upserts)
-    {
-        auto value = gto::make_counted<const value_t>(std::move(pu.data), meta);
-        upd.upserts.emplace_back(std::move(pu.key), std::move(value));
-    }
-
-    upd.deletes = std::move(pending_deletes);
 
     return msgs::SubmitCode::ACCEPTED;
 }
@@ -404,8 +379,10 @@ void nplex::store_t::apply_update(const update_t &upd)
     m_stats.bytes += estimate_bytes(upd);
     m_stats.count++;
 
-    for (const auto &[key, value] : upd.upserts)
-        m_data.insert_or_assign(key, value);
+    for (const auto &[key, value] : upd.upserts) {
+        auto entry = make_counted<const stored_value_t>(value, upd.meta);
+        m_data.insert_or_assign(key, std::move(entry));
+    }
 
     mark_as_removed(upd.deletes, upd.meta);
 }

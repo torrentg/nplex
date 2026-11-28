@@ -13,7 +13,7 @@ struct acl_t
 
 struct user_t
 {
-    std::string name;                       // User name.
+    username_t name;                        // User name.
     std::string password;                   // User password.
     std::vector<acl_t> permissions;         // List of permissions.
     std::uint32_t num_connections = 0;      // Number of active connections.

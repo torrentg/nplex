@@ -31,5 +31,4 @@
   - Support log file rotation
   - Disconnect sessions
   - Terminate server
-* Considere update_t::upserts as std::vector<std::pair<key_t, gto::cstring>> ?
 * Rename ensures to preconditions ?

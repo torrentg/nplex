@@ -122,16 +122,16 @@ class store_t
         rev_t rev = 0;                          // Revision when removed.
     };
 
-    using data_map_t = std::map<key_t, value_ptr, gto::cstring_compare>;                // key-value data store
-    using user_set_t = std::set<gto::cstring, gto::cstring_compare>;                    // set of usernames
-    using tombstone_queue_t = gto::cqueue<tombstone_t>;                                 // queue of removed keys
+    using data_map_t = std::map<key_t, stored_value_ptr, gto::cstring_compare>;   // Key-value data store
+    using username_set_t = std::set<username_t, gto::cstring_compare>;            // Set of usernames
+    using tombstone_queue_t = gto::cqueue<tombstone_t>;                           // Queue of removed keys
 
   private:  // members
 
     rev_t m_rev = 0;                            // Current revision.
     millis_t m_timestamp = millis_t{0};         // Revision timestamp (milliseconds since Unix epoch, UTC).
     data_map_t m_data;                          // Key-value data store.
-    user_set_t m_users;                         // Users list (used to unificate user names).
+    username_set_t m_usernames;                 // Usernames list (used to unificate user names references).
     tombstone_queue_t m_tombstones;             // List of removed keys (can contain duplicates and reinserted keys).
 
     rev_t m_min_rev = 0;                        // Minimum rev with guaranteed tombstone info.
@@ -139,6 +139,15 @@ class store_t
     stats_t m_stats;                            // Store statistics.
 
   private: // methods
+
+    /**
+     * Get a unified username.
+     * 
+     * @param[in] username User name to unify.
+     * 
+     * @return Unified username.
+     */
+    username_t get_unified_username(std::string_view username);
 
     /**
      * Creates an update metadata object.
@@ -152,7 +161,7 @@ class store_t
      * @return The inserted metadata.
      */
     meta_ptr create_meta(rev_t rev_, std::string_view username, std::uint32_t type, millis_t ts);
-
+    
     /**
      * Mark entries as deleted.
      * 

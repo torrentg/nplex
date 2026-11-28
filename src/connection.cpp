@@ -257,8 +257,7 @@ nplex::connection_s::connection_s(session_t *session, uv_stream_t *stream)
 
     m_addr = addr_t(addr_str);
 
-    using namespace std::chrono;
-    m_stats.time0 = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
+    m_stats.time0 = now();
 
     return;
 
@@ -279,8 +278,7 @@ void nplex::connection_s::disconnect(int rc)
     if (!m_error)
         m_error = rc;
 
-    using namespace std::chrono;
-    m_stats.time1 = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
+    m_stats.time1 = now();
 
     if (m_timer_disconnect && !uv_is_closing(get_handle(m_timer_disconnect))) {
         uv_timer_stop(m_timer_disconnect);

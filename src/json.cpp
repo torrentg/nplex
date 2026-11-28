@@ -139,9 +139,9 @@ static void to_json(const Update *upd, std::string &out)
     json_append_number(upd->rev(), out);
     out += ",";
 
-    json_append_text("user", out);
+    json_append_text("username", out);
     out += ":";
-    json_append_escaped_text(upd->user(), out);
+    json_append_escaped_text(upd->username(), out);
     out += ",";
 
     json_append_text("timestamp", out);

@@ -239,7 +239,7 @@ void nplex::journal_updates_persister_t::write_updates(const std::span<update_en
 void nplex::journal_updates_persister_t::maintenance()
 {
     std::lock_guard lock(m_catalog_mutex);
-    auto now = std::chrono::duration_cast<millis_t>(std::chrono::system_clock::now().time_since_epoch());
+    auto now = nplex::now();
 
     for (auto &item : m_catalog)
     {
@@ -255,7 +255,7 @@ void nplex::journal_updates_persister_t::maintenance()
 bool nplex::journal_updates_persister_t::update_catalog(bool force)
 {
     std::lock_guard lock(m_catalog_mutex);
-    auto now = std::chrono::duration_cast<millis_t>(std::chrono::system_clock::now().time_since_epoch());
+    auto now = nplex::now();
 
     // Skip catalog update if it was recently updated
     if (!force && m_last_catalog_update != millis_t::zero() && now < m_last_catalog_update + MIN_CATALOG_UPDATE_INTERVAL)
@@ -330,8 +330,7 @@ nplex::journal_ptr nplex::journal_updates_persister_t::get_journal_from_catalog(
         }
     }
 
-    auto now = std::chrono::duration_cast<millis_t>(std::chrono::system_clock::now().time_since_epoch());
-    segment.last_read = now;
+    segment.last_read = now();
 
     LOG_TRACE("get_journal(r{}): name={}, range=[{}-{}]", 
         rev, segment.file_name, segment.min_rev, segment.max_rev);

@@ -554,7 +554,7 @@ struct LoginRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_CID = 4,
     VT_SCHEMA = 6,
-    VT_USER = 8,
+    VT_USERNAME = 8,
     VT_PASSWORD = 10
   };
   uint64_t cid() const {
@@ -563,8 +563,8 @@ struct LoginRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   uint32_t schema() const {
     return GetField<uint32_t>(VT_SCHEMA, 0);
   }
-  const ::flatbuffers::String *user() const {
-    return GetPointer<const ::flatbuffers::String *>(VT_USER);
+  const ::flatbuffers::String *username() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_USERNAME);
   }
   const ::flatbuffers::String *password() const {
     return GetPointer<const ::flatbuffers::String *>(VT_PASSWORD);
@@ -574,8 +574,8 @@ struct LoginRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     return VerifyTableStart(verifier) &&
            VerifyField<uint64_t>(verifier, VT_CID, 8) &&
            VerifyField<uint32_t>(verifier, VT_SCHEMA, 4) &&
-           VerifyOffsetRequired(verifier, VT_USER) &&
-           verifier.VerifyString(user()) &&
+           VerifyOffsetRequired(verifier, VT_USERNAME) &&
+           verifier.VerifyString(username()) &&
            VerifyOffsetRequired(verifier, VT_PASSWORD) &&
            verifier.VerifyString(password()) &&
            verifier.EndTable();
@@ -592,8 +592,8 @@ struct LoginRequestBuilder {
   void add_schema(uint32_t schema) {
     fbb_.AddElement<uint32_t>(LoginRequest::VT_SCHEMA, schema, 0);
   }
-  void add_user(::flatbuffers::Offset<::flatbuffers::String> user) {
-    fbb_.AddOffset(LoginRequest::VT_USER, user);
+  void add_username(::flatbuffers::Offset<::flatbuffers::String> username) {
+    fbb_.AddOffset(LoginRequest::VT_USERNAME, username);
   }
   void add_password(::flatbuffers::Offset<::flatbuffers::String> password) {
     fbb_.AddOffset(LoginRequest::VT_PASSWORD, password);
@@ -605,7 +605,7 @@ struct LoginRequestBuilder {
   ::flatbuffers::Offset<LoginRequest> Finish() {
     const auto end = fbb_.EndTable(start_);
     auto o = ::flatbuffers::Offset<LoginRequest>(end);
-    fbb_.Required(o, LoginRequest::VT_USER);
+    fbb_.Required(o, LoginRequest::VT_USERNAME);
     fbb_.Required(o, LoginRequest::VT_PASSWORD);
     return o;
   }
@@ -615,12 +615,12 @@ inline ::flatbuffers::Offset<LoginRequest> CreateLoginRequest(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     uint64_t cid = 0,
     uint32_t schema = 0,
-    ::flatbuffers::Offset<::flatbuffers::String> user = 0,
+    ::flatbuffers::Offset<::flatbuffers::String> username = 0,
     ::flatbuffers::Offset<::flatbuffers::String> password = 0) {
   LoginRequestBuilder builder_(_fbb);
   builder_.add_cid(cid);
   builder_.add_password(password);
-  builder_.add_user(user);
+  builder_.add_username(username);
   builder_.add_schema(schema);
   return builder_.Finish();
 }
@@ -634,15 +634,15 @@ inline ::flatbuffers::Offset<LoginRequest> CreateLoginRequestDirect(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     uint64_t cid = 0,
     uint32_t schema = 0,
-    const char *user = nullptr,
+    const char *username = nullptr,
     const char *password = nullptr) {
-  auto user__ = user ? _fbb.CreateString(user) : 0;
+  auto username__ = username ? _fbb.CreateString(username) : 0;
   auto password__ = password ? _fbb.CreateString(password) : 0;
   return nplex::msgs::CreateLoginRequest(
       _fbb,
       cid,
       schema,
-      user__,
+      username__,
       password__);
 }
 
@@ -1111,14 +1111,14 @@ struct Session FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef SessionBuilder Builder;
   struct Traits;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_USER = 4,
+    VT_USERNAME = 4,
     VT_ADDRESS = 6,
     VT_CODE = 8,
     VT_SINCE = 10,
     VT_UNTIL = 12
   };
-  const ::flatbuffers::String *user() const {
-    return GetPointer<const ::flatbuffers::String *>(VT_USER);
+  const ::flatbuffers::String *username() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_USERNAME);
   }
   const ::flatbuffers::String *address() const {
     return GetPointer<const ::flatbuffers::String *>(VT_ADDRESS);
@@ -1135,8 +1135,8 @@ struct Session FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   template <bool B = false>
   bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyOffsetRequired(verifier, VT_USER) &&
-           verifier.VerifyString(user()) &&
+           VerifyOffsetRequired(verifier, VT_USERNAME) &&
+           verifier.VerifyString(username()) &&
            VerifyOffsetRequired(verifier, VT_ADDRESS) &&
            verifier.VerifyString(address()) &&
            VerifyField<int8_t>(verifier, VT_CODE, 1) &&
@@ -1150,8 +1150,8 @@ struct SessionBuilder {
   typedef Session Table;
   ::flatbuffers::FlatBufferBuilder &fbb_;
   ::flatbuffers::uoffset_t start_;
-  void add_user(::flatbuffers::Offset<::flatbuffers::String> user) {
-    fbb_.AddOffset(Session::VT_USER, user);
+  void add_username(::flatbuffers::Offset<::flatbuffers::String> username) {
+    fbb_.AddOffset(Session::VT_USERNAME, username);
   }
   void add_address(::flatbuffers::Offset<::flatbuffers::String> address) {
     fbb_.AddOffset(Session::VT_ADDRESS, address);
@@ -1172,7 +1172,7 @@ struct SessionBuilder {
   ::flatbuffers::Offset<Session> Finish() {
     const auto end = fbb_.EndTable(start_);
     auto o = ::flatbuffers::Offset<Session>(end);
-    fbb_.Required(o, Session::VT_USER);
+    fbb_.Required(o, Session::VT_USERNAME);
     fbb_.Required(o, Session::VT_ADDRESS);
     return o;
   }
@@ -1180,7 +1180,7 @@ struct SessionBuilder {
 
 inline ::flatbuffers::Offset<Session> CreateSession(
     ::flatbuffers::FlatBufferBuilder &_fbb,
-    ::flatbuffers::Offset<::flatbuffers::String> user = 0,
+    ::flatbuffers::Offset<::flatbuffers::String> username = 0,
     ::flatbuffers::Offset<::flatbuffers::String> address = 0,
     nplex::msgs::ExitCode code = nplex::msgs::ExitCode::CONNECTED,
     uint64_t since = 0,
@@ -1189,7 +1189,7 @@ inline ::flatbuffers::Offset<Session> CreateSession(
   builder_.add_until(until);
   builder_.add_since(since);
   builder_.add_address(address);
-  builder_.add_user(user);
+  builder_.add_username(username);
   builder_.add_code(code);
   return builder_.Finish();
 }
@@ -1201,16 +1201,16 @@ struct Session::Traits {
 
 inline ::flatbuffers::Offset<Session> CreateSessionDirect(
     ::flatbuffers::FlatBufferBuilder &_fbb,
-    const char *user = nullptr,
+    const char *username = nullptr,
     const char *address = nullptr,
     nplex::msgs::ExitCode code = nplex::msgs::ExitCode::CONNECTED,
     uint64_t since = 0,
     uint64_t until = 0) {
-  auto user__ = user ? _fbb.CreateString(user) : 0;
+  auto username__ = username ? _fbb.CreateString(username) : 0;
   auto address__ = address ? _fbb.CreateString(address) : 0;
   return nplex::msgs::CreateSession(
       _fbb,
-      user__,
+      username__,
       address__,
       code,
       since,
@@ -1878,7 +1878,7 @@ struct Update FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   struct Traits;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_REV = 4,
-    VT_USER = 6,
+    VT_USERNAME = 6,
     VT_TIMESTAMP = 8,
     VT_TX_TYPE = 10,
     VT_UPSERTS = 12,
@@ -1887,8 +1887,8 @@ struct Update FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   uint64_t rev() const {
     return GetField<uint64_t>(VT_REV, 0);
   }
-  const ::flatbuffers::String *user() const {
-    return GetPointer<const ::flatbuffers::String *>(VT_USER);
+  const ::flatbuffers::String *username() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_USERNAME);
   }
   uint64_t timestamp() const {
     return GetField<uint64_t>(VT_TIMESTAMP, 0);
@@ -1906,8 +1906,8 @@ struct Update FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint64_t>(verifier, VT_REV, 8) &&
-           VerifyOffsetRequired(verifier, VT_USER) &&
-           verifier.VerifyString(user()) &&
+           VerifyOffsetRequired(verifier, VT_USERNAME) &&
+           verifier.VerifyString(username()) &&
            VerifyField<uint64_t>(verifier, VT_TIMESTAMP, 8) &&
            VerifyField<uint32_t>(verifier, VT_TX_TYPE, 4) &&
            VerifyOffset(verifier, VT_UPSERTS) &&
@@ -1927,8 +1927,8 @@ struct UpdateBuilder {
   void add_rev(uint64_t rev) {
     fbb_.AddElement<uint64_t>(Update::VT_REV, rev, 0);
   }
-  void add_user(::flatbuffers::Offset<::flatbuffers::String> user) {
-    fbb_.AddOffset(Update::VT_USER, user);
+  void add_username(::flatbuffers::Offset<::flatbuffers::String> username) {
+    fbb_.AddOffset(Update::VT_USERNAME, username);
   }
   void add_timestamp(uint64_t timestamp) {
     fbb_.AddElement<uint64_t>(Update::VT_TIMESTAMP, timestamp, 0);
@@ -1949,7 +1949,7 @@ struct UpdateBuilder {
   ::flatbuffers::Offset<Update> Finish() {
     const auto end = fbb_.EndTable(start_);
     auto o = ::flatbuffers::Offset<Update>(end);
-    fbb_.Required(o, Update::VT_USER);
+    fbb_.Required(o, Update::VT_USERNAME);
     return o;
   }
 };
@@ -1957,7 +1957,7 @@ struct UpdateBuilder {
 inline ::flatbuffers::Offset<Update> CreateUpdate(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     uint64_t rev = 0,
-    ::flatbuffers::Offset<::flatbuffers::String> user = 0,
+    ::flatbuffers::Offset<::flatbuffers::String> username = 0,
     uint64_t timestamp = 0,
     uint32_t tx_type = 0,
     ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<nplex::msgs::KeyValue>>> upserts = 0,
@@ -1968,7 +1968,7 @@ inline ::flatbuffers::Offset<Update> CreateUpdate(
   builder_.add_deletes(deletes);
   builder_.add_upserts(upserts);
   builder_.add_tx_type(tx_type);
-  builder_.add_user(user);
+  builder_.add_username(username);
   return builder_.Finish();
 }
 
@@ -1980,18 +1980,18 @@ struct Update::Traits {
 inline ::flatbuffers::Offset<Update> CreateUpdateDirect(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     uint64_t rev = 0,
-    const char *user = nullptr,
+    const char *username = nullptr,
     uint64_t timestamp = 0,
     uint32_t tx_type = 0,
     const std::vector<::flatbuffers::Offset<nplex::msgs::KeyValue>> *upserts = nullptr,
     const std::vector<::flatbuffers::Offset<::flatbuffers::String>> *deletes = nullptr) {
-  auto user__ = user ? _fbb.CreateString(user) : 0;
+  auto username__ = username ? _fbb.CreateString(username) : 0;
   auto upserts__ = upserts ? _fbb.CreateVector<::flatbuffers::Offset<nplex::msgs::KeyValue>>(*upserts) : 0;
   auto deletes__ = deletes ? _fbb.CreateVector<::flatbuffers::Offset<::flatbuffers::String>>(*deletes) : 0;
   return nplex::msgs::CreateUpdate(
       _fbb,
       rev,
-      user__,
+      username__,
       timestamp,
       tx_type,
       upserts__,
