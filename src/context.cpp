@@ -418,19 +418,12 @@ void nplex::context_t::check_for_snapshot()
     if (stats.count < m_params.snapshot_max_entries && stats.bytes < m_params.snapshot_max_bytes)
         return;
 
-    auto rev = m_store.rev();
-    auto timestamp = m_store.timestamp();
-    LOG_INFO("Creating snapshot at r{}", rev);
+    LOG_INFO("Creating snapshot at r{}", m_store.rev());
 
-    FlatBufferBuilder builder;
-    auto snapshot = m_store.serialize(builder);
-    builder.Finish(snapshot);
+    auto snapshot = m_store.snapshot();
+    auto task = new save_snapshot_task_t(std::move(snapshot), m_storage);
 
-    auto buf = builder.Release();
-
-    auto task = new save_snapshot_task_t(rev, timestamp, std::move(buf), m_storage);
     submit_task(task);
-
     m_store.reset_stats();
 }
 

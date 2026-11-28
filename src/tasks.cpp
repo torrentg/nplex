@@ -20,8 +20,27 @@ nplex::build_snapshot_task_t::build_snapshot_task_t(nplex::rev_t rev_, user_ptr 
 void nplex::build_snapshot_task_t::run()
 {
     auto store = storage->rebuild_store_at(rev, user);
+    auto snapshot = store.snapshot();
 
-    builder.set_snapshot(store);
+    builder.set_snapshot(snapshot);
+}
+
+// ==========================================================
+// save_snapshot_task_t methods
+// ==========================================================
+
+nplex::save_snapshot_task_t::save_snapshot_task_t(snapshot_t &&snapshot_, storage_ptr storage_)
+    : task_t(), snapshot(std::move(snapshot_)), storage(std::move(storage_))
+{
+    LOG_TRACE("Launching save_snapshot_task: rev={}, timestamp={}", snapshot.rev, to_iso8601(snapshot.timestamp));
+}
+
+void nplex::save_snapshot_task_t::run()
+{
+    auto buf = serialize_snapshot(snapshot);
+
+    storage->write_snapshot(snapshot.rev, snapshot.timestamp, std::string_view{
+        reinterpret_cast<const char *>(buf.data()), buf.size() });
 }
 
 // ==========================================================
@@ -69,20 +88,4 @@ void nplex::read_updates_task_t::run()
 
         return true;
     });
-}
-
-// ==========================================================
-// save_snapshot_task_t methods
-// ==========================================================
-
-nplex::save_snapshot_task_t::save_snapshot_task_t(rev_t rev_, millis_t timestamp_, DetachedBuffer &&buf_, storage_ptr storage_)
-    : task_t(), rev(rev_), timestamp(timestamp_), buf(std::move(buf_)), storage(std::move(storage_))
-{
-    LOG_TRACE("Launching save_snapshot_task: rev={}, timestamp={}, bytes={}", rev, to_iso8601(timestamp), buf.size());
-}
-
-void nplex::save_snapshot_task_t::run()
-{
-    storage->write_snapshot(rev, timestamp, std::string_view{
-        reinterpret_cast<const char *>(buf.data()), buf.size() });
 }

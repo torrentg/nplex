@@ -91,12 +91,10 @@ struct read_updates_task_t : public task_t
  */
 struct save_snapshot_task_t : public task_t
 {
-    rev_t rev;                              // Snapshot revision
-    millis_t timestamp;                     // Snapshot timestamp
-    DetachedBuffer buf;                     // Serialized snapshot buffer
+    snapshot_t snapshot;                    // Snapshot to be saved
     storage_ptr storage;                    // Storage object
 
-    save_snapshot_task_t(rev_t rev_, millis_t timestamp_, DetachedBuffer &&buf_, storage_ptr storage_);
+    save_snapshot_task_t(snapshot_t &&snapshot_, storage_ptr storage_);
 
     const char * name() const override { return "save_snapshot_task"; }
     void run() override;

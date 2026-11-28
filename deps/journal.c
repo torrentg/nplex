@@ -921,7 +921,7 @@ static int ldb_open_idx(ldb_impl_t *obj)
 
             if (rc != (ssize_t)sizeof(ldb_record_idx_t))
                 exit_function(LDB_ERR_CORRUPT_IDX);
-                
+
             if (record_n.pos != 0)
                 break;
 
@@ -1760,7 +1760,7 @@ int ldb_open(ldb_impl_t *obj, const char *path, const char *name, int flags)
 
         if (!(flags & LDB_RECOVER))
             exit_function(ret);
-    
+
         if ((ret = ldb_rebuild_idx(obj)) != LDB_OK)
             exit_function(ret);
     }

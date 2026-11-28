@@ -3,12 +3,12 @@
 #include "buildinfo.hpp"
 #include "cstring.hpp"
 #include "counted_ptr.hpp"
-#include <set>
-#include <vector>
-#include <memory>
+#include <cstdint>
 #include <string>
 #include <chrono>
-#include <cstdint>
+#include <memory>
+#include <vector>
+#include <map>
 
 #define PROJECT_NAME            "nplex"
 #define PROJECT_URL             "https://github.com/torrentg/nplex"
@@ -58,11 +58,10 @@ struct meta_t
     gto::cstring user;              //!< Transaction creator.
     millis_t timestamp;             //!< Creation timestamp (milliseconds since Unix epoch, UTC).
     std::uint32_t tx_type = 0;      //!< Transaction type (user-defined).
-    std::set<key_t> refs;           //!< Set of keys modified by the transaction.
 };
 
 //! Pointer to transaction metadata.
-using meta_ptr = gto::counted_ptr<meta_t>;
+using meta_ptr = gto::counted_ptr<const meta_t>;
 
 //! Database value.
 class value_t
@@ -76,12 +75,9 @@ class value_t
     const gto::cstring & data() const { return m_data; }
 
     rev_t rev() const { return (m_meta ? m_meta->rev : 0); }
-    const gto::cstring & user() const { return (m_meta ? m_meta->user : empty_value()); }
+    const gto::cstring & user() const { return (m_meta ? m_meta->user : empty_user()); }
     millis_t timestamp() const { return (m_meta ? m_meta->timestamp : millis_t{0}); }
     std::uint32_t tx_type() const { return (m_meta ? m_meta->tx_type : 0); }
-
-    void set_removed() { m_data = removed_value(); }
-    bool is_removed() const { return (m_data.c_str() == removed_value().c_str()); }
 
   private:
 
@@ -90,27 +86,29 @@ class value_t
     gto::cstring m_data;
     meta_ptr m_meta;
 
-    static const gto::cstring &empty_value()
+    static const gto::cstring &empty_user()
     {
         static const gto::cstring value = "";
-        return value;
-    }
-
-    static const gto::cstring &removed_value()
-    {
-        static const gto::cstring value = "<REMOVED>";
         return value;
     }
 };
 
 //! Pointer to database value.
-using value_ptr = gto::counted_ptr<value_t>;
+using value_ptr = gto::counted_ptr<const value_t>;
 
 //! Database update (aka committed transaction).
 struct update_t {
     meta_ptr meta;
     std::vector<std::pair<key_t, value_ptr>> upserts;
     std::vector<key_t> deletes;
+};
+
+//! Database snapshot.
+struct snapshot_t
+{
+    rev_t rev = 0;
+    millis_t timestamp = millis_t{0};
+    std::map<key_t, value_ptr, gto::cstring_compare> data;
 };
 
 //! Logging levels.

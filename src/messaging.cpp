@@ -17,7 +17,46 @@ static constexpr std::size_t DEFAULT_BYTES_SNAPSHOT = 256 * 1024;
 static constexpr std::size_t MIN_INITIAL_BYTES_UPDATES = 4 * 1024;
 static constexpr std::size_t MAX_INITIAL_BYTES_UPDATES = 16 * 1024 * 1024;
 
-static fb::Offset<nplex::msgs::Update> serialize_update(fb::FlatBufferBuilder &builder, const nplex::update_t &update, const nplex::user_ptr &user)
+[[nodiscard]]
+static std::vector<nplex::update_t> get_updates(const nplex::snapshot_t &snapshot, const nplex::user_ptr &user = nullptr)
+{
+    using namespace nplex;
+
+    std::map<rev_t, update_t> updates;
+
+    for (const auto &[key, value] : snapshot.data)
+    {
+        if (user && !user->is_authorized(CRUD_READ, key))
+            continue;
+
+        auto rev = value->rev();
+        auto it = updates.find(rev);
+
+        if (it == updates.end())
+        {
+            auto [it_new, inserted] = updates.emplace(rev, update_t{
+                .meta = value->meta(), 
+                .upserts = {}, 
+                .deletes = {}
+            });
+
+            it = it_new;
+        }
+
+        auto &upserts = it->second.upserts;
+        upserts.push_back({key, value});
+    }
+
+    std::vector<update_t> result;
+
+    for (auto &[rev, update] : updates)
+        result.push_back(std::move(update));
+
+    return result;
+}
+
+[[nodiscard]] 
+static fb::Offset<nplex::msgs::Update> serialize_update(fb::FlatBufferBuilder &builder, const nplex::update_t &update, const nplex::user_ptr &user = nullptr)
 {
     std::vector<Offset<KeyValue>> upserts;
     std::vector<Offset<String>> deletes;
@@ -61,7 +100,8 @@ static fb::Offset<nplex::msgs::Update> serialize_update(fb::FlatBufferBuilder &b
     );
 }
 
-static fb::Offset<nplex::msgs::Update> serialize_update(fb::FlatBufferBuilder &builder, const nplex::msgs::Update *update, const nplex::user_ptr &user)
+[[nodiscard]]
+static fb::Offset<nplex::msgs::Update> serialize_update(fb::FlatBufferBuilder &builder, const nplex::msgs::Update *update, const nplex::user_ptr &user = nullptr)
 {
     std::vector<Offset<KeyValue>> upserts;
     std::vector<Offset<String>> deletes;
@@ -113,6 +153,26 @@ static fb::Offset<nplex::msgs::Update> serialize_update(fb::FlatBufferBuilder &b
         update->tx_type(),
         (upserts.empty() ? 0 : builder.CreateVector(upserts)),
         (deletes.empty() ? 0 : builder.CreateVector(deletes))
+    );
+}
+
+[[nodiscard]]
+static fb::Offset<nplex::msgs::Snapshot> serialize_snapshot(fb::FlatBufferBuilder &builder, const nplex::snapshot_t &snapshot, const nplex::user_ptr &user = nullptr)
+{
+    std::vector<fb::Offset<Update>> upserts;
+
+    auto updates = get_updates(snapshot, user);
+
+    for (const auto &update : updates) {
+        auto offset = ::serialize_update(builder, update, user);
+        upserts.push_back(offset);
+    }
+
+    return CreateSnapshot(
+        builder, 
+        static_cast<std::uint64_t>(snapshot.rev), 
+        static_cast<std::uint64_t>(snapshot.timestamp.count()), 
+        builder.CreateVector(upserts)
     );
 }
 
@@ -385,11 +445,9 @@ fb::DetachedBuffer nplex::create_submit_response(std::size_t cid, rev_t crev, Su
     return builder.Release();
 }
 
-fb::DetachedBuffer nplex::create_snapshot_response(std::size_t cid, rev_t crev, rev_t rev0, bool accepted, const store_t &store, const user_ptr &user)
+fb::DetachedBuffer nplex::create_snapshot_response_reject(std::size_t cid, rev_t crev, rev_t rev0)
 {
-    FlatBufferBuilder builder(DEFAULT_BYTES_SNAPSHOT);
-
-    auto snapshot_offset = (accepted ? store.serialize(builder, user) : 0);
+    FlatBufferBuilder builder(128);
 
     auto msg = CreateMessage(builder, 
         MsgContent::SNAPSHOT_RESPONSE,
@@ -397,8 +455,8 @@ fb::DetachedBuffer nplex::create_snapshot_response(std::size_t cid, rev_t crev, 
             cid, 
             crev,
             rev0,
-            accepted,
-            snapshot_offset
+            false,
+            0
         ).Union()
     );
 
@@ -410,7 +468,17 @@ fb::DetachedBuffer nplex::serialize_update(const update_t &update)
 {
     FlatBufferBuilder builder;
 
-    auto msg = ::serialize_update(builder, update, nullptr);
+    auto msg = ::serialize_update(builder, update);
+
+    builder.Finish(msg);
+    return builder.Release();
+}
+
+fb::DetachedBuffer nplex::serialize_snapshot(const snapshot_t &snapshot)
+{
+    FlatBufferBuilder builder(DEFAULT_BYTES_SNAPSHOT);
+
+    auto msg = ::serialize_snapshot(builder, snapshot);
 
     builder.Finish(msg);
     return builder.Release();
@@ -425,13 +493,26 @@ nplex::snapshot_response_builder_t::snapshot_response_builder_t() : m_builder(DE
     // Nothing to do
 }
 
-bool nplex::snapshot_response_builder_t::set_snapshot(const store_t &store, const user_ptr &user)
+void nplex::snapshot_response_builder_t::set_snapshot(const snapshot_t &snapshot, const user_ptr &user)
 {
-    m_snapshot_offset = store.serialize(m_builder, user);
-    return !m_snapshot_offset.IsNull();
+    std::vector<fb::Offset<msgs::Update>> upserts;
+
+    auto updates = get_updates(snapshot, user);
+
+    for (const auto &update : updates) {
+        auto offset = ::serialize_update(m_builder, update, user);
+        upserts.push_back(offset);
+    }
+
+    m_snapshot_offset = msgs::CreateSnapshot(
+        m_builder, 
+        static_cast<std::uint64_t>(snapshot.rev), 
+        static_cast<std::uint64_t>(snapshot.timestamp.count()), 
+        m_builder.CreateVector(upserts)
+    );
 }
 
-DetachedBuffer nplex::snapshot_response_builder_t::finish(uint64_t cid, rev_t crev, rev_t rev0, bool accepted)
+DetachedBuffer nplex::snapshot_response_builder_t::finish(uint64_t cid, rev_t crev, rev_t rev0)
 {
     auto msg = CreateMessage(m_builder, 
         MsgContent::SNAPSHOT_RESPONSE,
@@ -439,7 +520,7 @@ DetachedBuffer nplex::snapshot_response_builder_t::finish(uint64_t cid, rev_t cr
             cid, 
             crev,
             rev0,
-            accepted,
+            true,
             m_snapshot_offset
         ).Union()
     );

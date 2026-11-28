@@ -302,13 +302,10 @@ void nplex::session_t::process_snapshot_request(const msgs::SnapshotRequest *req
     if (rev < m_context->minimum_rev() || rev > m_context->last_persisted_rev())
     {
         send_buffered_msg(
-            create_snapshot_response(
+            create_snapshot_response_reject(
                 cid,
                 m_context->last_persisted_rev(),
-                m_context->minimum_rev(),
-                false,
-                m_context->store(),
-                nullptr
+                m_context->minimum_rev()
             )
         );
 
@@ -318,9 +315,10 @@ void nplex::session_t::process_snapshot_request(const msgs::SnapshotRequest *req
     // Case: requested current snapshot
     if (rev == m_context->last_persisted_rev() && rev == m_context->store().rev())
     {
+        auto snapshot = m_context->store().snapshot(m_user);
         snapshot_response_builder_t builder;
-        builder.set_snapshot(m_context->store(), m_user);
-        auto buf = builder.finish(cid, m_context->last_persisted_rev(), m_context->minimum_rev(), true);
+        builder.set_snapshot(snapshot);
+        auto buf = builder.finish(cid, m_context->last_persisted_rev(), m_context->minimum_rev());
         send(std::move(buf));
         return;
     }
@@ -539,7 +537,7 @@ void nplex::session_t::process_build_snapshot_task_result(std::size_t cid, build
         return;
     }
 
-    auto buf = task->builder.finish(cid, m_context->last_persisted_rev(), m_context->minimum_rev(), true);
+    auto buf = task->builder.finish(cid, m_context->last_persisted_rev(), m_context->minimum_rev());
 
     send_buffered_msg(std::move(buf));
     flush_buffered_msgs();

@@ -5,11 +5,12 @@
 #include <algorithm>
 #include <cassert>
 #include <chrono>
-#include <set>
 
 // ==========================================================
 // Internal to compilation unit
 // ==========================================================
+
+static const gto::cstring REMOVED_VALUE = "<REMOVED>";
 
 struct pending_upsert_t {
     nplex::key_t key;
@@ -24,6 +25,16 @@ static gto::cstring create_cstring(const fb::Vector<std::uint8_t> *value)
     return gto::cstring{reinterpret_cast<const char *>(value->data()), static_cast<std::size_t>(value->size())};
 }
 
+static const void * address_of(const gto::cstring &str)
+{
+    return static_cast<const void *>(str.c_str());
+}
+
+static bool is_removed(const nplex::value_ptr &value)
+{
+    return (value && ::address_of(value->data()) == ::address_of(REMOVED_VALUE));
+}
+
 // ==========================================================
 // store methods
 // ==========================================================
@@ -36,88 +47,46 @@ void nplex::store_t::config(const store_params_t &params) noexcept
     m_params = params;
 }
 
-nplex::meta_ptr nplex::store_t::create_meta(rev_t rev_, const std::string_view &username, std::uint32_t type, millis_t ts)
+nplex::meta_ptr nplex::store_t::create_meta(rev_t rev_, std::string_view username, std::uint32_t type, millis_t ts)
 {
     gto::cstring user;
-    auto user_it = m_users.find(username);
+    auto it = m_users.find(username);
 
-    if (user_it == m_users.end())
+    if (it == m_users.end())
     {
         user = key_t{username};
-        m_users.emplace(user, 1);
+        m_users.emplace(user);
     }
     else
     {
-        user = user_it->first;
-        user_it->second++;
+        user = *it;
     }
 
-    return gto::make_counted<meta_t>(meta_t{rev_, std::move(user), ts, type, {}});
+    return gto::make_counted<const meta_t>(meta_t{rev_, std::move(user), ts, type});
 }
 
-void nplex::store_t::update_meta(const meta_ptr &meta, const key_t &key, meta_e mode)
+void nplex::store_t::mark_as_removed(const std::vector<key_t> &keys, const meta_ptr &meta)
 {
-    assert(meta);
-
-    if (mode == meta_e::APPEND) {
-        meta->refs.insert(key);
-        return;
-    }
-
-    meta->refs.erase(key);
-
-    if (!meta->refs.empty())
+    if (keys.empty())
         return;
 
-    auto it = m_users.find(meta->user);
+    auto num_tombstones = m_tombstones.size();
+    auto removed_value = gto::make_counted<const value_t>(REMOVED_VALUE, meta);
+    auto rev_ = meta->rev;
 
-    if (it != m_users.end())
+    for (const auto &key : keys)
     {
-        if (it->second > 1)
-            it->second--;
-        else
-            m_users.erase(it);
+        auto it = m_data.find(key);
+    
+        if (it == m_data.end())
+            continue;
+
+        it->second = removed_value;
+        m_tombstones.push({key, rev_});
     }
-
-    m_metas.erase(meta->rev);
-}
-
-bool nplex::store_t::upsert_entry(const key_t &key, const value_ptr &value)
-{
-    auto it = m_data.find(key);
-
-    if (it != m_data.end())
-    {
-        update_meta(it->second->m_meta, key, meta_e::SUBTRACT);
-        it->second = value;
-    }
-    else
-    {
-        m_data[key] = value;
-    }
-
-    update_meta(value->m_meta, key, meta_e::APPEND);
-
-    return true;
-}
-
-bool nplex::store_t::mark_as_removed(const key_t &key, const meta_ptr &meta)
-{
-    auto it = m_data.find(key);
-
-    if (it == m_data.end())
-        return false;
-
-    if (it->second->m_meta != meta) {
-        update_meta(it->second->m_meta, key, meta_e::SUBTRACT);
-        update_meta(meta, key, meta_e::APPEND);
-    }
-
-    it->second->set_removed();
-    it->second->m_meta = meta;
-    m_tombstones.push({key, meta->rev});
-
-    return true;
+    
+    if (m_tombstones.size() > num_tombstones)
+        purge_tombstones();
 }
 
 void nplex::store_t::load(const msgs::Snapshot *snapshot, const user_ptr &user)
@@ -125,11 +94,10 @@ void nplex::store_t::load(const msgs::Snapshot *snapshot, const user_ptr &user)
     m_rev = 0;
     m_timestamp = millis_t{0};
     m_data.clear();
-    m_metas.clear();
     m_users.clear();
     m_tombstones.clear();
-    m_stats = {};
     m_min_rev = 0;
+    m_stats = {};
 
     if (!snapshot)
         return;
@@ -139,9 +107,9 @@ void nplex::store_t::load(const msgs::Snapshot *snapshot, const user_ptr &user)
 
     if (updates)
     {
-        for (fb::uoffset_t i = 0; i < updates->size(); i++)
+        for (auto upd : *updates)
         {
-            update(updates->Get(i), user);
+            update(upd, user);
 
             if (m_rev > srev)
                 throw nplex_exception("Invalid snapshot");
@@ -175,6 +143,7 @@ nplex::update_t nplex::store_t::update(const msgs::Update *msg, const user_ptr &
     }
 
     apply_update(update);
+
     return update;
 }
 
@@ -194,10 +163,8 @@ nplex::update_t nplex::store_t::validate_update(const msgs::Update *msg, const u
 
     if (upserts)
     {
-        for (fb::uoffset_t i = 0; i < upserts->size(); i++)
+        for (auto keyval : *upserts)
         {
-            auto keyval = upserts->Get(i);
-
             if (!keyval || !keyval->key() || !keyval->value())
                 throw nplex_exception("Malformed update message (r{})", urev);
 
@@ -218,10 +185,8 @@ nplex::update_t nplex::store_t::validate_update(const msgs::Update *msg, const u
 
     if (deletes)
     {
-        for (fb::uoffset_t i = 0; i < deletes->size(); i++)
+        for (auto key : *deletes)
         {
-            auto key = deletes->Get(i);
-
             if (!key || !key->c_str())
                 throw nplex_exception("Malformed update message (r{})", urev);
 
@@ -251,7 +216,7 @@ nplex::update_t nplex::store_t::validate_update(const msgs::Update *msg, const u
 
     for (auto &pu : pending_upserts)
     {
-        auto value = gto::make_counted<value_t>(std::move(pu.data), meta);
+        auto value = gto::make_counted<const value_t>(std::move(pu.data), meta);
         ret.upserts.emplace_back(std::move(pu.key), std::move(value));
     }
 
@@ -302,10 +267,8 @@ nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_ptr &user, co
 
     if (upserts)
     {
-        for (fb::uoffset_t i = 0; i < upserts->size(); i++)
+        for (auto keyval : *upserts)
         {
-            auto keyval = upserts->Get(i);
-
             if (!keyval || !keyval->value())
                 return msgs::SubmitCode::INVALID_MESSAGE;
 
@@ -322,7 +285,7 @@ nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_ptr &user, co
                 if (!user->is_authorized(CRUD_CREATE, keyval->key()->c_str()))
                     return msgs::SubmitCode::REJECTED_PERMISSION;
             }
-            else if (it->second->is_removed())
+            else if (::is_removed(it->second))
             {
                 if (!user->is_authorized(CRUD_CREATE, keyval->key()->c_str()))
                     return msgs::SubmitCode::REJECTED_PERMISSION;
@@ -349,10 +312,8 @@ nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_ptr &user, co
 
     if (deletes)
     {
-        for (fb::uoffset_t i = 0; i < deletes->size(); i++)
+        for (auto key : *deletes)
         {
-            auto key = deletes->Get(i);
-
             if (!key || !is_valid_key(key->string_view()))
                 return msgs::SubmitCode::ERROR_INVALID_KEY;
 
@@ -367,7 +328,7 @@ nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_ptr &user, co
             if (it == m_data.end())
                 continue;
 
-            if (!forced && it->second->m_meta->rev > crev)
+            if (!forced && it->second->rev() > crev)
                 return msgs::SubmitCode::REJECTED_INTEGRITY;
 
             pending_deletes.emplace_back(it->first);
@@ -380,10 +341,8 @@ nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_ptr &user, co
 
     if (ensures)
     {
-        for (fb::uoffset_t i = 0; i < ensures->size(); i++)
+        for (auto ensure : *ensures)
         {
-            auto ensure = ensures->Get(i);
-
             if (!ensure || ensure->size() == 0)
                 return msgs::SubmitCode::INVALID_MESSAGE;
 
@@ -408,7 +367,7 @@ nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_ptr &user, co
                     continue;
                 }
 
-                if (it->second->m_meta->rev > crev)
+                if (it->second->rev() > crev)
                     return msgs::SubmitCode::REJECTED_ENSURE;
 
                 ++it;
@@ -427,7 +386,7 @@ nplex::msgs::SubmitCode nplex::store_t::validate_commit(const user_ptr &user, co
 
     for (auto &pu : pending_upserts)
     {
-        auto value = gto::make_counted<value_t>(std::move(pu.data), meta);
+        auto value = gto::make_counted<const value_t>(std::move(pu.data), meta);
         upd.upserts.emplace_back(std::move(pu.key), std::move(value));
     }
 
@@ -442,20 +401,13 @@ void nplex::store_t::apply_update(const update_t &upd)
 
     m_rev = upd.meta->rev;
     m_timestamp = upd.meta->timestamp;
-    m_metas[m_rev] = upd.meta;
     m_stats.bytes += estimate_bytes(upd);
     m_stats.count++;
 
     for (const auto &[key, value] : upd.upserts)
-        upsert_entry(key, value);
+        m_data.insert_or_assign(key, value);
 
-    auto num_tombstones = m_tombstones.size();
-
-    for (const auto &key : upd.deletes)
-        mark_as_removed(key, upd.meta);
-
-    if (m_tombstones.size() > num_tombstones)
-        purge_tombstones();
+    mark_as_removed(upd.deletes, upd.meta);
 }
 
 std::uint32_t nplex::store_t::purge_tombstones()
@@ -465,7 +417,6 @@ std::uint32_t nplex::store_t::purge_tombstones()
 
     auto purge_entry = [&](auto it) {
         last_purged_rev = it->second->rev();
-        update_meta(it->second->m_meta, it->first, meta_e::SUBTRACT);
         m_data.erase(it);
         m_tombstones.pop();
         count++;
@@ -494,7 +445,7 @@ std::uint32_t nplex::store_t::purge_tombstones()
         // Invariants
         assert(it->first == rkey);
         assert(it->second->rev() == rrev);
-        assert(it->second->is_removed());
+        assert(::is_removed(it->second));
 
         // Case: entry at a distance greater than configured
         if (m_params.tombstone_max_age > 0 && rrev + m_params.tombstone_max_age < m_rev) {
@@ -529,65 +480,23 @@ std::uint32_t nplex::store_t::purge_tombstones()
     return count;
 }
 
-fb::Offset<nplex::msgs::Snapshot> nplex::store_t::serialize(FlatBufferBuilder &builder, const user_ptr &user) const
+nplex::snapshot_t nplex::store_t::snapshot(const user_ptr &user) const
 {
-    std::vector<fb::Offset<msgs::Update>> updates;
-    std::vector<fb::Offset<msgs::KeyValue>> upserts;
+    snapshot_t snap;
 
-    for (const auto &[mrev, meta] : m_metas)
+    snap.rev = m_rev;
+    snap.timestamp = m_timestamp;
+
+    for (const auto &[key, value] : m_data)
     {
-        assert(mrev == meta->rev);
-
-        upserts.clear();
-
-        for (auto &key : meta->refs)
-        {
-            if (user && !user->is_authorized(CRUD_READ, key))
-                continue;
-
-            auto it = m_data.find(key);
-
-            if (it == m_data.end()) {
-                assert(false);
-                continue;
-            }
-
-            if (it->second->is_removed())
-                continue;
-
-            auto kv = msgs::CreateKeyValue(
-                builder, 
-                builder.CreateString(key), 
-                builder.CreateVector(
-                    reinterpret_cast<const uint8_t *>(it->second->data().c_str()), 
-                    it->second->data().size()
-                )
-            );
-
-            upserts.push_back(kv);
-        }
-
-        if (upserts.empty())
+        if (user && !user->is_authorized(CRUD_READ, key))
             continue;
 
-        auto upd = msgs::CreateUpdate(
-            builder,
-            static_cast<std::uint64_t>(mrev),
-            builder.CreateString(meta->user),
-            static_cast<std::uint64_t>(meta->timestamp.count()),
-            static_cast<std::uint32_t>(meta->tx_type),
-            builder.CreateVector(upserts)
-        );
+        if (::is_removed(value))
+            continue;
 
-        updates.push_back(upd);
+        snap.data[key] = value;
     }
 
-    auto snapshot = msgs::CreateSnapshot(
-        builder, 
-        static_cast<std::uint64_t>(m_rev), 
-        static_cast<std::uint64_t>(m_timestamp.count()), 
-        builder.CreateVector(updates)
-    );
-
-    return snapshot;
+    return snap;
 }

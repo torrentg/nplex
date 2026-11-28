@@ -5,7 +5,9 @@
 #include "params.hpp"
 #include "user.hpp"
 #include "cqueue.hpp"
+#include <vector>
 #include <map>
+#include <set>
 
 namespace nplex {
 
@@ -105,94 +107,62 @@ class store_t
     msgs::SubmitCode try_commit(const user_ptr &user, const msgs::SubmitRequest *msg, update_t &upd);
 
     /**
-     * Serialize the database content to a snapshot.
+     * Get a snapshot of the current database content filtered by the user's permissions.
      * 
-     * The content is filtered according to the user's permissions.
+     * @param[in] user User whose permissions are considered during snapshot creation (nullptr means no filter).
      * 
-     * @param[in] builder FlatBufferBuilder to use.
-     * @param[in] user User whose permissions are considered during serialization (nullptr means no filter).
-     * 
-     * @return Serialized snapshot content.
+     * @return Snapshot of the current database content.
      */
-    fb::Offset<msgs::Snapshot> serialize(FlatBufferBuilder &builder, const user_ptr &user = nullptr) const;
+    snapshot_t snapshot(const user_ptr &user = nullptr) const;
 
   private: // types
 
-    enum struct meta_e : std::uint8_t {
-      APPEND,
-      SUBTRACT
-    };
-
     struct tombstone_t {
-        key_t key;                          // Removed key.
-        rev_t rev = 0;                      // Revision when removed.
+        key_t key;                              // Removed key.
+        rev_t rev = 0;                          // Revision when removed.
     };
 
-    using user_map_t = std::map<gto::cstring, std::uint32_t, gto::cstring_compare>;
-    using data_map_t = std::map<key_t, value_ptr, gto::cstring_compare>;
-    using meta_map_t = std::map<rev_t, meta_ptr>;
-    using tombstone_queue_t = gto::cqueue<tombstone_t>;
+    using data_map_t = std::map<key_t, value_ptr, gto::cstring_compare>;                // key-value data store
+    using user_set_t = std::set<gto::cstring, gto::cstring_compare>;                    // set of usernames
+    using tombstone_queue_t = gto::cqueue<tombstone_t>;                                 // queue of removed keys
 
   private:  // members
 
-    rev_t m_rev = 0;                             // Current revision.
-    millis_t m_timestamp = millis_t{0};          // Revision timestamp (milliseconds since Unix epoch, UTC).
-    meta_map_t m_metas;                          // Metas indexed by revision.
-    data_map_t m_data;                           // Key-value data store.
-    user_map_t m_users;                          // Users list (with number of references, used to unificate user name)
-    tombstone_queue_t m_tombstones;              // List of removed keys (can contain duplicates and reinserted keys)
-    store_params_t m_params;                     // Store parameters.
-    stats_t m_stats;                             // Store statistics.
-    rev_t m_min_rev = 0;                         // Minimum rev with guaranteed tombstone info.
+    rev_t m_rev = 0;                            // Current revision.
+    millis_t m_timestamp = millis_t{0};         // Revision timestamp (milliseconds since Unix epoch, UTC).
+    data_map_t m_data;                          // Key-value data store.
+    user_set_t m_users;                         // Users list (used to unificate user names).
+    tombstone_queue_t m_tombstones;             // List of removed keys (can contain duplicates and reinserted keys).
+
+    rev_t m_min_rev = 0;                        // Minimum rev with guaranteed tombstone info.
+    store_params_t m_params;                    // Store parameters.
+    stats_t m_stats;                            // Store statistics.
 
   private: // methods
 
     /**
-     * Creates a transaction metadata object.
-     * Using current time and the given params.
+     * Creates an update metadata object.
      * Aggregating the user to user list if required.
      * 
-     * @param[in] rev Revision.
+     * @param[in] rev_ Revision.
      * @param[in] username User name.
      * @param[in] type Transaction type (user-defined value).
+     * @param[in] ts Timestamp of the transaction.
      * 
      * @return The inserted metadata.
      */
-    meta_ptr create_meta(rev_t rev_, const std::string_view &username, std::uint32_t type, millis_t ts);
+    meta_ptr create_meta(rev_t rev_, std::string_view username, std::uint32_t type, millis_t ts);
 
     /**
-     * Update a metadata object.
+     * Mark entries as deleted.
      * 
-     * On append mode, adds key as new reference.
-     * On subtract mode, removes key and if empty removes the meta itself.
+     * Marks the specified keys as removed in the store.
+     * Updates the tombstone queue.
      * 
-     * @param[in] meta Metadata to update.
-     * @param[in] key Key to add/remove as reference.
-     * @param[in] mode Update mode.
+     * @param[in] keys Keys to delete.
+     * @param[in] meta Metadata of the transaction removing the keys.
      */
-    void update_meta(const meta_ptr &meta, const key_t &key, meta_e mode);
-
-    /**
-     * Upsert an entry updating content accordingly.
-     * 
-     * @param[in] key Key to insert or update.
-     * @param[in] value Value to set.
-     * 
-     * @return true = change done, false = no change.
-     */
-    bool upsert_entry(const key_t &key, const value_ptr &value);
-
-    /**
-     * Mark an entry as deleted.
-     * 
-     * Append the key to the removed keys set.
-     * 
-     * @param[in] key Key to delete.
-     * @param[in] meta Metadata of the transaction removing the key.
-     * 
-     * @return true = entry delete, false = otherwise.
-     */
-    bool mark_as_removed(const key_t &key, const meta_ptr &meta);
+    void mark_as_removed(const std::vector<key_t> &keys, const meta_ptr &meta);
 
     /**
      * Validate an update without applying it.

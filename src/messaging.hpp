@@ -103,8 +103,8 @@ class snapshot_response_builder_t
   public:
     snapshot_response_builder_t();
 
-    bool set_snapshot(const store_t &store, const user_ptr &user = nullptr);
-    DetachedBuffer finish(uint64_t cid, rev_t crev, rev_t rev0, bool accepted = true);
+    void set_snapshot(const snapshot_t &snapshot, const user_ptr &user = nullptr);
+    DetachedBuffer finish(uint64_t cid, rev_t crev, rev_t rev0);
 
   private:
     FlatBufferBuilder m_builder;
@@ -160,7 +160,7 @@ DetachedBuffer create_ping_response(std::size_t cid, rev_t crev, const std::stri
 DetachedBuffer create_login_response(std::size_t cid, msgs::LoginCode code, rev_t rev0 = 0, rev_t crev = 0, const user_ptr &user = nullptr);
 DetachedBuffer create_keepalive_push(rev_t crev);
 DetachedBuffer create_submit_response(std::size_t cid, rev_t crev, msgs::SubmitCode code, rev_t erev = 0);
-DetachedBuffer create_snapshot_response(std::size_t cid, rev_t crev, rev_t rev0, bool accepted, const store_t &store, const user_ptr &user = nullptr);
+DetachedBuffer create_snapshot_response_reject(std::size_t cid, rev_t crev, rev_t rev0);
 DetachedBuffer create_updates_response(std::size_t cid, rev_t crev, rev_t rev0, bool accepted);
 DetachedBuffer create_sessions_push(std::size_t cid, rev_t crev, const session_ptr &session);
 
@@ -168,5 +168,10 @@ DetachedBuffer create_sessions_push(std::size_t cid, rev_t crev, const session_p
  * Function used to write journal entries.
  */
 DetachedBuffer serialize_update(const update_t &update);
+
+/**
+ * Function used to write snapshot files.
+ */
+DetachedBuffer serialize_snapshot(const snapshot_t &snapshot);
 
 } // namespace nplex

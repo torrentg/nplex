@@ -134,7 +134,7 @@ bool nplex::filesystem_snapshot_persister_t::update_catalog(bool force)
 
     [[maybe_unused]] rev_t min_rev = (m_catalog.empty() ? 0 : m_catalog.begin()->first);
     [[maybe_unused]] rev_t max_rev = (m_catalog.empty() ? 0 : m_catalog.rbegin()->first);
-    
+
     LOG_DEBUG("Snapshot catalog update complete: range {}-{}, entries={}", min_rev, max_rev, m_catalog.size());
 
     return true;
